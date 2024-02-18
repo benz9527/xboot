@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/benz9527/xboot/lib/ipc"
 )
 
 var (
@@ -36,7 +39,7 @@ const (
 type ArrayDelayQueue[E comparable] struct {
 	pq                  PriorityQueue[E]
 	workCtx             context.Context
-	offerC              chan DQItem[E]
+	lock                *sync.Mutex
 	wakeUpC             chan struct{}
 	waitForNextExpItemC chan struct{}
 	sleeping            int32
@@ -54,31 +57,26 @@ func (dq *ArrayDelayQueue[E]) popIfExpired(expiredBoundary int64) (item ReadOnly
 		// not matched
 		return nil, exp - expiredBoundary
 	}
+	dq.lock.Lock()
 	item = dq.pq.Pop()
+	dq.lock.Unlock()
 	return item, 0
-}
-
-func (dq *ArrayDelayQueue[E]) offer() {
-	for e := range dq.offerC {
-		if e == nil {
-			continue
-		}
-		dq.pq.Push(e)
-		if e.Index() == 0 {
-			// Highest priority item, wake up the consumer
-			if atomic.CompareAndSwapInt32(&dq.sleeping, fallAsleep, wokeUp) {
-				dq.wakeUpC <- struct{}{}
-			}
-		}
-	}
 }
 
 func (dq *ArrayDelayQueue[E]) Offer(item E, expiration int64) {
 	e := NewDelayQueueItem[E](item, expiration)
-	dq.offerC <- e
+	dq.lock.Lock()
+	dq.pq.Push(e)
+	dq.lock.Unlock()
+	if e.Index() == 0 {
+		// Highest priority item, wake up the consumer
+		if atomic.CompareAndSwapInt32(&dq.sleeping, fallAsleep, wokeUp) {
+			dq.wakeUpC <- struct{}{}
+		}
+	}
 }
 
-func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender chan<- E) {
+func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChannel[E]) {
 	var timer *time.Timer
 	defer func() {
 		// FIXME recover defer execution order
@@ -151,14 +149,21 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender chan<- E) {
 		select {
 		case <-dq.workCtx.Done():
 			return
-		case sender <- item.Value():
+		default:
 			// Waiting for the consumer to consume this item
 			// If external channel is closed, here will be panic
+			if !sender.IsClosed() {
+				if err := sender.Send(item.Value()); err != nil {
+					return
+				}
+			} else {
+				return
+			}
 		}
 	}
 }
 
-func (dq *ArrayDelayQueue[E]) PollToChan(nowFn func() int64, C chan<- E) {
+func (dq *ArrayDelayQueue[E]) PollToChan(nowFn func() int64, C ipc.SendOnlyChannel[E]) {
 	go dq.poll(nowFn, C)
 }
 
@@ -166,10 +171,9 @@ func NewArrayDelayQueue[E comparable](ctx context.Context, capacity int) DelayQu
 	dq := &ArrayDelayQueue[E]{
 		pq:                  NewArrayPriorityQueue[E](WithArrayPriorityQueueCapacity[E](capacity)),
 		workCtx:             ctx,
-		offerC:              make(chan DQItem[E], capacity),
+		lock:                &sync.Mutex{},
 		wakeUpC:             make(chan struct{}),
 		waitForNextExpItemC: make(chan struct{}),
 	}
-	go dq.offer()
 	return dq
 }

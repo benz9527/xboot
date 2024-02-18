@@ -2,10 +2,13 @@ package queue
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/benz9527/xboot/lib/ipc"
 )
 
 func TestDelayQueueAlignmentAndSize(t *testing.T) {
@@ -30,7 +33,7 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 	defer cancel()
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
-	receiver := make(chan *employee)
+	receiver := ipc.NewSafeChannel[*employee]()
 	dq.PollToChan(
 		func() int64 {
 			return time.Now().UnixMilli()
@@ -55,11 +58,14 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 	}()
 
 	time.AfterFunc(300*time.Millisecond, func() {
-		close(receiver)
+		_ = receiver.Close()
 	})
 	for {
+		if receiver.IsClosed() {
+			return
+		}
 		select {
-		case item, ok := <-receiver:
+		case item, ok := <-receiver.Wait():
 			if !ok {
 				t.Log("receiver channel closed")
 				time.Sleep(100 * time.Millisecond)
@@ -67,6 +73,8 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 			}
 			t.Logf("current time ms: %d, item: %v\n", time.Now().UnixMilli(), item)
 			actualCount++
+		default:
+
 		}
 	}
 }
@@ -78,7 +86,7 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
 
-	receiver := make(chan *employee)
+	receiver := ipc.NewSafeChannel[*employee]()
 	dq.PollToChan(
 		func() int64 {
 			return time.Now().UnixMilli()
@@ -87,7 +95,7 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 	)
 	go func(ctx context.Context) {
 		<-ctx.Done()
-		close(receiver)
+		_ = receiver.Close()
 	}(ctx)
 	ms := time.Now().UnixMilli()
 	b.ResetTimer()
@@ -101,11 +109,16 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 	}()
 
 	for {
+		if receiver.IsClosed() {
+			return
+		}
 		select {
-		case _, ok := <-receiver:
+		case _, ok := <-receiver.Wait():
 			if !ok {
 				return
 			}
+		default:
+
 		}
 	}
 }
