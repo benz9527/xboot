@@ -1,0 +1,175 @@
+package queue
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"sync/atomic"
+	"time"
+)
+
+var (
+	errEmptyContext = errors.New("empty context")
+)
+
+type dqItem[E comparable] struct {
+	PQItem[E]
+}
+
+func (item *dqItem[E]) Expiration() int64 {
+	return item.Priority()
+}
+
+func NewDelayQueueItem[E comparable](val E, exp int64) DQItem[E] {
+	return &dqItem[E]{
+		PQItem: NewPriorityQueueItem[E](val, exp),
+	}
+}
+
+type sleepEnum = int32
+
+const (
+	wokeUp sleepEnum = iota
+	fallAsleep
+)
+
+type ArrayDelayQueue[E comparable] struct {
+	pq                  PriorityQueue[E]
+	workCtx             context.Context
+	offerC              chan DQItem[E]
+	wakeUpC             chan struct{}
+	waitForNextExpItemC chan struct{}
+	sleeping            int32
+}
+
+func (dq *ArrayDelayQueue[E]) popIfExpired(expiredBoundary int64) (item ReadOnlyPQItem[E], deltaMs int64) {
+	if dq.pq.Len() == 0 {
+		return nil, 0
+	}
+
+	item = dq.pq.Peek()
+	// priority as expiration
+	exp := item.Priority()
+	if exp > expiredBoundary {
+		// not matched
+		return nil, exp - expiredBoundary
+	}
+	item = dq.pq.Pop()
+	return item, 0
+}
+
+func (dq *ArrayDelayQueue[E]) offer() {
+	for e := range dq.offerC {
+		if e == nil {
+			continue
+		}
+		dq.pq.Push(e)
+		if e.Index() == 0 {
+			// Highest priority item, wake up the consumer
+			if atomic.CompareAndSwapInt32(&dq.sleeping, fallAsleep, wokeUp) {
+				dq.wakeUpC <- struct{}{}
+			}
+		}
+	}
+}
+
+func (dq *ArrayDelayQueue[E]) Offer(item E, expiration int64) {
+	e := NewDelayQueueItem[E](item, expiration)
+	dq.offerC <- e
+}
+
+func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender chan<- E) {
+	var timer *time.Timer
+	defer func() {
+		// FIXME recover defer execution order
+		if err := recover(); err != nil {
+			slog.Error("delay queue panic recover", "error", err)
+		}
+		// before exit
+		atomic.StoreInt32(&dq.sleeping, wokeUp)
+
+		if timer != nil {
+			timer.Stop()
+			timer = nil
+		}
+	}()
+	for {
+		now := nowFn()
+		item, deltaMs := dq.popIfExpired(now)
+		if item == nil {
+			// No expired item in the queue
+			// 1. without any item in the queue
+			// 2. all items in the queue are not expired
+			atomic.StoreInt32(&dq.sleeping, fallAsleep)
+		}
+		if item == nil && deltaMs > 0 {
+			if timer != nil {
+				timer.Stop()
+			}
+			// Avoid to use time.After(), it will create a new timer every time
+			// what's worse the underlay timer will not be GC.
+			timer = time.AfterFunc(time.Duration(deltaMs)*time.Millisecond, func() {
+				if atomic.SwapInt32(&dq.sleeping, wokeUp) == fallAsleep {
+					dq.waitForNextExpItemC <- struct{}{}
+				}
+			})
+		}
+
+		if item == nil {
+			if deltaMs == 0 {
+				// Queue is empty, waiting for new item
+				select {
+				case <-dq.workCtx.Done():
+					return
+				case <-dq.wakeUpC:
+					// Waiting for an immediately executed item
+					continue
+				}
+			} else if deltaMs > 0 {
+				select {
+				case <-dq.workCtx.Done():
+					return
+				case <-dq.wakeUpC:
+					continue
+				case <-dq.waitForNextExpItemC:
+					// Waiting for this item to be expired
+					if timer != nil {
+						timer.Stop()
+						timer = nil
+					}
+					continue
+				}
+			}
+		}
+
+		// Wakeup, stop wait next expired timer
+		if timer != nil {
+			timer.Stop()
+			timer = nil
+		}
+
+		select {
+		case <-dq.workCtx.Done():
+			return
+		case sender <- item.Value():
+			// Waiting for the consumer to consume this item
+			// If external channel is closed, here will be panic
+		}
+	}
+}
+
+func (dq *ArrayDelayQueue[E]) PollToChan(nowFn func() int64, C chan<- E) {
+	go dq.poll(nowFn, C)
+}
+
+func NewArrayDelayQueue[E comparable](ctx context.Context, capacity int) DelayQueue[E] {
+	dq := &ArrayDelayQueue[E]{
+		pq:                  NewArrayPriorityQueue[E](WithArrayPriorityQueueCapacity[E](capacity)),
+		workCtx:             ctx,
+		offerC:              make(chan DQItem[E], capacity),
+		wakeUpC:             make(chan struct{}),
+		waitForNextExpItemC: make(chan struct{}),
+	}
+	go dq.offer()
+	return dq
+}

@@ -36,3 +36,14 @@ type PQItem[E comparable] interface {
 	SetIndex(idx int64)
 	SetPriority(pri int64)
 }
+
+type DelayQueue[E comparable] interface {
+	Offer(item E, expiration int64)
+	// PollToChan Asynchronous function
+	PollToChan(nowFn func() int64, C chan<- E)
+}
+
+type DQItem[E comparable] interface {
+	Expiration() int64
+	PQItem[E]
+}
