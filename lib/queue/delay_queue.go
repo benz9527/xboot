@@ -2,17 +2,12 @@ package queue
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/benz9527/xboot/lib/ipc"
-)
-
-var (
-	errEmptyContext = errors.New("empty context")
 )
 
 type dqItem[E comparable] struct {
@@ -99,21 +94,7 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 			// 1. without any item in the queue
 			// 2. all items in the queue are not expired
 			atomic.StoreInt32(&dq.sleeping, fallAsleep)
-		}
-		if item == nil && deltaMs > 0 {
-			if timer != nil {
-				timer.Stop()
-			}
-			// Avoid to use time.After(), it will create a new timer every time
-			// what's worse the underlay timer will not be GC.
-			timer = time.AfterFunc(time.Duration(deltaMs)*time.Millisecond, func() {
-				if atomic.SwapInt32(&dq.sleeping, wokeUp) == fallAsleep {
-					dq.waitForNextExpItemC <- struct{}{}
-				}
-			})
-		}
 
-		if item == nil {
 			if deltaMs == 0 {
 				// Queue is empty, waiting for new item
 				select {
@@ -124,6 +105,18 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 					continue
 				}
 			} else if deltaMs > 0 {
+				if timer != nil {
+					timer.Stop()
+				}
+				// Avoid to use time.After(), it will create a new timer every time
+				// what's worse, the underlay timer will not be GC.
+				// Asynchronous timer.
+				timer = time.AfterFunc(time.Duration(deltaMs)*time.Millisecond, func() {
+					if atomic.SwapInt32(&dq.sleeping, wokeUp) == fallAsleep {
+						dq.waitForNextExpItemC <- struct{}{}
+					}
+				})
+
 				select {
 				case <-dq.workCtx.Done():
 					return
@@ -140,8 +133,9 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 			}
 		}
 
-		// Wakeup, stop wait next expired timer
+		// This is an expired item
 		if timer != nil {
+			// Woke up, stop the wait next expired timer
 			timer.Stop()
 			timer = nil
 		}
@@ -151,7 +145,7 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 			return
 		default:
 			// Waiting for the consumer to consume this item
-			// If external channel is closed, here will be panic
+			// If an external channel is closed, here will be panic
 			if !sender.IsClosed() {
 				if err := sender.Send(item.Value()); err != nil {
 					return
