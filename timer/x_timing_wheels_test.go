@@ -208,15 +208,18 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 		return NewInfiniteScheduler(delays...)
 	}
 	assert.NotNil(t, schedFn())
+	execCounter := atomic.Int64{}
 	// FIXME 1ms infinite scheduling will occur critical delay execution error
 	task, err := tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {
 		execAt := time.Now().UTC().UnixMilli()
-		slog.Info("infinite sched1 after func", "expired ms", md.GetExpiredMs(), "exec at", execAt, "diff",
-			execAt-md.GetExpiredMs())
+		diff := execAt - md.GetExpiredMs()
+		if diff > 1 {
+			slog.Info("infinite sched1 after func", "expired ms", md.GetExpiredMs(), "exec at", execAt, "diff", diff)
+		}
+		execCounter.Add(1)
 	})
 	assert.NoError(t, err)
 	t.Logf("task1: %s\n", task.GetJobID())
-
 	t.Logf("tw tickMs: %d\n", tw.GetTickMs())
 	t.Logf("tw startMs: %d\n", tw.GetStartMs())
 	t.Logf("tw slotSize: %d\n", tw.GetSlotSize())
@@ -224,6 +227,7 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 	<-ctx.Done()
 	time.Sleep(100 * time.Millisecond)
 	t.Logf("final tw tasks: %d\n", tw.GetTaskCounter())
+	t.Logf("exec counter: %d\n", execCounter.Load())
 }
 
 func TestXTimingWheels_ScheduleFunc_32MsInfinite(t *testing.T) {
