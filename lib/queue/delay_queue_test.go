@@ -34,7 +34,7 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
 	receiver := ipc.NewSafeClosableChannel[*employee]()
-	dq.PollToChan(
+	go dq.PollToChan(
 		func() int64 {
 			return time.Now().UnixMilli()
 		},
@@ -87,7 +87,7 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
 
 	receiver := ipc.NewSafeClosableChannel[*employee]()
-	dq.PollToChan(
+	go dq.PollToChan(
 		func() int64 {
 			return time.Now().UnixMilli()
 		},

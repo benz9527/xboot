@@ -169,6 +169,8 @@ func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	tw := NewTimingWheels(
 		ctx,
 		time.Now().UTC().UnixMilli(),
+		withTimingWheelStatsInit(2),
+		WithTimingWheelStats(),
 	)
 
 	delays := []time.Duration{

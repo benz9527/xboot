@@ -158,7 +158,7 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 }
 
 func (dq *ArrayDelayQueue[E]) PollToChan(nowFn func() int64, C ipc.SendOnlyChannel[E]) {
-	go dq.poll(nowFn, C)
+	dq.poll(nowFn, C)
 }
 
 func NewArrayDelayQueue[E comparable](ctx context.Context, capacity int) DelayQueue[E] {
