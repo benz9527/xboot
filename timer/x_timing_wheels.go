@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"strconv"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -21,62 +22,19 @@ var (
 	_ TimingWheels = (*xTimingWheels)(nil)
 )
 
-// 112
 type timingWheel struct {
 	slots []TimingWheelSlot // alignment 8, size 24; in kafka it is buckets
 	// ctx is used to shut down the timing wheel and pass
 	// value to control debug info.
-	ctx                  context.Context                   // alignment 8, size 16
-	globalDqRef          queue.DelayQueue[TimingWheelSlot] // alignment 8, size 16
-	overflowWheelRef     unsafe.Pointer                    //  alignment 8, size 8; same as kafka TimingWheel(*timingWheel)
-	tickMs               int64                             // alignment 8, size 8
-	startMs              int64                             // alignment 8, size 8; baseline startup timestamp
-	interval             int64                             // alignment 8, size 8
-	currentTimeMs        int64                             // alignment 8, size 8
-	slotSize             int64                             // alignment 8, size 8; in kafka it is wheelSize
-	globalSlotCounterRef *atomic.Int64                     // alignment 8, size 8
-}
-
-type TimingWheelOptions func(tw *timingWheel)
-
-func WithTimingWheelTickMs(basicTickMs time.Duration) TimingWheelOptions {
-	return func(tw *timingWheel) {
-		tw.tickMs = basicTickMs.Milliseconds()
-	}
-}
-
-func WithTimingWheelSlotSize(slotSize int64) TimingWheelOptions {
-	return func(tw *timingWheel) {
-		tw.slotSize = slotSize
-	}
-}
-
-func newTimingWheel(
-	ctx context.Context,
-	tickMs int64,
-	slotSize int64,
-	startMs int64,
-	slotCounter *atomic.Int64,
-	dq queue.DelayQueue[TimingWheelSlot],
-) TimingWheel {
-	tw := &timingWheel{
-		ctx:                  ctx,
-		tickMs:               tickMs,
-		startMs:              startMs,
-		slotSize:             slotSize,
-		globalSlotCounterRef: slotCounter,
-		interval:             tickMs * slotSize,
-		currentTimeMs:        startMs - (startMs % tickMs), // truncate the remainder as startMs left boundary
-		slots:                make([]TimingWheelSlot, slotSize),
-		globalDqRef:          dq,
-	}
-	// Slot initialize by doubly linked list.
-	for i := int64(0); i < slotSize; i++ {
-		tw.slots[i] = NewXSlot()
-	}
-	tw.globalSlotCounterRef.Add(slotSize)
-	tw.setOverflowTimingWheel(nil)
-	return tw
+	ctx                  context.Context
+	globalDqRef          queue.DelayQueue[TimingWheelSlot]
+	overflowWheelRef     unsafe.Pointer // same as kafka TimingWheel(*timingWheel)
+	tickMs               int64
+	startMs              int64 // baseline startup timestamp
+	interval             int64
+	currentTimeMs        int64
+	slotSize             int64 // in kafka it is wheelSize
+	globalSlotCounterRef *atomic.Int64
 }
 
 func (tw *timingWheel) GetTickMs() int64 {
@@ -180,6 +138,34 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 	return tw.getOverflowTimingWheel().(*timingWheel).addTask(task, level+1)
 }
 
+func newTimingWheel(
+	ctx context.Context,
+	tickMs int64,
+	slotSize int64,
+	startMs int64,
+	slotCounter *atomic.Int64,
+	dq queue.DelayQueue[TimingWheelSlot],
+) TimingWheel {
+	tw := &timingWheel{
+		ctx:                  ctx,
+		tickMs:               tickMs,
+		startMs:              startMs,
+		slotSize:             slotSize,
+		globalSlotCounterRef: slotCounter,
+		interval:             tickMs * slotSize,
+		currentTimeMs:        startMs - (startMs % tickMs), // truncate the remainder as startMs left boundary
+		slots:                make([]TimingWheelSlot, slotSize),
+		globalDqRef:          dq,
+	}
+	// Slot initialize by doubly linked list.
+	for i := int64(0); i < slotSize; i++ {
+		tw.slots[i] = NewXSlot()
+	}
+	tw.globalSlotCounterRef.Add(slotSize)
+	tw.setOverflowTimingWheel(nil)
+	return tw
+}
+
 const (
 	disableTimingWheelsSchedulePoll        = "disableTWSPoll"
 	disableTimingWheelsScheduleCancelTask  = "disableTWSCancelTask"
@@ -187,72 +173,21 @@ const (
 )
 
 type xTimingWheels struct {
-	tw           TimingWheel
-	ctx          context.Context
-	dq           queue.DelayQueue[TimingWheelSlot] // Do not use the timer.Ticker
-	tasksMap     map[JobID]Task
-	stopC        chan struct{}
-	expiredSlotC ipc.ClosableChannel[TimingWheelSlot]
-	twEventC     ipc.ClosableChannel[*timingWheelEvent]
-	twEventPool  *timingWheelEventsPool
-	gPool        *ants.Pool
-	taskCounter  *atomic.Int64
-	slotCounter  *atomic.Int64
-	isRunning    *atomic.Bool
-}
-
-// NewTimingWheels creates a new timing wheel.
-// @param startMs the start time in milliseconds, example value time.Now().UnixMilli().
-//
-//	Same as the kafka, Time.SYSTEM.hiResClockMs() is used.
-func NewTimingWheels(ctx context.Context, startMs int64, opts ...TimingWheelOptions) TimingWheels {
-	if ctx == nil {
-		return nil
-	}
-
-	xtw := &xTimingWheels{
-		ctx:          ctx,
-		taskCounter:  &atomic.Int64{},
-		slotCounter:  &atomic.Int64{},
-		stopC:        make(chan struct{}),
-		twEventC:     ipc.NewSafeClosableChannel[*timingWheelEvent](1024),
-		expiredSlotC: ipc.NewSafeClosableChannel[TimingWheelSlot](128),
-		tasksMap:     make(map[JobID]Task),
-		isRunning:    &atomic.Bool{},
-		twEventPool:  newTimingWheelEventsPool(),
-	}
-	xtw.isRunning.Store(false)
-	tw := &timingWheel{
-		startMs: startMs,
-	}
-	for _, o := range opts {
-		if o != nil {
-			o(tw)
-		}
-	}
-
-	if tw.tickMs <= 0 {
-		tw.tickMs = time.Millisecond.Milliseconds()
-	}
-	if tw.slotSize <= 0 {
-		tw.slotSize = 20
-	}
-	xtw.dq = queue.NewArrayDelayQueue[TimingWheelSlot](ctx, 128)
-	xtw.tw = newTimingWheel(
-		ctx,
-		tw.tickMs,
-		tw.slotSize,
-		tw.startMs,
-		xtw.slotCounter,
-		xtw.dq,
-	)
-	if p, err := ants.NewPool(128, ants.WithPreAlloc(true)); err != nil {
-		panic(err)
-	} else {
-		xtw.gPool = p
-	}
-	xtw.schedule(ctx)
-	return xtw
+	tw             TimingWheel
+	ctx            context.Context
+	dq             queue.DelayQueue[TimingWheelSlot] // Do not use the timer.Ticker
+	tasksMap       map[JobID]Task
+	stopC          chan struct{}
+	expiredSlotC   ipc.ClosableChannel[TimingWheelSlot]
+	twEventC       ipc.ClosableChannel[*timingWheelEvent]
+	twEventPool    *timingWheelEventsPool
+	gPool          *ants.Pool
+	stats          *timingWheelStats
+	taskCounter    *atomic.Int64
+	slotCounter    *atomic.Int64
+	isRunning      *atomic.Bool
+	name           string
+	isStatsEnabled bool
 }
 
 func (xtw *xTimingWheels) GetTickMs() int64 {
@@ -532,8 +467,10 @@ func (xtw *xTimingWheels) handleTask(t Task) {
 	runNow = runNow || t.GetExpiredMs() <= time.Now().UTC().UnixMilli()
 
 	if runNow && !t.Cancelled() {
+		job := t.GetJob()
+		md := t.GetJobMetadata()
 		_ = xtw.gPool.Submit(func() {
-			t.GetJob()(xtw.ctx, t.GetJobMetadata())
+			jobStatsWrapper(xtw.stats, job)(xtw.ctx, md)
 		})
 	} else if t.Cancelled() {
 		if slot != nil {
@@ -604,4 +541,94 @@ func (xtw *xTimingWheels) cancelTask(jobID JobID) error {
 
 	delete(xtw.tasksMap, jobID)
 	return nil
+}
+
+// NewTimingWheels creates a new timing wheel.
+// @param startMs the start time in milliseconds, example value time.Now().UnixMilli().
+//
+//	Same as the kafka, Time.SYSTEM.hiResClockMs() is used.
+func NewTimingWheels(ctx context.Context, startMs int64, opts ...TimingWheelsOption) TimingWheels {
+	if ctx == nil {
+		return nil
+	}
+
+	xtw := &xTimingWheels{
+		ctx:          ctx,
+		taskCounter:  &atomic.Int64{},
+		slotCounter:  &atomic.Int64{},
+		stopC:        make(chan struct{}),
+		twEventC:     ipc.NewSafeClosableChannel[*timingWheelEvent](1024),
+		expiredSlotC: ipc.NewSafeClosableChannel[TimingWheelSlot](128),
+		tasksMap:     make(map[JobID]Task),
+		isRunning:    &atomic.Bool{},
+		twEventPool:  newTimingWheelEventsPool(),
+		tw:           &timingWheel{},
+	}
+	xtw.isRunning.Store(false)
+	for _, o := range opts {
+		if o != nil {
+			o(xtw)
+		}
+	}
+	// Temporarily store the configuration
+	tw := xtw.tw.(*timingWheel)
+	tw.startMs = startMs
+
+	if tw.tickMs <= 0 {
+		tw.tickMs = time.Millisecond.Milliseconds()
+	}
+	if tw.slotSize <= 0 {
+		tw.slotSize = 20
+	}
+	xtw.dq = queue.NewArrayDelayQueue[TimingWheelSlot](ctx, 128)
+	xtw.tw = newTimingWheel(
+		ctx,
+		tw.tickMs,
+		tw.slotSize,
+		tw.startMs,
+		xtw.slotCounter,
+		xtw.dq,
+	)
+	if p, err := ants.NewPool(128, ants.WithPreAlloc(true)); err != nil {
+		panic(err)
+	} else {
+		xtw.gPool = p
+	}
+	if xtw.name == "" {
+		// FIXME UUID
+		xtw.name = "default-" + strconv.FormatInt(xtw.GetStartMs(), 10)
+	}
+	if xtw.isStatsEnabled {
+		xtw.stats = newTimingWheelStats(xtw)
+	}
+	xtw.schedule(ctx)
+	return xtw
+}
+
+type TimingWheelsOption func(*xTimingWheels)
+
+func WithTimingWheelTickMs(basicTickMs time.Duration) TimingWheelsOption {
+	return func(xtw *xTimingWheels) {
+		tw := xtw.tw.(*timingWheel)
+		if tw == nil {
+			return
+		}
+		tw.tickMs = basicTickMs.Milliseconds()
+	}
+}
+
+func WithTimingWheelSlotSize(slotSize int64) TimingWheelsOption {
+	return func(xtw *xTimingWheels) {
+		tw := xtw.tw.(*timingWheel)
+		if tw == nil {
+			return
+		}
+		tw.slotSize = slotSize
+	}
+}
+
+func WithTimingWheelName(name string) TimingWheelsOption {
+	return func(xtw *xTimingWheels) {
+		xtw.name = name
+	}
 }

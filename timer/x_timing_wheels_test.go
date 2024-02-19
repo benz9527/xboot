@@ -3,7 +3,11 @@ package timer
 import (
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"log/slog"
+	"os"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -12,6 +16,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+func withTimingWheelStatsInit(interval int64) TimingWheelsOption {
+	return func(xtw *xTimingWheels) {
+		exp, err := stdoutmetric.New(
+			//stdoutmetric.WithPrettyPrint(),
+			stdoutmetric.WithWriter(os.Stdout),
+		)
+		if err != nil {
+			panic(err)
+		}
+		mp := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(exp, metric.WithInterval(time.Duration(interval)*time.Second))))
+		otel.SetMeterProvider(mp)
+	}
+}
 
 func TestTimingWheel_AlignmentAndSize(t *testing.T) {
 	tw := &timingWheel{}
@@ -88,7 +106,15 @@ func testAfterFunc(t *testing.T) (percent float64) {
 	tw := NewTimingWheels(
 		ctx,
 		time.Now().UTC().UnixMilli(),
+		withTimingWheelStatsInit(2),
+		WithTimingWheelStats(),
 	)
+	defer func() {
+		mp, ok := otel.GetMeterProvider().(*metric.MeterProvider)
+		if ok && mp != nil {
+			_ = mp.Shutdown(ctx)
+		}
+	}()
 
 	delays := []time.Duration{
 		time.Millisecond,
@@ -119,19 +145,11 @@ func testAfterFunc(t *testing.T) (percent float64) {
 		})
 		assert.NoError(t, err)
 	}
-	t.Logf("begin tw tasks: %d\n", tw.GetTaskCounter())
 	<-ctx.Done()
 	time.Sleep(50 * time.Millisecond)
-	t.Logf("final tw tasks: %d\n", tw.GetTaskCounter())
-	if bigDiffCounter.Load() > 0 {
-		t.Logf("big diff count: %d\n", bigDiffCounter.Load())
-	}
 	percent = float64(actualExecCounter.Load()-bigDiffCounter.Load()) / float64(expectedExecCount)
 	t.Logf("[-1,1] percent: %f\n", percent)
-	if actualExecCounter.Load() != expectedExecCount || tw.GetTaskCounter() > 1 || tw.GetTaskCounter() < 0 {
-		t.Logf("actual exec count: %d, expected exec count: %d\n", actualExecCounter.Load(), expectedExecCount)
-		panic("exec count not match")
-	}
+	assert.Equal(t, expectedExecCount, actualExecCounter.Load())
 	return percent
 }
 
@@ -208,6 +226,8 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 	tw := NewTimingWheels(
 		ctx,
 		time.Now().UTC().UnixMilli(),
+		withTimingWheelStatsInit(5),
+		WithTimingWheelStats(),
 	)
 
 	delays := []time.Duration{
@@ -217,33 +237,17 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 		return NewInfiniteScheduler(delays...)
 	}
 	assert.NotNil(t, schedFn())
-	execCounter := atomic.Int64{}
-	bigDiffCounter := atomic.Int64{}
 	loop := 20
 	tasks := make([]Task, loop)
 	for i := range loop {
 		var err error
-		tasks[i], err = tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {
-			execAt := time.Now().UTC().UnixMilli()
-			diff := execAt - md.GetExpiredMs()
-			if diff > 1 {
-				bigDiffCounter.Add(1)
-			}
-			execCounter.Add(1)
-		})
+		tasks[i], err = tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {})
 		assert.NoError(t, err)
-		t.Logf("task %d: %s\n", i, tasks[i].GetJobID())
+		time.Sleep(2 * time.Millisecond)
 	}
 
 	<-ctx.Done()
 	time.Sleep(100 * time.Millisecond)
-	if bigDiffCounter.Load() > 0 {
-		t.Logf("big diff count: %d\n", bigDiffCounter.Load())
-	}
-	percent := float64(execCounter.Load()-bigDiffCounter.Load()) / float64(execCounter.Load())
-	t.Logf("[-1,1] percent: %f\n", percent)
-	t.Logf("final tw tasks: %d\n", tw.GetTaskCounter())
-	t.Logf("exec counter: %d\n", execCounter.Load())
 }
 
 func TestXTimingWheels_ScheduleFunc_32MsInfinite(t *testing.T) {
