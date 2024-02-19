@@ -82,7 +82,7 @@ func TestNewTimingWheels(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func testAfterFunc(t *testing.T) {
+func testAfterFunc(t *testing.T) (percent float64) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(
@@ -106,15 +106,16 @@ func testAfterFunc(t *testing.T) {
 		time.Second,
 	}
 
-	expectedExecCount := len(delays)
-	actualExecCount := 0
+	expectedExecCount := int64(len(delays))
+	actualExecCounter := atomic.Int64{}
+	bigDiffCounter := atomic.Int64{}
 	for i := 0; i < len(delays); i++ {
-		//lowResolutionBeginTs := time.Now().UTC().UnixMilli()
 		_, err := tw.AfterFunc(delays[i], func(ctx context.Context, md JobMetadata) {
-			actualExecCount++
-			//execAt := time.Now().UTC().UnixMilli()
-			//slog.Info("after func", "expired ms", md.GetExpiredMs(), "exec at", execAt,
-			//	"interval", md.GetExpiredMs()-lowResolutionBeginTs, "diff", execAt-md.GetExpiredMs())
+			actualExecCounter.Add(1)
+			diff := time.Now().UTC().UnixMilli() - md.GetExpiredMs()
+			if diff > 1 {
+				bigDiffCounter.Add(1)
+			}
 		})
 		assert.NoError(t, err)
 	}
@@ -122,18 +123,26 @@ func testAfterFunc(t *testing.T) {
 	<-ctx.Done()
 	time.Sleep(50 * time.Millisecond)
 	t.Logf("final tw tasks: %d\n", tw.GetTaskCounter())
-	if actualExecCount != expectedExecCount || tw.GetTaskCounter() > 1 || tw.GetTaskCounter() < 0 {
-		t.Logf("actual exec count: %d, expected exec count: %d\n", actualExecCount, expectedExecCount)
+	if bigDiffCounter.Load() > 0 {
+		t.Logf("big diff count: %d\n", bigDiffCounter.Load())
+	}
+	percent = float64(actualExecCounter.Load()-bigDiffCounter.Load()) / float64(expectedExecCount)
+	t.Logf("[-1,1] percent: %f\n", percent)
+	if actualExecCounter.Load() != expectedExecCount || tw.GetTaskCounter() > 1 || tw.GetTaskCounter() < 0 {
+		t.Logf("actual exec count: %d, expected exec count: %d\n", actualExecCounter.Load(), expectedExecCount)
 		panic("exec count not match")
 	}
+	return percent
 }
 
 func TestXTimingWheels_AfterFunc(t *testing.T) {
 	loops := 100
+	percents := 0.0
 	for i := 0; i < loops; i++ {
 		t.Logf("loop %d\n", i)
-		testAfterFunc(t)
+		percents += testAfterFunc(t)
 	}
+	t.Logf("average percent: %f\n", percents/float64(loops))
 }
 
 func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
@@ -194,7 +203,7 @@ func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 }
 
 func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
-	ctx, cancel := context.WithTimeoutCause(context.Background(), 1*time.Second, errors.New("timeout"))
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(
 		ctx,
@@ -209,23 +218,30 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 	}
 	assert.NotNil(t, schedFn())
 	execCounter := atomic.Int64{}
-	// FIXME 1ms infinite scheduling will occur critical delay execution error
-	task, err := tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {
-		execAt := time.Now().UTC().UnixMilli()
-		diff := execAt - md.GetExpiredMs()
-		if diff > 1 {
-			slog.Info("infinite sched1 after func", "expired ms", md.GetExpiredMs(), "exec at", execAt, "diff", diff)
-		}
-		execCounter.Add(1)
-	})
-	assert.NoError(t, err)
-	t.Logf("task1: %s\n", task.GetJobID())
-	t.Logf("tw tickMs: %d\n", tw.GetTickMs())
-	t.Logf("tw startMs: %d\n", tw.GetStartMs())
-	t.Logf("tw slotSize: %d\n", tw.GetSlotSize())
-	t.Logf("tw tasks: %d\n", tw.GetTaskCounter())
+	bigDiffCounter := atomic.Int64{}
+	loop := 20
+	tasks := make([]Task, loop)
+	for i := range loop {
+		var err error
+		tasks[i], err = tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {
+			execAt := time.Now().UTC().UnixMilli()
+			diff := execAt - md.GetExpiredMs()
+			if diff > 1 {
+				bigDiffCounter.Add(1)
+			}
+			execCounter.Add(1)
+		})
+		assert.NoError(t, err)
+		t.Logf("task %d: %s\n", i, tasks[i].GetJobID())
+	}
+
 	<-ctx.Done()
 	time.Sleep(100 * time.Millisecond)
+	if bigDiffCounter.Load() > 0 {
+		t.Logf("big diff count: %d\n", bigDiffCounter.Load())
+	}
+	percent := float64(execCounter.Load()-bigDiffCounter.Load()) / float64(execCounter.Load())
+	t.Logf("[-1,1] percent: %f\n", percent)
 	t.Logf("final tw tasks: %d\n", tw.GetTaskCounter())
 	t.Logf("exec counter: %d\n", execCounter.Load())
 }
