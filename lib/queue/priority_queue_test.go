@@ -87,6 +87,38 @@ func TestPriorityQueue_MaxValueAsHighPriority(t *testing.T) {
 	}
 }
 
+func TestPriorityQueue_MinValueAsHighPriority_Peek(t *testing.T) {
+	pq := NewArrayPriorityQueue[*employee](
+		WithArrayPriorityQueueCapacity[*employee](32),
+		WithArrayPriorityQueueComparator[*employee](func(i, j ReadOnlyPQItem[*employee]) CmpEnum {
+			res := i.Priority() - j.Priority()
+			if res > 0 {
+				return iGTj
+			} else if res < 0 {
+				return iLTj
+			}
+			return iEQj
+		}),
+	)
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 200, name: "p3"}, 200))
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 200, name: "p7"}, 201))
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 10, name: "p2"}, 10))
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 3, name: "p4"}, 3))
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 10, name: "p0"}, 1))
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 101, name: "p1"}, 101))
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 1, name: "p5"}, 1))
+	pq.Push(NewPriorityQueueItem[*employee](&employee{age: 5, name: "p6"}, 5))
+
+	expectedPriorities := []int64{1, 1, 3, 5, 10, 101, 200, 201}
+	for i, priority := range expectedPriorities {
+		peekItem := pq.Peek()
+		t.Logf("peek item: %v， priority: %d", peekItem.Value(), peekItem.Priority())
+		item := pq.Pop()
+		t.Logf("%v， priority: %d", item.Value(), item.Priority())
+		assert.Equal(t, priority, item.Priority(), "priority", i)
+	}
+}
+
 func TestPriorityQueue_MaxValueAsHighPriority_Peek(t *testing.T) {
 	pq := NewArrayPriorityQueue[*employee](
 		WithArrayPriorityQueueCapacity[*employee](32),
