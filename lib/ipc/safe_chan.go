@@ -22,34 +22,38 @@ type ClosableChannel[T comparable] interface {
 	SendOnlyChannel[T]
 }
 
-// safeChannel is a generic channel wrapper.
+// safeClosableChannel is a generic channel wrapper.
 // Why we need this wrapper? For the following reasons:
-// 1. We need to make sure the channel is closed only once.
-type safeChannel[T comparable] struct {
+//  1. We need to make sure the channel is closed only once.
+//  2. We need to make sure that we would not close the channel when there is still sending data.
+//     Let the related goroutines exit, then the channel auto-collected by GC.
+type safeClosableChannel[T comparable] struct {
 	queueC   chan T // Receive data to temporary queue.
 	isClosed atomic.Bool
 	once     *sync.Once
 }
 
-func (c *safeChannel[T]) IsClosed() bool {
+func (c *safeClosableChannel[T]) IsClosed() bool {
 	return c.isClosed.Load()
 }
 
 // Close According to the Go memory model, a send operation on a channel happens before
 // the corresponding to receive from that channel completes
 // https://go.dev/doc/articles/race_detector
-func (c *safeChannel[T]) Close() error {
+func (c *safeClosableChannel[T]) Close() error {
 	c.once.Do(func() {
+		// Note: forbid to call close(queueC) directly,
+		// because it will cause panic of "send on closed channel"
 		c.isClosed.Store(true)
 	})
 	return nil
 }
 
-func (c *safeChannel[T]) Wait() <-chan T {
+func (c *safeClosableChannel[T]) Wait() <-chan T {
 	return c.queueC
 }
 
-func (c *safeChannel[T]) Send(v T, nonBlocking ...bool) error {
+func (c *safeClosableChannel[T]) Send(v T, nonBlocking ...bool) error {
 	if c.isClosed.Load() {
 		return fmt.Errorf("channel has been closed")
 	}
@@ -71,11 +75,11 @@ func (c *safeChannel[T]) Send(v T, nonBlocking ...bool) error {
 }
 
 var (
-	_ ReadOnlyChannel[struct{}] = &safeChannel[struct{}]{} // type check assertion
-	_ SendOnlyChannel[struct{}] = &safeChannel[struct{}]{} // type check assertion
+	_ ReadOnlyChannel[struct{}] = &safeClosableChannel[struct{}]{} // type check assertion
+	_ SendOnlyChannel[struct{}] = &safeClosableChannel[struct{}]{} // type check assertion
 )
 
-func NewSafeChannel[T comparable](chSize ...int) ClosableChannel[T] {
+func NewSafeClosableChannel[T comparable](chSize ...int) ClosableChannel[T] {
 	isNoCacheCh := true
 	size := 1
 	if len(chSize) > 0 {
@@ -85,12 +89,12 @@ func NewSafeChannel[T comparable](chSize ...int) ClosableChannel[T] {
 		}
 	}
 	if isNoCacheCh {
-		return &safeChannel[T]{
+		return &safeClosableChannel[T]{
 			queueC: make(chan T),
 			once:   &sync.Once{},
 		}
 	}
-	return &safeChannel[T]{
+	return &safeClosableChannel[T]{
 		queueC: make(chan T, size),
 		once:   &sync.Once{},
 	}
