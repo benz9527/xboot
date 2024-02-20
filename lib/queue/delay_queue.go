@@ -35,6 +35,7 @@ type ArrayDelayQueue[E comparable] struct {
 	pq                  PriorityQueue[E]
 	workCtx             context.Context
 	lock                *sync.Mutex
+	exclusion           *sync.Mutex // Avoid multiple poll
 	wakeUpC             chan struct{}
 	waitForNextExpItemC chan struct{}
 	sleeping            int32
@@ -157,15 +158,12 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 	}
 }
 
-func (dq *ArrayDelayQueue[E]) PollToChan(nowFn func() int64, C ipc.SendOnlyChannel[E]) {
-	dq.poll(nowFn, C)
-}
-
 func NewArrayDelayQueue[E comparable](ctx context.Context, capacity int) DelayQueue[E] {
 	dq := &ArrayDelayQueue[E]{
 		pq:                  NewArrayPriorityQueue[E](WithArrayPriorityQueueCapacity[E](capacity)),
 		workCtx:             ctx,
 		lock:                &sync.Mutex{},
+		exclusion:           &sync.Mutex{},
 		wakeUpC:             make(chan struct{}),
 		waitForNextExpItemC: make(chan struct{}),
 	}
