@@ -3,7 +3,11 @@
 
 package queue
 
-import "golang.org/x/sys/windows"
+import (
+	"golang.org/x/sys/windows"
+
+	"github.com/benz9527/xboot/lib/ipc"
+)
 
 func setTimeResolutionTo1ms() {
 	if err := windows.TimeBeginPeriod(1); err != nil {
