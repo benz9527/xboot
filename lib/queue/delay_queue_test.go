@@ -1,6 +1,3 @@
-//go:build linux
-// +build linux
-
 package queue
 
 import (
@@ -9,10 +6,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/sys/unix"
-
 	"github.com/benz9527/xboot/lib/ipc"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDelayQueueAlignmentAndSize(t *testing.T) {
@@ -123,10 +118,4 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 
 		}
 	}
-}
-
-func TestUnixTimerResolution(t *testing.T) {
-	res := unix.Timespec{}
-	_ = unix.ClockGetres(unix.CLOCK_MONOTONIC, &res)
-	t.Logf("Monotonic clock resolution is %d nanoseconds\n", res.Nsec)
 }
