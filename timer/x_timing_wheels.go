@@ -537,6 +537,11 @@ func (xtw *xTimingWheels) cancelTask(jobID JobID) error {
 	if task.GetSlot() != nil && !task.GetSlot().RemoveTask(task) {
 		return ErrTimingWheelTaskUnableToBeRemoved
 	}
+
+	defer func() {
+		xtw.stats.IncreaseJobCancelledCount()
+	}()
+
 	task.Cancel()
 
 	delete(xtw.tasksMap, jobID)

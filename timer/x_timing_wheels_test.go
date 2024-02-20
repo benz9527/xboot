@@ -6,7 +6,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/sdk/metric"
-	"log/slog"
 	"os"
 	"sort"
 	"sync/atomic"
@@ -253,11 +252,15 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 }
 
 func TestXTimingWheels_ScheduleFunc_32MsInfinite(t *testing.T) {
-	ctx, cancel := context.WithTimeoutCause(context.Background(), 3*time.Second, errors.New("timeout"))
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(
 		ctx,
 		time.Now().UTC().UnixMilli(),
+		WithTimingWheelTickMs(20*time.Millisecond),
+		WithTimingWheelSlotSize(10),
+		withTimingWheelStatsInit(5),
+		WithTimingWheelStats(),
 	)
 
 	delays := []time.Duration{
@@ -266,22 +269,17 @@ func TestXTimingWheels_ScheduleFunc_32MsInfinite(t *testing.T) {
 	schedFn := func() Scheduler {
 		return NewInfiniteScheduler(delays...)
 	}
-	assert.NotNil(t, schedFn())
-	task, err := tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {
-		execAt := time.Now().UTC().UnixMilli()
-		slog.Info("infinite sched32 after func", "expired ms", md.GetExpiredMs(), "exec at", execAt, "diff",
-			execAt-md.GetExpiredMs())
-	})
-	assert.NoError(t, err)
-	t.Logf("task1: %s\n", task.GetJobID())
+	loop := 20
+	tasks := make([]Task, loop)
+	for i := range loop {
+		var err error
+		tasks[i], err = tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {})
+		assert.NoError(t, err)
+		time.Sleep(2 * time.Millisecond)
+	}
 
-	t.Logf("tw tickMs: %d\n", tw.GetTickMs())
-	t.Logf("tw startMs: %d\n", tw.GetStartMs())
-	t.Logf("tw slotSize: %d\n", tw.GetSlotSize())
-	t.Logf("tw tasks: %d\n", tw.GetTaskCounter())
 	<-ctx.Done()
 	time.Sleep(100 * time.Millisecond)
-	t.Logf("final tw tasks: %d\n", tw.GetTaskCounter())
 }
 
 func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
