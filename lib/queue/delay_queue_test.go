@@ -60,21 +60,22 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 	time.AfterFunc(300*time.Millisecond, func() {
 		_ = receiver.Close()
 	})
+	itemC := receiver.Wait()
 	for {
-		if receiver.IsClosed() {
-			return
-		}
 		select {
-		case item, ok := <-receiver.Wait():
+		default:
+			if receiver.IsClosed() {
+				return
+			}
+		case item, ok := <-itemC:
 			if !ok {
 				t.Log("receiver channel closed")
 				time.Sleep(100 * time.Millisecond)
 				return
 			}
-			t.Logf("current time ms: %d, item: %v\n", time.Now().UnixMilli(), item)
+			now := time.Now().UTC().UnixMilli()
+			t.Logf("current time ms: %d, item: %v, diff: %d\n", now, item, now-item.salary)
 			actualCount++
-		default:
-
 		}
 	}
 }
@@ -107,17 +108,14 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 		b.StopTimer()
 		b.ReportAllocs()
 	}()
-
+	itemC := receiver.Wait()
 	for {
-		if receiver.IsClosed() {
-			return
-		}
 		select {
-		case _, ok := <-receiver.Wait():
-			if !ok {
+		default:
+			if receiver.IsClosed() {
 				return
 			}
-		default:
+		case <-itemC:
 
 		}
 	}
