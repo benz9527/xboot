@@ -51,7 +51,7 @@ func TestMonotonicClockByUnix(t *testing.T) {
 	t.Logf("elapsed ms: %v\n", elapsedMs)
 }
 
-func TestGoNonSysClockTime(t *testing.T) {
+func TestNonSysClockTime(t *testing.T) {
 	t1 := NowInDefaultTZ()
 	t.Logf("system clock current time: %v\n", t1)
 	time.Sleep(200 * time.Millisecond)

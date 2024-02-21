@@ -130,6 +130,7 @@ func NowInUTC() time.Time {
 }
 
 // MonotonicElapsed returns the time elapsed since the program started.
+// Note: Not a very precise implementation.
 func MonotonicElapsed() time.Duration {
 	if fallbackLowResolution.Load() {
 		return time.Since(appStartTime)
