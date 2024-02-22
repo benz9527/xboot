@@ -6,8 +6,10 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/benz9527/xboot/lib/ipc"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/benz9527/xboot/lib/hrtime"
+	"github.com/benz9527/xboot/lib/ipc"
 )
 
 func TestDelayQueueAlignmentAndSize(t *testing.T) {
@@ -35,12 +37,12 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 	receiver := ipc.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
-			return time.Now().UnixMilli()
+			return time.Now().UTC().UnixMilli()
 		},
 		receiver,
 	)
 
-	ms := time.Now().UnixMilli()
+	ms := time.Now().UTC().UnixMilli()
 	dq.Offer(&employee{age: 10, name: "p0", salary: ms + 110}, ms+110)
 	dq.Offer(&employee{age: 101, name: "p1", salary: ms + 501}, ms+501)
 	dq.Offer(&employee{age: 10, name: "p2", salary: ms + 155}, ms+155)
@@ -79,6 +81,12 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 	}
 }
 
+// goos: linux
+// goarch: amd64
+// pkg: github.com/benz9527/xboot/lib/queue
+// cpu: Intel(R) Core(TM) i5-4590 CPU @ 3.30GHz
+// BenchmarkDelayQueue_PollToChan
+// BenchmarkDelayQueue_PollToChan-4   	    1080	   1009985 ns/op	     219 B/op	       4 allocs/op
 func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(b.N+10)*time.Millisecond)
@@ -89,7 +97,7 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 	receiver := ipc.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
-			return time.Now().UnixMilli()
+			return time.Now().UTC().UnixMilli()
 		},
 		receiver,
 	)
@@ -97,7 +105,56 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 		<-ctx.Done()
 		_ = receiver.Close()
 	}(ctx)
-	ms := time.Now().UnixMilli()
+	ms := time.Now().UTC().UnixMilli()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		dq.Offer(&employee{age: i, name: "p", salary: int64(i)}, ms+int64(i))
+	}
+
+	defer func() {
+		b.StopTimer()
+		b.ReportAllocs()
+	}()
+	itemC := receiver.Wait()
+	for {
+		select {
+		default:
+			if receiver.IsClosed() {
+				return
+			}
+		case <-itemC:
+
+		}
+	}
+}
+
+// goos: linux
+// goarch: amd64
+// pkg: github.com/benz9527/xboot/lib/queue
+// cpu: Intel(R) Core(TM) i5-4590 CPU @ 3.30GHz
+// BenchmarkDelayQueue_PollToChan
+// BenchmarkDelayQueue_PollToChan-4   	    1086	   1009327 ns/op	     514 B/op	      10 allocs/op
+func BenchmarkDelayQueue_PollToChan_zone(b *testing.B) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(b.N+10)*time.Millisecond)
+	defer cancel()
+
+	dq := NewArrayDelayQueue[*employee](ctx, 32)
+
+	receiver := ipc.NewSafeClosableChannel[*employee]()
+	go dq.PollToChan(
+		func() int64 {
+			zone := time.FixedZone("CST", int(hrtime.TzUtc0Offset))
+			return time.Now().In(zone).UnixMilli()
+		},
+		receiver,
+	)
+	go func(ctx context.Context) {
+		<-ctx.Done()
+		_ = receiver.Close()
+	}(ctx)
+	zone := time.FixedZone("CST", int(hrtime.TzUtc0Offset))
+	ms := time.Now().In(zone).UnixMilli()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		dq.Offer(&employee{age: i, name: "p", salary: int64(i)}, ms+int64(i))
