@@ -17,6 +17,10 @@ const (
 var (
 	defaultTimezoneOffset int32
 	appStartTime          time.Time
+	zoneMap               = map[TimeZoneOffset]*time.Location{
+		TzUtc0Offset:         time.UTC,
+		TzAsiaShanghaiOffset: time.FixedZone("CST", int(TzAsiaShanghaiOffset)),
+	}
 )
 
 func DefaultTimezoneOffset() int {
@@ -25,4 +29,13 @@ func DefaultTimezoneOffset() int {
 
 func SetDefaultTimezoneOffset(tz TimeZoneOffset) {
 	atomic.StoreInt32(&defaultTimezoneOffset, int32(tz))
+}
+
+// Reduce the location object allocation.
+func loadTZLocation(offset TimeZoneOffset) *time.Location {
+	loc, ok := zoneMap[offset]
+	if !ok {
+		return time.UTC
+	}
+	return loc
 }

@@ -17,8 +17,7 @@ import (
 )
 
 func NowIn(offset TimeZoneOffset) time.Time {
-	zone := time.FixedZone("CST", int(offset))
-	return time.Now().In(zone)
+	return time.Now().In(loadTZLocation(offset))
 }
 
 func NowInDefaultTZ() time.Time {
@@ -41,9 +40,7 @@ var (
 )
 
 func init() {
-	defaultTimezoneOffset = int32(TzUtc0Offset)
-	zone := time.FixedZone("CST", int(defaultTimezoneOffset))
-	appStartTime = time.Now().In(zone)
+	appStartTime = time.Now().In(loadTZLocation(TimeZoneOffset(atomic.LoadInt32(&defaultTimezoneOffset))))
 
 	goMonotonicStartTs = appStartTime.UnixNano()
 
@@ -67,8 +64,7 @@ func (g *goNonSysClockTime) now() time.Time {
 }
 
 func (g *goNonSysClockTime) NowIn(offset TimeZoneOffset) time.Time {
-	zone := time.FixedZone("CST", int(offset))
-	return g.now().In(zone)
+	return g.now().In(loadTZLocation(offset))
 }
 
 func (g *goNonSysClockTime) NowInDefaultTZ() time.Time {
@@ -91,8 +87,7 @@ func (u *unixNonSysClockTime) now() time.Time {
 }
 
 func (u *unixNonSysClockTime) NowIn(offset TimeZoneOffset) time.Time {
-	zone := time.FixedZone("CST", int(offset))
-	return u.now().In(zone)
+	return u.now().In(loadTZLocation(offset))
 }
 
 func (u *unixNonSysClockTime) NowInDefaultTZ() time.Time {

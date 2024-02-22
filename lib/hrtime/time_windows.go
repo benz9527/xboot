@@ -95,9 +95,7 @@ func SetFallbackLowResolution(flag bool) {
 }
 
 func init() {
-	defaultTimezoneOffset = int32(TzUtc0Offset)
-	zone := time.FixedZone("CST", int(defaultTimezoneOffset))
-	appStartTime = time.Now().In(zone)
+	appStartTime = time.Now().In(loadTZLocation(TimeZoneOffset(atomic.LoadInt32(&defaultTimezoneOffset))))
 
 	var ok bool
 	if baseProcCounter, ok = getCounter(); !ok {
@@ -114,11 +112,10 @@ func now() time.Time {
 }
 
 func NowIn(offset TimeZoneOffset) time.Time {
-	zone := time.FixedZone("CST", int(offset))
 	if fallbackLowResolution.Load() {
-		return time.Now().In(zone)
+		return time.Now().In(loadTZLocation(offset))
 	}
-	return now().In(zone)
+	return now().In(loadTZLocation(offset))
 }
 
 func NowInDefaultTZ() time.Time {

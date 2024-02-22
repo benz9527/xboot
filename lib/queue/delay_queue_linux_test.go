@@ -64,12 +64,6 @@ func TestArrayDelayQueue_PollToChan_unix(t *testing.T) {
 	}
 }
 
-// goos: linux
-// goarch: amd64
-// pkg: github.com/benz9527/xboot/lib/queue
-// cpu: Intel(R) Core(TM) i5-4590 CPU @ 3.30GHz
-// BenchmarkDelayQueue_PollToChan_hrtime
-// BenchmarkDelayQueue_PollToChan_hrtime-4   	    1089	   1009632 ns/op	     478 B/op	       9 allocs/op
 func BenchmarkDelayQueue_PollToChan_hrtime_unix(b *testing.B) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(b.N+10)*time.Millisecond)
@@ -111,12 +105,6 @@ func BenchmarkDelayQueue_PollToChan_hrtime_unix(b *testing.B) {
 	}
 }
 
-// goos: linux
-// goarch: amd64
-// pkg: github.com/benz9527/xboot/lib/queue
-// cpu: Intel(R) Core(TM) i5-4590 CPU @ 3.30GHz
-// BenchmarkDelayQueue_PollToChan_hrtime_gonative
-// BenchmarkDelayQueue_PollToChan_hrtime_gonative-4   	    1088	   1009527 ns/op	     515 B/op	      10 allocs/op
 func BenchmarkDelayQueue_PollToChan_hrtime_gonative(b *testing.B) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(b.N+10)*time.Millisecond)
