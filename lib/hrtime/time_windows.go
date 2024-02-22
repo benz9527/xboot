@@ -95,6 +95,7 @@ func SetFallbackLowResolution(flag bool) {
 }
 
 func init() {
+	SetTimeResolutionTo1ms()
 	appStartTime = time.Now().In(loadTZLocation(TimeZoneOffset(atomic.LoadInt32(&defaultTimezoneOffset))))
 
 	var ok bool
@@ -142,4 +143,63 @@ func Since(beginTime time.Time) time.Duration {
 	}
 	n := NowInDefaultTZ()
 	return time.Duration(n.Nanosecond() - beginTime.In(loadTZLocation(TimeZoneOffset(DefaultTimezoneOffset()))).Nanosecond())
+}
+
+var (
+	SdkClock     = &sdkClockTime{}
+	WindowsClock = &windowsClockTime{}
+)
+
+type sdkClockTime struct{}
+
+func (s *sdkClockTime) NowIn(offset TimeZoneOffset) time.Time {
+	SetFallbackLowResolution(true)
+	return NowIn(offset)
+}
+
+func (s *sdkClockTime) NowInDefaultTZ() time.Time {
+	SetFallbackLowResolution(true)
+	return s.NowIn(TimeZoneOffset(atomic.LoadInt32(&defaultTimezoneOffset)))
+}
+
+func (s *sdkClockTime) NowInUTC() time.Time {
+	SetFallbackLowResolution(true)
+	return s.NowIn(TzUtc0Offset)
+}
+
+func (s *sdkClockTime) MonotonicElapsed() time.Duration {
+	SetFallbackLowResolution(true)
+	return MonotonicElapsed()
+}
+
+func (s *sdkClockTime) Since(beginTime time.Time) time.Duration {
+	SetFallbackLowResolution(true)
+	return Since(beginTime)
+}
+
+type windowsClockTime struct{}
+
+func (w *windowsClockTime) NowIn(offset TimeZoneOffset) time.Time {
+	SetFallbackLowResolution(false)
+	return NowIn(offset)
+}
+
+func (w *windowsClockTime) NowInDefaultTZ() time.Time {
+	SetFallbackLowResolution(false)
+	return w.NowIn(TimeZoneOffset(atomic.LoadInt32(&defaultTimezoneOffset)))
+}
+
+func (w *windowsClockTime) NowInUTC() time.Time {
+	SetFallbackLowResolution(false)
+	return w.NowIn(TzUtc0Offset)
+}
+
+func (w *windowsClockTime) MonotonicElapsed() time.Duration {
+	SetFallbackLowResolution(false)
+	return MonotonicElapsed()
+}
+
+func (w *windowsClockTime) Since(beginTime time.Time) time.Duration {
+	SetFallbackLowResolution(false)
+	return Since(beginTime)
 }
