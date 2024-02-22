@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -37,6 +36,7 @@ type timingWheel struct {
 	currentTimeMs        int64
 	slotSize             int64 // in kafka it is wheelSize
 	globalSlotCounterRef *atomic.Int64
+	clock                hrtime.Clock
 }
 
 func (tw *timingWheel) GetTickMs() int64 {
@@ -94,13 +94,7 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 	}
 
 	taskExpiredMs := task.GetExpiredMs()
-	var currentTimeMs int64
-	switch runtime.GOOS {
-	case "windows":
-		currentTimeMs = hrtime.NowInDefaultTZ().UnixMilli()
-	default:
-		currentTimeMs = hrtime.UnixMonotonicClock.NowInDefaultTZ().UnixMilli()
-	}
+	currentTimeMs := tw.clock.NowInDefaultTZ().UnixMilli()
 	tickMs := tw.GetTickMs()
 	interval := tw.GetInterval()
 	slotSize := tw.GetSlotSize()
@@ -140,6 +134,7 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 			currentTimeMs,
 			tw.globalSlotCounterRef,
 			tw.globalDqRef,
+			tw.clock,
 		))
 	}
 	// Tail recursive call, it will be free the previous stack frame.
@@ -153,6 +148,7 @@ func newTimingWheel(
 	startMs int64,
 	slotCounter *atomic.Int64,
 	dq queue.DelayQueue[TimingWheelSlot],
+	clock hrtime.Clock,
 ) TimingWheel {
 	tw := &timingWheel{
 		ctx:                  ctx,
@@ -164,6 +160,7 @@ func newTimingWheel(
 		currentTimeMs:        startMs - (startMs % tickMs), // truncate the remainder as startMs left boundary
 		slots:                make([]TimingWheelSlot, slotSize),
 		globalDqRef:          dq,
+		clock:                clock,
 	}
 	// Slot initialize by doubly linked list.
 	for i := int64(0); i < slotSize; i++ {
@@ -180,6 +177,8 @@ const (
 	disableTimingWheelsScheduleExpiredSlot = "disableTWSExpSlot"
 )
 
+type TimingWheelTimeSourceEnum int8
+
 type xTimingWheels struct {
 	tw             TimingWheel
 	ctx            context.Context
@@ -195,6 +194,7 @@ type xTimingWheels struct {
 	slotCounter    *atomic.Int64
 	isRunning      *atomic.Bool
 	name           string
+	clock          hrtime.Clock
 	isStatsEnabled bool
 }
 
@@ -255,13 +255,7 @@ func (xtw *xTimingWheels) AfterFunc(delayMs time.Duration, fn Job) (Task, error)
 		return nil, ErrTimingWheelEmptyJob
 	}
 
-	var now time.Time
-	switch runtime.GOOS {
-	case "windows":
-		now = hrtime.NowInDefaultTZ()
-	default:
-		now = hrtime.UnixMonotonicClock.NowInDefaultTZ()
-	}
+	var now = xtw.clock.NowInDefaultTZ()
 	task := NewOnceTask(
 		xtw.ctx,
 		JobID(fmt.Sprintf("%d", now.UnixNano())), // FIXME UUID
@@ -286,13 +280,7 @@ func (xtw *xTimingWheels) ScheduleFunc(schedFn func() Scheduler, fn Job) (Task, 
 		return nil, ErrTimingWheelEmptyJob
 	}
 
-	var now time.Time
-	switch runtime.GOOS {
-	case "windows":
-		now = hrtime.NowInDefaultTZ()
-	default:
-		now = hrtime.UnixMonotonicClock.NowInDefaultTZ()
-	}
+	var now = xtw.clock.NowInDefaultTZ()
 	task := NewRepeatTask(
 		xtw.ctx,
 		JobID(fmt.Sprintf("%d", now.UnixNano())), // FIXME UUID
@@ -435,12 +423,7 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 				slog.Warn("[timing wheel] delay queue exit")
 			}()
 			xtw.dq.PollToChan(func() int64 {
-				switch runtime.GOOS {
-				case "windows":
-					return hrtime.NowInDefaultTZ().UnixMilli()
-				default:
-					return hrtime.UnixMonotonicClock.NowInDefaultTZ().UnixMilli()
-				}
+				return xtw.clock.NowInDefaultTZ().UnixMilli()
 			}, xtw.expiredSlotC)
 		}(ctx.Value(disableTimingWheelsSchedulePoll))
 	})
@@ -493,7 +476,7 @@ func (xtw *xTimingWheels) handleTask(t Task) {
 	case "windows":
 		runNow = runNow || t.GetExpiredMs() <= hrtime.NowInDefaultTZ().UnixMilli()
 	default:
-		runNow = runNow || t.GetExpiredMs() <= hrtime.UnixMonotonicClock.NowInDefaultTZ().UnixMilli()
+		runNow = runNow || t.GetExpiredMs() <= xtw.clock.NowInDefaultTZ().UnixMilli()
 	}
 
 	if runNow && !t.Cancelled() {
@@ -576,71 +559,6 @@ func (xtw *xTimingWheels) cancelTask(jobID JobID) error {
 
 	delete(xtw.tasksMap, jobID)
 	return nil
-}
-
-// NewTimingWheels creates a new timing wheel.
-// Same as the kafka, Time.SYSTEM.hiResClockMs() is used.
-func NewTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWheels {
-	if ctx == nil {
-		return nil
-	}
-
-	xtw := &xTimingWheels{
-		ctx:          ctx,
-		taskCounter:  &atomic.Int64{},
-		slotCounter:  &atomic.Int64{},
-		stopC:        make(chan struct{}),
-		twEventC:     ipc.NewSafeClosableChannel[*timingWheelEvent](1024),
-		expiredSlotC: ipc.NewSafeClosableChannel[TimingWheelSlot](128),
-		tasksMap:     make(map[JobID]Task),
-		isRunning:    &atomic.Bool{},
-		twEventPool:  newTimingWheelEventsPool(),
-		tw:           &timingWheel{},
-	}
-	xtw.isRunning.Store(false)
-	for _, o := range opts {
-		if o != nil {
-			o(xtw)
-		}
-	}
-	// Temporarily store the configuration
-	tw := xtw.tw.(*timingWheel)
-	switch runtime.GOOS {
-	case "windows":
-		tw.startMs = hrtime.NowInDefaultTZ().UnixMilli()
-	default:
-		tw.startMs = hrtime.UnixMonotonicClock.NowInDefaultTZ().UnixMilli()
-	}
-
-	if tw.tickMs <= 0 {
-		tw.tickMs = time.Millisecond.Milliseconds()
-	}
-	if tw.slotSize <= 0 {
-		tw.slotSize = 20
-	}
-	xtw.dq = queue.NewArrayDelayQueue[TimingWheelSlot](ctx, 128)
-	xtw.tw = newTimingWheel(
-		ctx,
-		tw.tickMs,
-		tw.slotSize,
-		tw.startMs,
-		xtw.slotCounter,
-		xtw.dq,
-	)
-	if p, err := ants.NewPool(128, ants.WithPreAlloc(true)); err != nil {
-		panic(err)
-	} else {
-		xtw.gPool = p
-	}
-	if xtw.name == "" {
-		// FIXME UUID
-		xtw.name = "default-" + strconv.FormatInt(xtw.GetStartMs(), 10)
-	}
-	if xtw.isStatsEnabled {
-		xtw.stats = newTimingWheelStats(xtw)
-	}
-	xtw.schedule(ctx)
-	return xtw
 }
 
 type TimingWheelsOption func(*xTimingWheels)

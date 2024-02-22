@@ -218,7 +218,7 @@ func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	assert.Equal(t, int64(0), tw.GetTaskCounter())
 }
 
-func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
+func TestXTimingWheels_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(

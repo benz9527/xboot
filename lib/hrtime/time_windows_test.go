@@ -11,7 +11,6 @@ import (
 )
 
 func TestNonSysClockTime(t *testing.T) {
-	SetTimeResolutionTo1ms()
 	defer func() {
 		_ = ResetTimeResolutionFrom1ms()
 	}()
@@ -30,6 +29,7 @@ func TestNonSysClockTime(t *testing.T) {
 }
 
 func TestNonSysClockTimeWithoutSetResolution(t *testing.T) {
+	_ = ResetTimeResolutionFrom1ms()
 	t1 := time.Now()
 	t.Logf("system clock current time: %v\n", t1)
 	time.Sleep(200 * time.Millisecond)

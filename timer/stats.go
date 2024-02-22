@@ -4,15 +4,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/benz9527/xboot/lib/hrtime"
-	"runtime"
-	"strconv"
-	"sync/atomic"
-	"time"
-
 	"github.com/samber/lo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"strconv"
+	"sync/atomic"
 )
 
 const (
@@ -21,6 +18,7 @@ const (
 
 type timingWheelStats struct {
 	minTickMs             int64
+	clock                 hrtime.Clock
 	jobExecutedCounter    atomic.Int64
 	jobHighLatencyCounter atomic.Int64
 	jobCount              metric.Int64UpDownCounter
@@ -87,6 +85,7 @@ func newTimingWheelStats(ref *xTimingWheels) *timingWheelStats {
 	tickMs := ref.GetTickMs()
 	stats := &timingWheelStats{
 		minTickMs: tickMs,
+		clock:     ref.clock,
 		jobCount: lo.Must[metric.Int64UpDownCounter](otel.Meter(meterName).
 			Int64UpDownCounter(
 				"xtw.job.count",
@@ -137,30 +136,4 @@ func newTimingWheelStats(ref *xTimingWheels) *timingWheelStats {
 		),
 	)
 	return stats
-}
-
-func jobStatsWrapper(stats *timingWheelStats, invoke Job) Job {
-	if stats == nil {
-		return invoke
-	}
-	return func(ctx context.Context, metadata JobMetadata) {
-		var beginTime time.Time
-		switch runtime.GOOS {
-		case "windows":
-			beginTime = hrtime.NowInDefaultTZ()
-		default:
-			beginTime = hrtime.UnixMonotonicClock.NowInDefaultTZ()
-		}
-		defer func() {
-			stats.IncreaseJobExecutedCount()
-			switch runtime.GOOS {
-			case "windows":
-				stats.RecordJobExecuteDuration(hrtime.Since(beginTime).Milliseconds())
-			default:
-				stats.RecordJobExecuteDuration(hrtime.UnixMonotonicClock.Since(beginTime).Milliseconds())
-			}
-		}()
-		stats.RecordJobLatency(beginTime.UnixMilli() - metadata.GetExpiredMs())
-		invoke(ctx, metadata)
-	}
 }
