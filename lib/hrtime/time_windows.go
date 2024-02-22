@@ -135,3 +135,11 @@ func MonotonicElapsed() time.Duration {
 	currentCounter, _ := getCounter()
 	return time.Duration(currentCounter-baseProcCounter) * time.Second / (time.Duration(baseProcFreq) * time.Nanosecond)
 }
+
+func Since(beginTime time.Time) time.Duration {
+	if fallbackLowResolution.Load() {
+		return time.Since(beginTime)
+	}
+	n := NowInDefaultTZ()
+	return time.Duration(n.Nanosecond() - beginTime.In(loadTZLocation(TimeZoneOffset(DefaultTimezoneOffset()))).Nanosecond())
+}

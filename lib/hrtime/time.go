@@ -32,6 +32,10 @@ func MonotonicElapsed() time.Duration {
 	return time.Since(appStartTime)
 }
 
+func Since(beginTime time.Time) time.Duration {
+	return time.Since(beginTime)
+}
+
 var (
 	GoMonotonicClock     NonSysClockTime = &goNonSysClockTime{}
 	goMonotonicStartTs   int64
@@ -54,6 +58,7 @@ type NonSysClockTime interface {
 	NowInDefaultTZ() time.Time
 	NowInUTC() time.Time
 	MonotonicElapsed() time.Duration
+	Since(time.Time) time.Duration
 }
 
 type goNonSysClockTime struct{}
@@ -77,6 +82,10 @@ func (g *goNonSysClockTime) NowInUTC() time.Time {
 
 func (g *goNonSysClockTime) MonotonicElapsed() time.Duration {
 	return time.Duration(time.Now().UnixNano() - goMonotonicStartTs)
+}
+
+func (g *goNonSysClockTime) Since(beginTime time.Time) time.Duration {
+	return time.Duration(time.Now().UnixNano() - beginTime.UnixNano())
 }
 
 type unixNonSysClockTime struct{}
@@ -103,4 +112,9 @@ func (u *unixNonSysClockTime) MonotonicElapsed() time.Duration {
 	lo.Must0(unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts))
 	currentTs := ts.Nano()
 	return time.Duration(currentTs - unixMonotonicStartTs)
+}
+
+func (u *unixNonSysClockTime) Since(beginTime time.Time) time.Duration {
+	n := NowInDefaultTZ()
+	return time.Duration(n.Nanosecond() - beginTime.In(loadTZLocation(TimeZoneOffset(DefaultTimezoneOffset()))).Nanosecond())
 }

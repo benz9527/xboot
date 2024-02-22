@@ -39,3 +39,11 @@ func loadTZLocation(offset TimeZoneOffset) *time.Location {
 	}
 	return loc
 }
+
+func MillisToTzTime(millis int64, tzOffset TimeZoneOffset) time.Time {
+	return time.UnixMilli(millis).In(loadTZLocation(tzOffset))
+}
+
+func MillisToDefaultTzTime(millis int64) time.Time {
+	return time.UnixMilli(millis).In(loadTZLocation(TimeZoneOffset(DefaultTimezoneOffset())))
+}
