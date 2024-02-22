@@ -1,6 +1,10 @@
 package timer
 
-import "time"
+import (
+	"time"
+
+	"github.com/benz9527/xboot/lib/hrtime"
+)
 
 type xScheduler struct {
 	intervals    []time.Duration
@@ -44,7 +48,7 @@ func NewInfiniteScheduler(intervals ...time.Duration) Scheduler {
 }
 
 func (x *xScheduler) next(beginMs int64) (nextExpiredMs int64) {
-	beginTime := MillisToUTCTime(beginMs)
+	beginTime := hrtime.MillisToDefaultTzTime(beginMs)
 	if beginTime.IsZero() || len(x.intervals) == 0 {
 		return -1
 	}
@@ -68,8 +72,4 @@ func (x *xScheduler) GetRestLoopCount() int64 {
 		return int64(len(x.intervals) - x.currentIndex)
 	}
 	return -1
-}
-
-func MillisToUTCTime(millis int64) time.Time {
-	return time.Unix(0, millis*int64(time.Millisecond)).UTC()
 }

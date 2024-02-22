@@ -87,7 +87,6 @@ func TestNewTimingWheels(t *testing.T) {
 	defer cancel()
 	tw := NewTimingWheels(
 		ctx,
-		time.Now().UTC().UnixMilli(),
 		WithTimingWheelTickMs(100),
 		WithTimingWheelSlotSize(32),
 	)
@@ -104,7 +103,6 @@ func testAfterFunc(t *testing.T) (percent float64) {
 	defer cancel()
 	tw := NewTimingWheels(
 		ctx,
-		time.Now().UTC().UnixMilli(),
 		withTimingWheelStatsInit(2),
 		WithTimingWheelStats(),
 	)
@@ -167,7 +165,6 @@ func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	defer cancel()
 	tw := NewTimingWheels(
 		ctx,
-		time.Now().UTC().UnixMilli(),
 		withTimingWheelStatsInit(2),
 		WithTimingWheelStats(),
 	)
@@ -226,7 +223,6 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 	defer cancel()
 	tw := NewTimingWheels(
 		ctx,
-		time.Now().UTC().UnixMilli(),
 		withTimingWheelStatsInit(5),
 		WithTimingWheelStats(),
 	)
@@ -251,19 +247,19 @@ func TestXTimingWheels_ScheduleFunc_1MsInfinite(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func TestXTimingWheels_ScheduleFunc_32MsInfinite(t *testing.T) {
+func TestXTimingWheels_ScheduleFunc_18MsInfinite(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(
 		ctx,
-		time.Now().UTC().UnixMilli(),
-		WithTimingWheelTickMs(20*time.Millisecond),
-		WithTimingWheelSlotSize(10),
+		WithTimingWheelTickMs(5*time.Millisecond),
+		WithTimingWheelSlotSize(20),
 		withTimingWheelStatsInit(5),
 		WithTimingWheelStats(),
 	)
 
 	delays := []time.Duration{
+		8 * time.Millisecond,
 		18 * time.Millisecond,
 	}
 	schedFn := func() Scheduler {
@@ -291,7 +287,6 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 
 	tw := NewTimingWheels(
 		ctx,
-		time.Now().UTC().UnixMilli(),
 	)
 
 	delays := []time.Duration{
@@ -341,7 +336,6 @@ func BenchmarkNewTimingWheels_AfterFunc(b *testing.B) {
 	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
 	tw := NewTimingWheels(
 		ctx,
-		time.Now().UTC().UnixMilli(),
 		WithTimingWheelTickMs(1),
 		WithTimingWheelSlotSize(20),
 	)

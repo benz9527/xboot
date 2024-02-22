@@ -3,6 +3,8 @@ package timer
 import (
 	"context"
 	"fmt"
+	"github.com/benz9527/xboot/lib/hrtime"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -142,12 +144,23 @@ func jobStatsWrapper(stats *timingWheelStats, invoke Job) Job {
 		return invoke
 	}
 	return func(ctx context.Context, metadata JobMetadata) {
-		beginTs := time.Now().UTC()
+		var beginTime time.Time
+		switch runtime.GOOS {
+		case "windows":
+			beginTime = hrtime.NowInDefaultTZ()
+		default:
+			beginTime = hrtime.UnixMonotonicClock.NowInDefaultTZ()
+		}
 		defer func() {
 			stats.IncreaseJobExecutedCount()
-			stats.RecordJobExecuteDuration(time.Since(beginTs).Milliseconds())
+			switch runtime.GOOS {
+			case "windows":
+				stats.RecordJobExecuteDuration(hrtime.Since(beginTime).Milliseconds())
+			default:
+				stats.RecordJobExecuteDuration(hrtime.UnixMonotonicClock.Since(beginTime).Milliseconds())
+			}
 		}()
-		stats.RecordJobLatency(beginTs.UnixMilli() - metadata.GetExpiredMs())
+		stats.RecordJobLatency(beginTime.UnixMilli() - metadata.GetExpiredMs())
 		invoke(ctx, metadata)
 	}
 }
