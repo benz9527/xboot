@@ -162,6 +162,9 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 }
 
 func (dq *ArrayDelayQueue[E]) Len() int64 {
+	if dq == nil {
+		return 0
+	}
 	return dq.itemCounter.Load()
 }
 

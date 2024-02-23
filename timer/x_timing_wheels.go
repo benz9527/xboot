@@ -109,18 +109,14 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 		virtualID := taskExpiredMs / tickMs
 		slotID := virtualID % slotSize
 		slot := tw.slots[slotID]
-		slotMs := slot.GetExpirationMs()
-		if slot.GetExpirationMs() != (virtualID*tickMs) && !slot.setExpirationMs(virtualID*tickMs) { // FIXME data race
-			err := fmt.Errorf("[timing wheel] slot (level:%d) (old:%d<->new:%d) unable update the expiration, %w",
-				level, slotMs, virtualID*tickMs, ErrTimingWheelTaskUnableToBeAddedToSlot)
-			slog.Error("[timing wheel] add task error", "error", err)
-			return err
+		if slot.GetExpirationMs() == virtualID*tickMs {
+			slot.AddTask(task)
+		} else if slot.setExpirationMs(virtualID * tickMs) {
+			slot.setSlotID(slotID)
+			slot.setLevel(level)
+			slot.AddTask(task)
+			tw.globalDqRef.Offer(slot, slot.GetExpirationMs())
 		}
-
-		slot.setSlotID(slotID)
-		slot.setLevel(level)
-		slot.AddTask(task)
-		tw.globalDqRef.Offer(slot, slot.GetExpirationMs())
 		return nil
 	}
 	// Out of the interval. Put it into the higher interval timing wheel
@@ -204,20 +200,24 @@ func (xtw *xTimingWheels) GetStartMs() int64 {
 }
 
 func (xtw *xTimingWheels) Shutdown() {
+	if xtw == nil {
+		return
+	}
 	if old := xtw.isRunning.Swap(false); !old {
 		slog.Warn("[timing wheel] timing wheel is already shutdown")
 		return
 	}
-	xtw.dq = nil
 	xtw.isRunning.Store(false)
 
-	// FIXME close on channel is no empty and will cause panic.
 	close(xtw.stopC)
 	_ = xtw.expiredSlotC.Close()
 	_ = xtw.twEventC.Close()
 	xtw.gPool.Release()
 
-	// FIXME map clear data race
+	runtime.SetFinalizer(xtw, func(xtw *xTimingWheels) {
+		xtw.dq = nil
+		clear(xtw.tasksMap)
+	})
 }
 
 func (xtw *xTimingWheels) AddTask(task Task) error {
