@@ -19,7 +19,7 @@ var (
 	ErrTimingWheelTaskEmptyJobID            = errors.New("empty job id in task")
 	ErrTimingWheelEmptyJob                  = errors.New("empty job in task")
 	ErrTimingWheelTaskIsExpired             = errors.New("task is expired")
-	ErrTimingWheelTaskUnableToBeAddedToSlot = errors.New("task unable to be added to slot")
+	ErrTimingWheelTaskUnableToBeAddedToSlot = errors.New("task unable to be added to a flushed slot")
 	ErrTimingWheelTaskUnableToBeRemoved     = errors.New("task unable to be removed")
 	ErrTimingWheelTaskTooShortExpiration    = errors.New("task expiration is too short")
 	ErrTimingWheelUnknownScheduler          = errors.New("unknown schedule")
@@ -156,7 +156,7 @@ type TimingWheelSlot interface {
 	// GetMetadata returns the metadata of the slot.
 	GetMetadata() TimingWheelSlotMetadata
 	// AddTask adds a task to the slot.
-	AddTask(Task)
+	AddTask(Task) error
 	// RemoveTask removes a task from the slot.
 	RemoveTask(Task) bool
 	// Flush flushes all tasks in the slot generally,

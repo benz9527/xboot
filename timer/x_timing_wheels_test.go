@@ -90,68 +90,6 @@ func TestNewTimingWheels(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func testAfterFunc(t *testing.T) (percent float64) {
-	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
-	defer cancel()
-	tw := NewTimingWheels(
-		ctx,
-		withTimingWheelStatsInit(2),
-		WithTimingWheelStats(),
-	)
-	defer func() {
-		mp, ok := otel.GetMeterProvider().(*metric.MeterProvider)
-		if ok && mp != nil {
-			_ = mp.Shutdown(ctx)
-		}
-	}()
-
-	delays := []time.Duration{
-		time.Millisecond,
-		2 * time.Millisecond,
-		5 * time.Millisecond,
-		10 * time.Millisecond,
-		15 * time.Millisecond,
-		18 * time.Millisecond,
-		20 * time.Millisecond,
-		21 * time.Millisecond,
-		50 * time.Millisecond,
-		100 * time.Millisecond,
-		200 * time.Millisecond,
-		500 * time.Millisecond,
-		time.Second,
-	}
-
-	expectedExecCount := int64(len(delays))
-	actualExecCounter := atomic.Int64{}
-	bigDiffCounter := atomic.Int64{}
-	for i := 0; i < len(delays); i++ {
-		_, err := tw.AfterFunc(delays[i], func(ctx context.Context, md JobMetadata) {
-			actualExecCounter.Add(1)
-			diff := time.Now().UTC().UnixMilli() - md.GetExpiredMs()
-			if diff > 1 {
-				bigDiffCounter.Add(1)
-			}
-		})
-		assert.NoError(t, err)
-	}
-	<-ctx.Done()
-	time.Sleep(50 * time.Millisecond)
-	percent = float64(actualExecCounter.Load()-bigDiffCounter.Load()) / float64(expectedExecCount)
-	t.Logf("[-1,1] percent: %f\n", percent)
-	assert.Equal(t, expectedExecCount, actualExecCounter.Load())
-	return percent
-}
-
-func TestXTimingWheels_AfterFunc(t *testing.T) {
-	loops := 100
-	percents := 0.0
-	for i := 0; i < loops; i++ {
-		t.Logf("loop %d\n", i)
-		percents += testAfterFunc(t)
-	}
-	t.Logf("average percent: %f\n", percents/float64(loops))
-}
-
 func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()

@@ -5,7 +5,8 @@ package timer
 
 import (
 	"context"
-	"strconv"
+	"fmt"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -50,6 +51,11 @@ func NewTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWhee
 		xtw.clock = hrtime.SdkClock
 	}
 	tw.startMs = xtw.clock.NowInDefaultTZ().UnixMilli()
+	if xtw.idGenerator == nil {
+		xtw.idGenerator = func() uint64 {
+			return uint64(xtw.clock.NowInDefaultTZ().UnixNano())
+		}
+	}
 
 	if tw.tickMs <= 0 {
 		tw.tickMs = time.Millisecond.Milliseconds()
@@ -76,8 +82,7 @@ func NewTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWhee
 		xtw.gPool = p
 	}
 	if xtw.name == "" {
-		// FIXME UUID
-		xtw.name = "default-" + strconv.FormatInt(xtw.GetStartMs(), 10)
+		xtw.name = fmt.Sprintf("xtw-%s-%d", runtime.GOOS, xtw.idGenerator())
 	}
 	xtw.schedule(ctx)
 	return xtw

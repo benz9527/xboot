@@ -80,9 +80,9 @@ func (slot *xSlot) GetMetadata() TimingWheelSlotMetadata {
 	return &metadata
 }
 
-func (slot *xSlot) AddTask(task Task) {
-	if task == nil || slot.GetExpirationMs() == slotHasBeenFlushedMs {
-		return
+func (slot *xSlot) AddTask(task Task) error {
+	if task == nil {
+		return nil
 	}
 
 	elementRefs := slot.tasks.AppendValue(task)
@@ -94,6 +94,7 @@ func (slot *xSlot) AddTask(task Task) {
 	case *xTask:
 		_task.setElementRef(elementRefs[0])
 	}
+	return nil
 }
 
 // removeTask clear the reference of the task, avoid memory leak.
@@ -113,7 +114,7 @@ func (slot *xSlot) removeTask(task Task) bool {
 
 // RemoveTask the slot must be not expired.
 func (slot *xSlot) RemoveTask(task Task) bool {
-	if slot.GetExpirationMs() == slotHasBeenFlushedMs {
+	if slot == nil {
 		return false
 	}
 	task.setSlotMetadata(nil)
