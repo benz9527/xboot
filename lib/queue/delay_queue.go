@@ -33,6 +33,7 @@ const (
 
 type ArrayDelayQueue[E comparable] struct {
 	pq                  PriorityQueue[E]
+	itemCounter         atomic.Int64
 	workCtx             context.Context
 	lock                *sync.Mutex
 	exclusion           *sync.Mutex // Avoid multiple poll
@@ -70,6 +71,7 @@ func (dq *ArrayDelayQueue[E]) Offer(item E, expiration int64) {
 			dq.wakeUpC <- struct{}{}
 		}
 	}
+	dq.itemCounter.Add(1)
 }
 
 func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChannel[E]) {
@@ -151,11 +153,16 @@ func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChanne
 				if err := sender.Send(item.Value()); err != nil {
 					return
 				}
+				dq.itemCounter.Add(-1)
 			} else {
 				return
 			}
 		}
 	}
+}
+
+func (dq *ArrayDelayQueue[E]) Len() int64 {
+	return dq.itemCounter.Load()
 }
 
 func NewArrayDelayQueue[E comparable](ctx context.Context, capacity int) DelayQueue[E] {

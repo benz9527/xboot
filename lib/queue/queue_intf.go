@@ -43,6 +43,7 @@ type DelayQueue[E comparable] interface {
 	Offer(item E, expiration int64)
 	// PollToChan Asynchronous function
 	PollToChan(nowFn func() int64, C ipc.SendOnlyChannel[E])
+	Len() int64
 }
 
 type DQItem[E comparable] interface {

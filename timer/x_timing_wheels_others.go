@@ -31,8 +31,6 @@ func NewTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWhee
 
 	xtw := &xTimingWheels{
 		ctx:          ctx,
-		taskCounter:  &atomic.Int64{},
-		slotCounter:  &atomic.Int64{},
 		stopC:        make(chan struct{}),
 		twEventC:     ipc.NewSafeClosableChannel[*timingWheelEvent](1024),
 		expiredSlotC: ipc.NewSafeClosableChannel[TimingWheelSlot](128),
@@ -60,13 +58,16 @@ func NewTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWhee
 	if tw.slotSize <= 0 {
 		tw.slotSize = 20
 	}
+	if xtw.isStatsEnabled {
+		xtw.stats = newTimingWheelStats(xtw)
+	}
 	xtw.dq = queue.NewArrayDelayQueue[TimingWheelSlot](ctx, 128)
 	xtw.tw = newTimingWheel(
 		ctx,
 		tw.tickMs,
 		tw.slotSize,
 		tw.startMs,
-		xtw.slotCounter,
+		xtw.stats,
 		xtw.dq,
 		xtw.clock,
 	)
@@ -78,9 +79,6 @@ func NewTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWhee
 	if xtw.name == "" {
 		// FIXME UUID
 		xtw.name = "default-" + strconv.FormatInt(xtw.GetStartMs(), 10)
-	}
-	if xtw.isStatsEnabled {
-		xtw.stats = newTimingWheelStats(xtw)
 	}
 	xtw.schedule(ctx)
 	return xtw
