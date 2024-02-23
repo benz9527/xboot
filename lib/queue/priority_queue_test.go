@@ -30,6 +30,7 @@ func TestPriorityQueueItemAlignmentAndSize(t *testing.T) {
 
 func TestPriorityQueue_MinValueAsHighPriority(t *testing.T) {
 	pq := NewArrayPriorityQueue[*employee](
+		WithArrayPriorityQueueEnableThreadSafe[*employee](),
 		WithArrayPriorityQueueCapacity[*employee](32),
 		WithArrayPriorityQueueComparator[*employee](func(i, j ReadOnlyPQItem[*employee]) CmpEnum {
 			res := i.Priority() - j.Priority()
@@ -59,6 +60,7 @@ func TestPriorityQueue_MinValueAsHighPriority(t *testing.T) {
 
 func TestPriorityQueue_MaxValueAsHighPriority(t *testing.T) {
 	pq := NewArrayPriorityQueue[*employee](
+		WithArrayPriorityQueueEnableThreadSafe[*employee](),
 		WithArrayPriorityQueueCapacity[*employee](32),
 		WithArrayPriorityQueueComparator[*employee](func(i, j ReadOnlyPQItem[*employee]) CmpEnum {
 			res := j.Priority() - i.Priority()
@@ -89,6 +91,7 @@ func TestPriorityQueue_MaxValueAsHighPriority(t *testing.T) {
 
 func TestPriorityQueue_MinValueAsHighPriority_Peek(t *testing.T) {
 	pq := NewArrayPriorityQueue[*employee](
+		WithArrayPriorityQueueEnableThreadSafe[*employee](),
 		WithArrayPriorityQueueCapacity[*employee](32),
 		WithArrayPriorityQueueComparator[*employee](func(i, j ReadOnlyPQItem[*employee]) CmpEnum {
 			res := i.Priority() - j.Priority()
@@ -121,6 +124,7 @@ func TestPriorityQueue_MinValueAsHighPriority_Peek(t *testing.T) {
 
 func TestPriorityQueue_MaxValueAsHighPriority_Peek(t *testing.T) {
 	pq := NewArrayPriorityQueue[*employee](
+		WithArrayPriorityQueueEnableThreadSafe[*employee](),
 		WithArrayPriorityQueueCapacity[*employee](32),
 		WithArrayPriorityQueueComparator[*employee](func(i, j ReadOnlyPQItem[*employee]) CmpEnum {
 			res := j.Priority() - i.Priority()
@@ -159,6 +163,7 @@ func BenchmarkArrayPriorityQueue_Push(b *testing.B) {
 	}
 	b.ResetTimer()
 	pq := NewArrayPriorityQueue[*employee](
+		WithArrayPriorityQueueEnableThreadSafe[*employee](),
 		WithArrayPriorityQueueCapacity[*employee](32),
 		WithArrayPriorityQueueComparator[*employee](func(i, j ReadOnlyPQItem[*employee]) CmpEnum {
 			res := j.Priority() - i.Priority()
@@ -182,7 +187,10 @@ func BenchmarkArrayPriorityQueue_Pop(b *testing.B) {
 		e := NewPriorityQueueItem[*employee](&employee{age: i, name: fmt.Sprintf("p%d", i)}, int64(i))
 		list = append(list, e)
 	}
-	pq := NewArrayPriorityQueue[*employee](WithArrayPriorityQueueCapacity[*employee](32))
+	pq := NewArrayPriorityQueue[*employee](
+		WithArrayPriorityQueueEnableThreadSafe[*employee](),
+		WithArrayPriorityQueueCapacity[*employee](32),
+	)
 	for i := 0; i < b.N; i++ {
 		pq.Push(list[i])
 	}

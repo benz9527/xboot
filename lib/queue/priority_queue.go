@@ -2,6 +2,7 @@ package queue
 
 import (
 	"container/heap"
+	"sync"
 	"sync/atomic"
 )
 
@@ -99,13 +100,22 @@ func (pq *arrayPQ[E]) Push(i interface{}) {
 
 type ArrayPriorityQueue[E comparable] struct {
 	queue *arrayPQ[E]
+	lock  *sync.Mutex
 }
 
 func (pq *ArrayPriorityQueue[E]) Len() int64 {
+	if pq.lock != nil {
+		pq.lock.Lock()
+		defer pq.lock.Unlock()
+	}
 	return int64(len(pq.queue.arr))
 }
 
 func (pq *ArrayPriorityQueue[E]) Pop() (nilItem ReadOnlyPQItem[E]) {
+	if pq.lock != nil {
+		pq.lock.Lock()
+		defer pq.lock.Unlock()
+	}
 	if len(pq.queue.arr) == 0 {
 		return nil
 	}
@@ -114,10 +124,18 @@ func (pq *ArrayPriorityQueue[E]) Pop() (nilItem ReadOnlyPQItem[E]) {
 }
 
 func (pq *ArrayPriorityQueue[E]) Push(item PQItem[E]) {
+	if pq.lock != nil {
+		pq.lock.Lock()
+		defer pq.lock.Unlock()
+	}
 	heap.Push(pq.queue, item)
 }
 
 func (pq *ArrayPriorityQueue[E]) Peek() ReadOnlyPQItem[E] {
+	if pq.lock != nil {
+		pq.lock.Lock()
+		defer pq.lock.Unlock()
+	}
 	if len(pq.queue.arr) == 0 {
 		return nil
 	}
@@ -175,5 +193,11 @@ func WithArrayPriorityQueueComparator[E comparable](fn PQItemLessThenComparator[
 			}
 		}
 		pq.queue.comparator = fn
+	}
+}
+
+func WithArrayPriorityQueueEnableThreadSafe[E comparable]() ArrayPriorityQueueOption[E] {
+	return func(pq *ArrayPriorityQueue[E]) {
+		pq.lock = &sync.Mutex{}
 	}
 }

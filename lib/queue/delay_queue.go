@@ -170,7 +170,10 @@ func (dq *ArrayDelayQueue[E]) Len() int64 {
 
 func NewArrayDelayQueue[E comparable](ctx context.Context, capacity int) DelayQueue[E] {
 	dq := &ArrayDelayQueue[E]{
-		pq:                  NewArrayPriorityQueue[E](WithArrayPriorityQueueCapacity[E](capacity)),
+		pq: NewArrayPriorityQueue[E](
+			WithArrayPriorityQueueEnableThreadSafe[E](),
+			WithArrayPriorityQueueCapacity[E](capacity),
+		),
 		workCtx:             ctx,
 		lock:                &sync.Mutex{},
 		exclusion:           &sync.Mutex{},
