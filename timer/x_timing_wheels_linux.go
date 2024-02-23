@@ -1,5 +1,5 @@
-//go:build !windows && !linux
-// +build !windows,!linux
+//go:build linux
+// +build linux
 
 package timer
 
@@ -19,6 +19,7 @@ import (
 const (
 	SdkDefaultTime TimingWheelTimeSourceEnum = iota
 	GoNativeClock
+	UnixClock
 )
 
 // NewTimingWheels creates a new timing wheel.
@@ -88,6 +89,8 @@ func WithTimingWheelTimeSource(source TimingWheelTimeSourceEnum) TimingWheelsOpt
 		switch source {
 		case GoNativeClock:
 			xtw.clock = hrtime.GoMonotonicClock
+		case UnixClock:
+			xtw.clock = hrtime.UnixMonotonicClock
 		case SdkDefaultTime:
 			fallthrough
 		default:
