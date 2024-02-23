@@ -149,7 +149,7 @@ func newTimingWheelStats(ref *xTimingWheels) *timingWheelStats {
 			"xtw.job.tick.accuracy",
 			metric.WithDescription(fmt.Sprintf("The accuracy of the timing wheel tick [-%d,%d] ms.", tickMs, tickMs)),
 			metric.WithFloat64Callback(func(ctx context.Context, ob metric.Float64Observer) error {
-				accuracy := 1.00
+				accuracy := 0.00
 				if stats.jobExecutedCount.Load() > 0 {
 					accuracy = float64(stats.jobExecutedCount.Load()-stats.jobHighLatencyCount.Load()) /
 						float64(stats.jobExecutedCount.Load())

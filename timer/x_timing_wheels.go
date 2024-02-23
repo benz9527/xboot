@@ -111,11 +111,13 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 		slot := tw.slots[slotID]
 		if slot.GetExpirationMs() == virtualID*tickMs {
 			slot.AddTask(task)
-		} else if slot.setExpirationMs(virtualID * tickMs) {
-			slot.setSlotID(slotID)
-			slot.setLevel(level)
-			slot.AddTask(task)
-			tw.globalDqRef.Offer(slot, slot.GetExpirationMs())
+		} else {
+			if slot.setExpirationMs(virtualID * tickMs) {
+				slot.setSlotID(slotID)
+				slot.setLevel(level)
+				slot.AddTask(task)
+				tw.globalDqRef.Offer(slot, slot.GetExpirationMs())
+			}
 		}
 		return nil
 	}
@@ -167,9 +169,8 @@ func newTimingWheel(
 }
 
 const (
-	disableTimingWheelsSchedulePoll        = "disableTWSPoll"
-	disableTimingWheelsScheduleCancelTask  = "disableTWSCancelTask"
-	disableTimingWheelsScheduleExpiredSlot = "disableTWSExpSlot"
+	disableTimingWheelsSchedulePoll       = "disableTWSPoll"
+	disableTimingWheelsScheduleCancelTask = "disableTWSCancelTask"
 )
 
 type TimingWheelTimeSourceEnum int8
@@ -322,6 +323,7 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 			cancelDisabled = false
 		}
 		eventC := xtw.twEventC.Wait()
+		slotC := xtw.expiredSlotC.Wait()
 		for {
 			select {
 			case <-ctx.Done():
@@ -337,6 +339,17 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 			}
 
 			select {
+			case slot := <-slotC:
+				xtw.advanceClock(slot.GetExpirationMs())
+				// Here related to slot level upgrade and downgrade.
+				if slot != nil && slot.GetExpirationMs() > slotHasBeenFlushedMs {
+					xtw.stats.UpdateSlotActiveCount(xtw.dq.Len())
+					// Reset the slot, ready for the next round.
+					slot.setExpirationMs(slotHasBeenFlushedMs)
+					_ = xtw.gPool.Submit(func() {
+						slot.Flush(xtw.handleTask)
+					})
+				}
 			case event := <-eventC:
 				switch op := event.GetOperation(); op {
 				case addTask, reAddTask:
@@ -365,38 +378,6 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 				xtw.twEventPool.Put(event)
 			}
 		}
-	})
-	_ = xtw.gPool.Submit(func() {
-		func(disabled any) {
-			if disabled != nil && disabled.(bool) {
-				slog.Warn("[timing wheel] delay queue expired slot channel disabled")
-				return
-			}
-			defer func() {
-				if err := recover(); err != nil {
-					slog.Error("[timing wheel] expired slot schedule panic recover", "error", err, "stack", debug.Stack())
-				}
-			}()
-			slotC := xtw.expiredSlotC.Wait()
-			for {
-				select {
-				default:
-					if xtw.expiredSlotC.IsClosed() {
-						return
-					}
-				case <-ctx.Done():
-					xtw.Shutdown()
-					return
-				case <-xtw.stopC:
-					return
-				case slot := <-slotC:
-					xtw.advanceClock(slot.GetExpirationMs())
-					// Here related to slot level upgrade and downgrade.
-					slot.Flush(xtw.handleTask)
-					xtw.stats.UpdateSlotActiveCount(xtw.dq.Len())
-				}
-			}
-		}(ctx.Value(disableTimingWheelsScheduleExpiredSlot))
 	})
 	_ = xtw.gPool.Submit(func() {
 		func(disabled any) {

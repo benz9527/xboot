@@ -1,7 +1,6 @@
 package timer
 
 import (
-	"sync"
 	"sync/atomic"
 
 	"github.com/benz9527/xboot/lib/list"
@@ -13,36 +12,35 @@ type slotMetadata struct {
 	level        int64
 }
 
-func (slot *slotMetadata) GetExpirationMs() int64 {
-	return atomic.LoadInt64(&slot.expirationMs)
+func (md *slotMetadata) GetExpirationMs() int64 {
+	return atomic.LoadInt64(&md.expirationMs)
 }
 
-func (slot *slotMetadata) setExpirationMs(expirationMs int64) bool {
-	// If expirationMs is -1, it means that the slot is empty and will be
+func (md *slotMetadata) setExpirationMs(expirationMs int64) bool {
+	// If expirationMs is -1, it means that the md is empty and will be
 	// reused by the timing wheel.
-	return atomic.SwapInt64(&slot.expirationMs, expirationMs) != expirationMs
+	return atomic.SwapInt64(&md.expirationMs, expirationMs) != expirationMs
 }
 
-func (slot *slotMetadata) GetSlotID() int64 {
-	return atomic.LoadInt64(&slot.slotID)
+func (md *slotMetadata) GetSlotID() int64 {
+	return atomic.LoadInt64(&md.slotID)
 }
 
-func (slot *slotMetadata) setSlotID(slotID int64) {
-	atomic.SwapInt64(&slot.slotID, slotID)
+func (md *slotMetadata) setSlotID(slotID int64) {
+	atomic.SwapInt64(&md.slotID, slotID)
 }
 
-func (slot *slotMetadata) GetLevel() int64 {
-	return atomic.LoadInt64(&slot.level)
+func (md *slotMetadata) GetLevel() int64 {
+	return atomic.LoadInt64(&md.level)
 }
 
-func (slot *slotMetadata) setLevel(level int64) {
-	atomic.SwapInt64(&slot.level, level)
+func (md *slotMetadata) setLevel(level int64) {
+	atomic.SwapInt64(&md.level, level)
 }
 
 // xSlot the segment rwlock free
 type xSlot struct {
 	*slotMetadata
-	lock  *sync.Mutex
 	tasks list.LinkedList[Task]
 }
 
@@ -62,7 +60,6 @@ func NewXSlot() TimingWheelSlot {
 		slotMetadata: &slotMetadata{
 			expirationMs: -1,
 		},
-		lock:  &sync.Mutex{},
 		tasks: list.NewLinkedList[Task](),
 	}
 }
@@ -76,16 +73,15 @@ func newSentinelSlot() TimingWheelSlot {
 }
 
 func (slot *xSlot) GetMetadata() TimingWheelSlotMetadata {
-	slot.lock.Lock()
-	defer slot.lock.Unlock()
+	if slot == nil {
+		return &slotMetadata{}
+	}
 	metadata := *slot.slotMetadata // Copy instead of reference
 	return &metadata
 }
 
 func (slot *xSlot) AddTask(task Task) {
-	slot.lock.Lock()
-	defer slot.lock.Unlock()
-	if task == nil && slot.GetExpirationMs() == slotHasBeenFlushedMs {
+	if task == nil || slot.GetExpirationMs() == slotHasBeenFlushedMs {
 		return
 	}
 
@@ -108,8 +104,7 @@ func (slot *xSlot) removeTask(task Task) bool {
 		return false
 	}
 	// Remove task from slot but not cancel it, lock free
-	e := slot.tasks.Remove(task.(elementTasker).getAndReleaseElementRef())
-	if e == nil {
+	if e := slot.tasks.Remove(task.(elementTasker).getAndReleaseElementRef()); e == nil {
 		return false
 	}
 	task.setSlot(nil) // clean reference, avoid memory leak
@@ -118,8 +113,6 @@ func (slot *xSlot) removeTask(task Task) bool {
 
 // RemoveTask the slot must be not expired.
 func (slot *xSlot) RemoveTask(task Task) bool {
-	slot.lock.Lock()
-	defer slot.lock.Unlock()
 	if slot.GetExpirationMs() == slotHasBeenFlushedMs {
 		return false
 	}
@@ -129,23 +122,15 @@ func (slot *xSlot) RemoveTask(task Task) bool {
 
 // Flush Timing-wheel scheduling algorithm core function
 func (slot *xSlot) Flush(reinsert TaskHandler) {
-	slot.lock.Lock()
-	defer slot.lock.Unlock()
-	if slot == nil || slot.tasks == nil {
-		return
-	}
-	// Reset the slot, ready for next round.
-	slot.setExpirationMs(slotHasBeenFlushedMs)
 	// Due to the slot has been expired, we have to handle all tasks from the slot.
-	// 1. If the task is cancelled, we will remove it from the slot.
+	// 1. If the task is canceled, we will remove it from the slot.
 	// 2. If the task is not cancelled:
-	//  2.1 Check the task is a high level timing wheel task or not.
+	//  2.1 Check the task is a high-level timing wheel task or not.
 	//      If so, reinsert the task to the lower level timing wheel.
 	//      Otherwise, run the task.
-	//  2.2 If the task is a low level timing wheel task, run the task.
+	//  2.2 If the task is a low-level timing-wheel task, run the task.
 	//      If the task is a repeat task, reinsert the task to the current timing wheel.
 	//      Otherwise, cancel it.
-	// 3. Remove the tasks from the slot.
 	// 4. Reset the slot, ready for next round.
 	// Not the atomic operation, it is possible to be nil still
 	slot.tasks.ForEach(func(idx int64, iterator list.NodeElement[Task]) {

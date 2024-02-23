@@ -235,6 +235,37 @@ func TestXTimingWheels_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
+func TestXTimingWheels_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
+	defer cancel()
+	tw := NewTimingWheels(
+		ctx,
+		WithTimingWheelTickMs(2*time.Millisecond),
+		WithTimingWheelSlotSize(20),
+		withTimingWheelStatsInit(5),
+		WithTimingWheelStats(),
+	)
+
+	delays := []time.Duration{
+		2 * time.Millisecond,
+	}
+	schedFn := func() Scheduler {
+		return NewInfiniteScheduler(delays...)
+	}
+	assert.NotNil(t, schedFn())
+	loop := 20
+	tasks := make([]Task, loop)
+	for i := range loop {
+		var err error
+		tasks[i], err = tw.ScheduleFunc(schedFn, func(ctx context.Context, md JobMetadata) {})
+		assert.NoError(t, err)
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	<-ctx.Done()
+	time.Sleep(100 * time.Millisecond)
+}
+
 func TestXTimingWheels_ScheduleFunc_18MsInfinite(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
@@ -270,7 +301,6 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 500*time.Millisecond, errors.New("timeout"))
 	defer cancel()
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
-	ctx = context.WithValue(ctx, disableTimingWheelsScheduleExpiredSlot, true)
 	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
 
 	tw := NewTimingWheels(
@@ -318,7 +348,6 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 func BenchmarkNewTimingWheels_AfterFunc(b *testing.B) {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
-	ctx = context.WithValue(ctx, disableTimingWheelsScheduleExpiredSlot, true)
 	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
 	tw := NewTimingWheels(
 		ctx,
