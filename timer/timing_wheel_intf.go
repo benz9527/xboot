@@ -29,14 +29,10 @@ var (
 type TimingWheelCommonMetadata interface {
 	// GetTickMs returns the baseline tick ms (interval) of the timing wheel.
 	GetTickMs() int64
-	// GetSlotSize returns the slot size of the timing wheel.
-	GetSlotSize() int64
 	// GetStartMs returns the start ms of the timing wheel.
 	GetStartMs() int64
 }
 
-// TimingWheel slots is private,
-// they should be provided by the implementation
 type TimingWheel interface {
 	TimingWheelCommonMetadata
 	GetInterval() int64
@@ -53,8 +49,6 @@ type Scheduler interface {
 
 type TimingWheels interface {
 	TimingWheelCommonMetadata
-	// GetTaskCounter returns the current task count of the timing wheel.
-	GetTaskCounter() int64
 	// AddTask adds a task to the timing wheels.
 	AddTask(task Task) error
 	// CancelTask cancels a task by jobID.

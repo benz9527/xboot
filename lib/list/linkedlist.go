@@ -269,6 +269,9 @@ func (l *doublyLinkedList[T]) Remove(targetE NodeElement[T]) NodeElement[T] {
 }
 
 func (l *doublyLinkedList[T]) ForEach(fn func(idx int64, e NodeElement[T])) {
+	if l == nil {
+		return
+	}
 	if fn == nil || l.len.Load() == 0 ||
 		l.getRoot() == l.getRootHead() && l.getRoot() == l.getRootTail() {
 		return
@@ -287,6 +290,9 @@ func (l *doublyLinkedList[T]) ForEach(fn func(idx int64, e NodeElement[T])) {
 }
 
 func (l *doublyLinkedList[T]) ReverseForEach(fn func(idx int64, e NodeElement[T])) {
+	if l == nil {
+		return
+	}
 	if fn == nil || l.len.Load() == 0 ||
 		l.getRoot() == l.getRootHead() && l.getRoot() == l.getRootTail() {
 		return
@@ -305,7 +311,7 @@ func (l *doublyLinkedList[T]) ReverseForEach(fn func(idx int64, e NodeElement[T]
 }
 
 func (l *doublyLinkedList[T]) FindFirst(targetV T, compareFn ...func(e NodeElement[T]) bool) (NodeElement[T], bool) {
-	if l.len.Load() == 0 {
+	if l == nil || l.len.Load() == 0 {
 		return nil, false
 	}
 
@@ -328,18 +334,30 @@ func (l *doublyLinkedList[T]) FindFirst(targetV T, compareFn ...func(e NodeEleme
 }
 
 func (l *doublyLinkedList[T]) Front() NodeElement[T] {
+	if l == nil {
+		return nil
+	}
 	return l.root.GetNext()
 }
 
 func (l *doublyLinkedList[T]) Back() NodeElement[T] {
+	if l == nil {
+		return nil
+	}
 	return l.root.GetPrev()
 }
 
 func (l *doublyLinkedList[T]) PushFront(v T) NodeElement[T] {
+	if l == nil {
+		return nil
+	}
 	return l.InsertBefore(v, l.getRootHead())
 }
 
 func (l *doublyLinkedList[T]) PushBack(v T) NodeElement[T] {
+	if l == nil {
+		return nil
+	}
 	return l.InsertAfter(v, l.getRootTail())
 }
 
@@ -370,6 +388,9 @@ func (l *doublyLinkedList[T]) move(src, dst *nodeElement[T]) bool {
 }
 
 func (l *doublyLinkedList[T]) MoveToFront(targetE NodeElement[T]) {
+	if l == nil {
+		return
+	}
 	moved := false
 	src, status := l.checkElement(targetE)
 	switch status {
@@ -389,6 +410,9 @@ func (l *doublyLinkedList[T]) MoveToFront(targetE NodeElement[T]) {
 }
 
 func (l *doublyLinkedList[T]) MoveToBack(targetE NodeElement[T]) {
+	if l == nil {
+		return
+	}
 	moved := false
 	src, status := l.checkElement(targetE)
 	switch status {
@@ -408,6 +432,9 @@ func (l *doublyLinkedList[T]) MoveToBack(targetE NodeElement[T]) {
 }
 
 func (l *doublyLinkedList[T]) MoveBefore(srcE, dstE NodeElement[T]) {
+	if l == nil {
+		return
+	}
 	var (
 		moved                = false
 		dst, src             *nodeElement[T]
@@ -458,6 +485,9 @@ func (l *doublyLinkedList[T]) MoveBefore(srcE, dstE NodeElement[T]) {
 }
 
 func (l *doublyLinkedList[T]) MoveAfter(srcE, dstE NodeElement[T]) {
+	if l == nil {
+		return
+	}
 	var (
 		moved                = false
 		dst, src             *nodeElement[T]
@@ -505,6 +535,9 @@ func (l *doublyLinkedList[T]) MoveAfter(srcE, dstE NodeElement[T]) {
 }
 
 func (l *doublyLinkedList[T]) PushFrontList(src LinkedList[T]) {
+	if l == nil {
+		return
+	}
 	if dl, ok := src.(*doublyLinkedList[T]); !ok || dl != nil && dl.getRoot() == l.getRoot() {
 		// avoid type mismatch and self copy
 		return
@@ -522,6 +555,9 @@ func (l *doublyLinkedList[T]) PushFrontList(src LinkedList[T]) {
 }
 
 func (l *doublyLinkedList[T]) PushBackList(src LinkedList[T]) {
+	if l == nil {
+		return
+	}
 	if dl, ok := src.(*doublyLinkedList[T]); !ok || dl != nil && dl.getRoot() == l.getRoot() {
 		// avoid type mismatch and self copy
 		return
