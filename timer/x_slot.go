@@ -1,6 +1,7 @@
 package timer
 
 import (
+	"sync"
 	"sync/atomic"
 
 	"github.com/benz9527/xboot/lib/list"
@@ -41,6 +42,7 @@ func (slot *slotMetadata) setLevel(level int64) {
 // xSlot the segment rwlock free
 type xSlot struct {
 	*slotMetadata
+	lock  *sync.Mutex
 	tasks list.LinkedList[Task]
 }
 
@@ -60,6 +62,7 @@ func NewXSlot() TimingWheelSlot {
 		slotMetadata: &slotMetadata{
 			expirationMs: -1,
 		},
+		lock:  &sync.Mutex{},
 		tasks: list.NewLinkedList[Task](),
 	}
 }
@@ -73,11 +76,15 @@ func newSentinelSlot() TimingWheelSlot {
 }
 
 func (slot *xSlot) GetMetadata() TimingWheelSlotMetadata {
+	slot.lock.Lock()
+	defer slot.lock.Unlock()
 	metadata := *slot.slotMetadata // Copy instead of reference
 	return &metadata
 }
 
 func (slot *xSlot) AddTask(task Task) {
+	slot.lock.Lock()
+	defer slot.lock.Unlock()
 	if task == nil && slot.GetExpirationMs() == slotHasBeenFlushedMs {
 		return
 	}
@@ -111,6 +118,8 @@ func (slot *xSlot) removeTask(task Task) bool {
 
 // RemoveTask the slot must be not expired.
 func (slot *xSlot) RemoveTask(task Task) bool {
+	slot.lock.Lock()
+	defer slot.lock.Unlock()
 	if slot.GetExpirationMs() == slotHasBeenFlushedMs {
 		return false
 	}
@@ -120,6 +129,8 @@ func (slot *xSlot) RemoveTask(task Task) bool {
 
 // Flush Timing-wheel scheduling algorithm core function
 func (slot *xSlot) Flush(reinsert TaskHandler) {
+	slot.lock.Lock()
+	defer slot.lock.Unlock()
 	if slot == nil || slot.tasks == nil {
 		return
 	}
