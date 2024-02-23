@@ -102,7 +102,7 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 
 	if diff < tickMs {
 		task.setSlot(immediateExpiredSlot)
-		tw.advanceClock(currentTimeMs)
+		//tw.advanceClock(currentTimeMs)
 		return fmt.Errorf("[timing wheel] task task expired ms  %d is before %d, %w",
 			taskExpiredMs, currentTimeMs+tickMs, ErrTimingWheelTaskIsExpired)
 	} else if diff >= tickMs && diff < interval {
