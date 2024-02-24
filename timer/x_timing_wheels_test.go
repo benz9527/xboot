@@ -30,6 +30,66 @@ func withTimingWheelStatsInit(interval int64) TimingWheelsOption {
 	}
 }
 
+func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
+	defer cancel()
+	tw := NewTimingWheels(
+		ctx,
+		WithTimingWheelTimeSource(SdkDefaultTime),
+		WithTimingWheelSnowflakeID(0, 0),
+		withTimingWheelStatsInit(2),
+		WithTimingWheelStats(),
+	)
+	defer func() {
+		mp, ok := otel.GetMeterProvider().(*metric.MeterProvider)
+		if ok && mp != nil {
+			_ = mp.Shutdown(ctx)
+		}
+	}()
+
+	delays := []time.Duration{
+		time.Millisecond,
+		2 * time.Millisecond,
+		5 * time.Millisecond,
+		10 * time.Millisecond,
+		15 * time.Millisecond,
+		18 * time.Millisecond,
+		20 * time.Millisecond,
+		21 * time.Millisecond,
+		22 * time.Millisecond,
+		23 * time.Millisecond,
+		50 * time.Millisecond,
+		51 * time.Millisecond,
+		100 * time.Millisecond,
+		200 * time.Millisecond,
+		400 * time.Millisecond,
+		500 * time.Millisecond,
+		time.Second,
+	}
+
+	expectedExecCount := int64(len(delays))
+	actualExecCounter := atomic.Int64{}
+	startTs := time.Now().UTC().UnixMilli()
+	for i := 0; i < len(delays); i++ {
+		_, err := tw.AfterFunc(delays[i], func(ctx context.Context, md JobMetadata) {
+			actualExecCounter.Add(1)
+			t.Logf("exec diff: %v; delay: %v\n", time.Now().UTC().UnixMilli()-startTs, delays[i])
+		})
+		assert.NoError(t, err)
+	}
+	<-ctx.Done()
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, expectedExecCount, actualExecCounter.Load())
+}
+
+func TestXTimingWheels_SimpleAfterFunc(t *testing.T) {
+	loops := 1
+	for i := 0; i < loops; i++ {
+		t.Logf("loop %d\n", i)
+		testSimpleAfterFuncSdkDefaultTime(t)
+	}
+}
+
 func TestTimingWheel_AlignmentAndSize(t *testing.T) {
 	tw := &timingWheel{}
 	t.Logf("tw alignment: %d\n", unsafe.Alignof(tw))

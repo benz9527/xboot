@@ -101,12 +101,13 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 	slotSize := tw.GetSlotSize()
 	diff := taskExpiredMs - currentTimeMs
 
-	if diff <= tickMs {
+	if level == 0 && diff <= tickMs {
 		task.setSlot(immediateExpiredSlot)
 		//tw.advanceClock(currentTimeMs)
 		return fmt.Errorf("[timing wheel] task task expired ms  %d is before %d, %w",
 			taskExpiredMs, currentTimeMs+tickMs, ErrTimingWheelTaskIsExpired)
-	} else if diff > tickMs && diff < interval {
+	}
+	if diff > tickMs && diff < interval {
 		virtualID := taskExpiredMs / tickMs
 		slotID := virtualID % slotSize
 		slot := tw.slots[slotID]
@@ -127,8 +128,7 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 		return nil
 	}
 	// Out of the interval. Put it into the higher interval timing wheel
-	oftw := tw.getOverflowTimingWheel()
-	if oftw == nil {
+	if ovf := tw.getOverflowTimingWheel(); ovf == nil {
 		tw.setOverflowTimingWheel(newTimingWheel(
 			tw.ctx,
 			interval,
