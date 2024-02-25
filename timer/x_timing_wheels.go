@@ -103,7 +103,6 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 
 	if level == 0 && diff <= tickMs {
 		task.setSlot(immediateExpiredSlot)
-		//tw.advanceClock(currentTimeMs)
 		return fmt.Errorf("[timing wheel] task task expired ms  %d is before %d, %w",
 			taskExpiredMs, currentTimeMs+tickMs, ErrTimingWheelTaskIsExpired)
 	}
@@ -350,11 +349,11 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 				// Here related to slot level upgrade and downgrade.
 				if slot != nil && slot.GetExpirationMs() > slotHasBeenFlushedMs {
 					xtw.stats.UpdateSlotActiveCount(xtw.dq.Len())
+					// Reset the slot, ready for the next round.
+					slot.setExpirationMs(slotHasBeenFlushedMs)
 					_ = xtw.gPool.Submit(func() {
 						slot.Flush(xtw.handleTask)
 					})
-					// Reset the slot, ready for the next round.
-					slot.setExpirationMs(slotHasBeenFlushedMs)
 				}
 			case event := <-eventC:
 				switch op := event.GetOperation(); op {
@@ -417,7 +416,6 @@ func (xtw *xTimingWheels) addTask(task Task) error {
 	if task == nil || task.Cancelled() || !xtw.isRunning.Load() {
 		return ErrTimingWheelStopped
 	}
-	// FIXME Recursive function to addTask a task, need to measure the performance.
 	err := xtw.tw.(*timingWheel).addTask(task, 0)
 	if err == nil || errors.Is(err, ErrTimingWheelTaskIsExpired) {
 		xtw.tasksMap[task.GetJobID()] = task
@@ -442,7 +440,8 @@ func (xtw *xTimingWheels) handleTask(t Task) {
 		runNow           bool
 	)
 	if prevSlotMetadata == nil && slot != immediateExpiredSlot {
-		return // Unknown task
+		// Unknown task
+		return
 	} else if prevSlotMetadata == nil && slot == immediateExpiredSlot {
 		runNow = true
 	} else if prevSlotMetadata != nil {

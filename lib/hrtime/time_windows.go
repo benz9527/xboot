@@ -20,7 +20,6 @@ import (
 	"time"
 	"unsafe"
 
-	_ "go.uber.org/automaxprocs"
 	"golang.org/x/sys/windows"
 )
 
