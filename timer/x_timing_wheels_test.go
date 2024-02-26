@@ -3,9 +3,6 @@ package timer
 import (
 	"context"
 	"errors"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
-	"go.opentelemetry.io/otel/sdk/metric"
 	"os"
 	"sort"
 	"sync/atomic"
@@ -14,12 +11,16 @@ import (
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+	"go.opentelemetry.io/otel/sdk/metric"
+
+	"github.com/benz9527/xboot/observability"
 )
 
 func withTimingWheelStatsInit(interval int64) TimingWheelsOption {
 	return func(xtw *xTimingWheels) {
 		exp, err := stdoutmetric.New(
-			//stdoutmetric.WithPrettyPrint(),
 			stdoutmetric.WithWriter(os.Stdout),
 		)
 		if err != nil {
@@ -205,6 +206,7 @@ func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 }
 
 func TestXTimingWheels_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
+	observability.InitAppStats(context.Background(), "sdk1msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(
@@ -234,6 +236,7 @@ func TestXTimingWheels_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
 }
 
 func TestXTimingWheels_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
+	observability.InitAppStats(context.Background(), "sdk2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(
@@ -264,7 +267,8 @@ func TestXTimingWheels_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func TestXTimingWheels_ScheduleFunc_18MsInfinite(t *testing.T) {
+func TestXTimingWheels_ScheduleFunc_5MsInfinite(t *testing.T) {
+	observability.InitAppStats(context.Background(), "sdk5msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
 	tw := NewTimingWheels(
