@@ -31,7 +31,7 @@ type xPublisher[T any] struct {
 	status   publisherStatus
 }
 
-func newXSinglePipelinePublisher[T any](seq Sequencer, rb queue.RingBuffer[T], strategy BlockStrategy) *xPublisher[T] {
+func newXPublisher[T any](seq Sequencer, rb queue.RingBuffer[T], strategy BlockStrategy) *xPublisher[T] {
 	return &xPublisher[T]{
 		seq:      seq,
 		rb:       rb,

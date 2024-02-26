@@ -29,7 +29,7 @@ type xSubscriber[T any] struct {
 	spin     int32
 }
 
-func newXSinglePipelineSubscriber[T any](
+func newXSubscriber[T any](
 	rb queue.RingBuffer[T],
 	handler EventHandler[T],
 	seq Sequencer,

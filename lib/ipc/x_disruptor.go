@@ -42,8 +42,8 @@ func NewXDisruptor[T any](
 	seq.GetWriteCursor().Next()
 	seq.GetReadCursor().Next()
 	rb := queue.NewXRingBuffer[T](capacity)
-	pub := newXSinglePipelinePublisher[T](seq, rb, strategy)
-	sub := newXSinglePipelineSubscriber[T](rb, handler, seq, strategy)
+	pub := newXPublisher[T](seq, rb, strategy)
+	sub := newXSubscriber[T](rb, handler, seq, strategy)
 	d := &xDisruptor[T]{
 		pub:    pub,
 		sub:    sub,
