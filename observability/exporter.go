@@ -1,7 +1,5 @@
 package observability
 
-// https://opentelemetry.io/docs/languages/go/exporters/
-
 import (
 	"context"
 	"time"
@@ -11,6 +9,10 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/sdk/metric"
 )
+
+// References:
+// https://docs.datadoghq.com/opentelemetry/runtime_metrics/go/
+// https://opentelemetry.io/docs/languages/go/exporters/
 
 // Serves for test/dev environment.
 func newConsoleMetricsExporter(interval, timeout time.Duration, opts ...stdoutmetric.Option) (func(ctx context.Context) error, error) {
