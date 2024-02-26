@@ -50,3 +50,21 @@ type DQItem[E comparable] interface {
 	Expiration() int64
 	PQItem[E]
 }
+
+type RingBufferEntry[T any] interface {
+	GetValue() T
+	GetCursor() uint64
+	Store(cursor uint64, value T)
+}
+
+type RingBuffer[T any] interface {
+	Capacity() uint64
+	LoadEntryByCursor(cursor uint64) RingBufferEntry[T]
+}
+
+type RingBufferCursor interface {
+	Next() uint64
+	NextN(n uint64) uint64
+	Load() uint64
+	CompareAndSwap(old, new uint64) bool
+}
