@@ -52,6 +52,7 @@ func TestMonotonicClockByUnix(t *testing.T) {
 }
 
 func TestNonSysClockTime(t *testing.T) {
+	ClockInit()
 	t1 := NowInDefaultTZ()
 	t.Logf("system clock current time: %v\n", t1)
 	time.Sleep(200 * time.Millisecond)

@@ -11,10 +11,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/benz9527/xboot/lib/hrtime"
 	"github.com/benz9527/xboot/observability"
 )
 
 func TestXTimingWheels_ScheduleFunc_goNativeClock_1MsInfinite(t *testing.T) {
+	hrtime.ClockInit()
 	observability.InitAppStats(context.Background(), "goNative1msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
@@ -46,6 +48,7 @@ func TestXTimingWheels_ScheduleFunc_goNativeClock_1MsInfinite(t *testing.T) {
 }
 
 func TestXTimingWheels_ScheduleFunc_goNativeClock_2MsInfinite(t *testing.T) {
+	hrtime.ClockInit()
 	observability.InitAppStats(context.Background(), "goNative2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
@@ -79,6 +82,7 @@ func TestXTimingWheels_ScheduleFunc_goNativeClock_2MsInfinite(t *testing.T) {
 }
 
 func TestXTimingWheels_ScheduleFunc_unixClock_1MsInfinite(t *testing.T) {
+	hrtime.ClockInit()
 	observability.InitAppStats(context.Background(), "unix1msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
@@ -110,6 +114,7 @@ func TestXTimingWheels_ScheduleFunc_unixClock_1MsInfinite(t *testing.T) {
 }
 
 func TestXTimingWheels_ScheduleFunc_unixClock_2MsInfinite(t *testing.T) {
+	hrtime.ClockInit()
 	observability.InitAppStats(context.Background(), "unix2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()

@@ -93,7 +93,7 @@ func SetFallbackLowResolution(flag bool) {
 	fallbackLowResolution.Swap(flag)
 }
 
-func init() {
+func ClockInit() {
 	SetTimeResolutionTo1ms()
 	appStartTime = time.Now().In(loadTZLocation(TimeZoneOffset(atomic.LoadInt32(&defaultTimezoneOffset))))
 

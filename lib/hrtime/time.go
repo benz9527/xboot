@@ -44,7 +44,7 @@ var (
 	unixMonotonicStartTs int64
 )
 
-func init() {
+func ClockInit() {
 	appStartTime = time.Now().In(loadTZLocation(TimeZoneOffset(atomic.LoadInt32(&defaultTimezoneOffset))))
 
 	goMonotonicStartTs = appStartTime.UnixNano()
