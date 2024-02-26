@@ -5,11 +5,13 @@ package queue
 
 import (
 	"context"
-	"github.com/benz9527/xboot/lib/hrtime"
-	"github.com/benz9527/xboot/lib/ipc"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/benz9527/xboot/lib/hrtime"
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 func TestArrayDelayQueue_PollToChan_unix(t *testing.T) {
@@ -17,7 +19,7 @@ func TestArrayDelayQueue_PollToChan_unix(t *testing.T) {
 	defer cancel()
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
-	receiver := ipc.NewSafeClosableChannel[*employee]()
+	receiver := infra.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
 			return hrtime.UnixMonotonicClock.NowInDefaultTZ().UnixMilli()
@@ -71,7 +73,7 @@ func BenchmarkDelayQueue_PollToChan_hrtime_unix(b *testing.B) {
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
 
-	receiver := ipc.NewSafeClosableChannel[*employee]()
+	receiver := infra.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
 			return hrtime.UnixMonotonicClock.NowInDefaultTZ().UnixMilli()
@@ -112,7 +114,7 @@ func BenchmarkDelayQueue_PollToChan_hrtime_gonative(b *testing.B) {
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
 
-	receiver := ipc.NewSafeClosableChannel[*employee]()
+	receiver := infra.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
 			return hrtime.GoMonotonicClock.NowInDefaultTZ().UnixMilli()

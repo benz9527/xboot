@@ -3,7 +3,9 @@
 
 package queue
 
-import "github.com/benz9527/xboot/lib/ipc"
+import (
+	"github.com/benz9527/xboot/lib/infra"
+)
 
 type PriorityQueue[E comparable] interface {
 	Len() int64
@@ -42,7 +44,7 @@ type PQItem[E comparable] interface {
 type DelayQueue[E comparable] interface {
 	Offer(item E, expiration int64)
 	// PollToChan Asynchronous function
-	PollToChan(nowFn func() int64, C ipc.SendOnlyChannel[E])
+	PollToChan(nowFn func() int64, C infra.SendOnlyChannel[E])
 	Len() int64
 }
 

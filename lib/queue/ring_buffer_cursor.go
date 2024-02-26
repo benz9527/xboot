@@ -21,7 +21,7 @@ var (
 	_ RingBufferCursor = (*rbCursor)(nil)
 )
 
-const CacheLinePadSize = unsafe.Sizeof(cpu.CacheLinePad{})
+const cacheLinePadSize = unsafe.Sizeof(cpu.CacheLinePad{})
 
 // rbCursor is a cursor for xRingBuffer.
 // Only increase, if it overflows, it will be reset to 0.
@@ -37,9 +37,9 @@ type rbCursor struct {
 	// sequence consistency data race free program
 	// avoid load into cpu cache will be broken by others data
 	// to compose a data race cache line
-	_   [CacheLinePadSize - unsafe.Sizeof(*new(uint64))]byte // padding for CPU cache line, avoid false sharing
+	_   [cacheLinePadSize - unsafe.Sizeof(*new(uint64))]byte // padding for CPU cache line, avoid false sharing
 	val uint64                                               // space waste to exchange for performance
-	_   [CacheLinePadSize - unsafe.Sizeof(*new(uint64))]byte // padding for CPU cache line, avoid false sharing
+	_   [cacheLinePadSize - unsafe.Sizeof(*new(uint64))]byte // padding for CPU cache line, avoid false sharing
 }
 
 func NewXRingBufferCursor() RingBufferCursor {

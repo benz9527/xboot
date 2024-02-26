@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/benz9527/xboot/lib/id"
 	"log/slog"
 	"runtime"
 	"runtime/debug"
@@ -15,7 +14,8 @@ import (
 	"github.com/panjf2000/ants/v2"
 
 	"github.com/benz9527/xboot/lib/hrtime"
-	"github.com/benz9527/xboot/lib/ipc"
+	"github.com/benz9527/xboot/lib/id"
+	"github.com/benz9527/xboot/lib/infra"
 	"github.com/benz9527/xboot/lib/queue"
 )
 
@@ -185,8 +185,8 @@ type xTimingWheels struct {
 	dq             queue.DelayQueue[TimingWheelSlot] // Do not use the timer.Ticker
 	tasksMap       map[JobID]Task
 	stopC          chan struct{}
-	expiredSlotC   ipc.ClosableChannel[TimingWheelSlot]
-	twEventC       ipc.ClosableChannel[*timingWheelEvent]
+	expiredSlotC   infra.ClosableChannel[TimingWheelSlot]
+	twEventC       infra.ClosableChannel[*timingWheelEvent]
 	twEventPool    *timingWheelEventsPool
 	gPool          *ants.Pool
 	stats          *timingWheelStats

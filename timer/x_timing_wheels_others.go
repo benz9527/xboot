@@ -13,7 +13,7 @@ import (
 	"github.com/panjf2000/ants/v2"
 
 	"github.com/benz9527/xboot/lib/hrtime"
-	"github.com/benz9527/xboot/lib/ipc"
+	"github.com/benz9527/xboot/lib/infra"
 	"github.com/benz9527/xboot/lib/queue"
 )
 
@@ -32,8 +32,8 @@ func NewTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWhee
 	xtw := &xTimingWheels{
 		ctx:          ctx,
 		stopC:        make(chan struct{}),
-		twEventC:     ipc.NewSafeClosableChannel[*timingWheelEvent](1024),
-		expiredSlotC: ipc.NewSafeClosableChannel[TimingWheelSlot](128),
+		twEventC:     infra.NewSafeClosableChannel[*timingWheelEvent](1024),
+		expiredSlotC: infra.NewSafeClosableChannel[TimingWheelSlot](128),
 		tasksMap:     make(map[JobID]Task),
 		isRunning:    &atomic.Bool{},
 		twEventPool:  newTimingWheelEventsPool(),

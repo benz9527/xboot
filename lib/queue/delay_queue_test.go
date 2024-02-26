@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/benz9527/xboot/lib/hrtime"
-	"github.com/benz9527/xboot/lib/ipc"
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 func TestDelayQueueAlignmentAndSize(t *testing.T) {
@@ -34,7 +34,7 @@ func TestArrayDelayQueue_PollToChan(t *testing.T) {
 	defer cancel()
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
-	receiver := ipc.NewSafeClosableChannel[*employee]()
+	receiver := infra.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
 			return time.Now().UTC().UnixMilli()
@@ -88,7 +88,7 @@ func BenchmarkDelayQueue_PollToChan(b *testing.B) {
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
 
-	receiver := ipc.NewSafeClosableChannel[*employee]()
+	receiver := infra.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
 			return time.Now().UTC().UnixMilli()
@@ -129,7 +129,7 @@ func BenchmarkDelayQueue_PollToChan_zone(b *testing.B) {
 
 	dq := NewArrayDelayQueue[*employee](ctx, 32)
 
-	receiver := ipc.NewSafeClosableChannel[*employee]()
+	receiver := infra.NewSafeClosableChannel[*employee]()
 	go dq.PollToChan(
 		func() int64 {
 			zone := time.FixedZone("CST", int(hrtime.TzUtc0Offset))

@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/benz9527/xboot/lib/ipc"
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 type dqItem[E comparable] struct {
@@ -74,7 +74,7 @@ func (dq *ArrayDelayQueue[E]) Offer(item E, expiration int64) {
 	dq.itemCounter.Add(1)
 }
 
-func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender ipc.SendOnlyChannel[E]) {
+func (dq *ArrayDelayQueue[E]) poll(nowFn func() int64, sender infra.SendOnlyChannel[E]) {
 	var timer *time.Timer
 	defer func() {
 		// FIXME recover defer execution order
