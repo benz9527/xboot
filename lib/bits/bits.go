@@ -36,7 +36,7 @@ func RoundupPowOf2ByCeil(target uint64) uint64 {
 // Copy from linux kernel kfifo.
 func CeilPowOf2(target uint64) uint8 {
 	target--
-	if target == 0 {
+	if target <= 0 {
 		return 0
 	}
 	var pos uint8 = 64
