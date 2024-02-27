@@ -16,10 +16,10 @@ import (
 	"github.com/benz9527/xboot/observability"
 )
 
-func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
+func testSimpleAfterFuncSdkDefaultTimeV2(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()
-	tw := NewXTimingWheels(
+	tw := NewXTimingWheelsV2(
 		ctx,
 		WithTimingWheelTimeSource(SdkDefaultTime),
 		WithTimingWheelsSnowflakeID(0, 0),
@@ -68,42 +68,21 @@ func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
 	assert.Equal(t, expectedExecCount, actualExecCounter.Load())
 }
 
-func TestXTimingWheels_SimpleAfterFunc(t *testing.T) {
+func TestXTimingWheelsV2_SimpleAfterFunc(t *testing.T) {
 	loops := 1
 	for i := 0; i < loops; i++ {
 		t.Logf("loop %d\n", i)
-		testSimpleAfterFuncSdkDefaultTime(t)
+		testSimpleAfterFuncSdkDefaultTimeV2(t)
 	}
 }
 
-func TestTimingWheel_AlignmentAndSize(t *testing.T) {
-	tw := &timingWheel{}
-	t.Logf("tw alignment: %d\n", unsafe.Alignof(tw))
-	t.Logf("tw ctx alignment: %d\n", unsafe.Alignof(tw.ctx))
-	t.Logf("tw slot alignment: %d\n", unsafe.Alignof(tw.slots))
-	t.Logf("tw tickMs alignment: %d\n", unsafe.Alignof(tw.tickMs))
-	t.Logf("tw startMs alignment: %d\n", unsafe.Alignof(tw.startMs))
-	t.Logf("tw slotSize alignment: %d\n", unsafe.Alignof(tw.slotSize))
-	t.Logf("tw overflowWheelRef alignment: %d\n", unsafe.Alignof(tw.overflowWheelRef))
-	t.Logf("tw globalDqRef alignment: %d\n", unsafe.Alignof(tw.globalDqRef))
-
-	t.Logf("tw size: %d\n", unsafe.Sizeof(*tw))
-	t.Logf("tw ctx size: %d\n", unsafe.Sizeof(tw.ctx))
-	t.Logf("tw slot size: %d\n", unsafe.Sizeof(tw.slots))
-	t.Logf("tw tickMs size: %d\n", unsafe.Sizeof(tw.tickMs))
-	t.Logf("tw startMs size: %d\n", unsafe.Sizeof(tw.startMs))
-	t.Logf("tw slotSize size: %d\n", unsafe.Sizeof(tw.slotSize))
-	t.Logf("tw overflowWheelRef size: %d\n", unsafe.Sizeof(tw.overflowWheelRef))
-	t.Logf("tw globalDqRef size: %d\n", unsafe.Sizeof(tw.globalDqRef))
-}
-
-func TestXTimingWheels_AlignmentAndSize(t *testing.T) {
-	tw := &xTimingWheels{}
+func TestXTimingWheelsV2_AlignmentAndSize(t *testing.T) {
+	tw := &xTimingWheelsV2{}
 	t.Logf("tw alignment: %d\n", unsafe.Alignof(tw))
 	t.Logf("tw ctx alignment: %d\n", unsafe.Alignof(tw.ctx))
 	t.Logf("tw tw alignment: %d\n", unsafe.Alignof(tw.tw))
 	t.Logf("tw stopC alignment: %d\n", unsafe.Alignof(tw.stopC))
-	t.Logf("tw twEventC alignment: %d\n", unsafe.Alignof(tw.twEventC))
+	t.Logf("tw twEventC alignment: %d\n", unsafe.Alignof(tw.twEventDisruptor))
 	t.Logf("tw twEventPool alignment: %d\n", unsafe.Alignof(tw.twEventPool))
 	t.Logf("tw expiredSlotC alignment: %d\n", unsafe.Alignof(tw.expiredSlotC))
 	t.Logf("tw isRunning alignment: %d\n", unsafe.Alignof(tw.isRunning))
@@ -114,7 +93,7 @@ func TestXTimingWheels_AlignmentAndSize(t *testing.T) {
 	t.Logf("tw ctx size: %d\n", unsafe.Sizeof(tw.ctx))
 	t.Logf("tw tw size: %d\n", unsafe.Sizeof(tw.tw))
 	t.Logf("tw stopC size: %d\n", unsafe.Sizeof(tw.stopC))
-	t.Logf("tw twEventC size: %d\n", unsafe.Sizeof(tw.twEventC))
+	t.Logf("tw twEventC size: %d\n", unsafe.Sizeof(tw.twEventDisruptor))
 	t.Logf("tw twEventPool size: %d\n", unsafe.Sizeof(tw.twEventPool))
 	t.Logf("tw expiredSlotC size: %d\n", unsafe.Sizeof(tw.expiredSlotC))
 	t.Logf("tw isRunning size: %d\n", unsafe.Sizeof(tw.isRunning))
@@ -122,24 +101,10 @@ func TestXTimingWheels_AlignmentAndSize(t *testing.T) {
 	t.Logf("tw tasksMap size: %d\n", unsafe.Sizeof(tw.tasksMap))
 }
 
-func TestNewTimingWheels(t *testing.T) {
-	ctx, cancel := context.WithTimeoutCause(context.TODO(), time.Second, errors.New("timeout"))
-	defer cancel()
-	tw := NewXTimingWheels(
-		ctx,
-		WithTimingWheelsTickMs(100*time.Millisecond),
-		WithTimingWheelsSlotSize(32),
-	)
-	t.Logf("tw tickMs: %d\n", tw.GetTickMs())
-	t.Logf("tw startMs: %d\n", tw.GetStartMs())
-	<-ctx.Done()
-	time.Sleep(100 * time.Millisecond)
-}
-
-func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
+func TestXTimingWheelsV2_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()
-	tw := NewXTimingWheels(
+	tw := NewXTimingWheelsV2(
 		ctx,
 		withTimingWheelsStatsInit(2),
 		WithTimingWheelsStats(),
@@ -190,11 +155,11 @@ func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	assert.Equal(t, expectedExecCount, int(actualExecCount))
 }
 
-func TestXTimingWheels_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
+func TestXTimingWheelsV2_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "sdk1msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewXTimingWheels(
+	tw := NewXTimingWheelsV2(
 		ctx,
 		withTimingWheelsStatsInit(5),
 		WithTimingWheelsStats(),
@@ -220,11 +185,11 @@ func TestXTimingWheels_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func TestXTimingWheels_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
+func TestXTimingWheelsV2_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "sdk2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewXTimingWheels(
+	tw := NewXTimingWheelsV2(
 		ctx,
 		WithTimingWheelsTickMs(2*time.Millisecond),
 		WithTimingWheelsSlotSize(20),
@@ -252,11 +217,11 @@ func TestXTimingWheels_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func TestXTimingWheels_ScheduleFunc_5MsInfinite(t *testing.T) {
+func TestXTimingWheelsV2_ScheduleFunc_5MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "sdk5msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewXTimingWheels(
+	tw := NewXTimingWheelsV2(
 		ctx,
 		WithTimingWheelsTickMs(5*time.Millisecond),
 		WithTimingWheelsSlotSize(20),
@@ -284,13 +249,13 @@ func TestXTimingWheels_ScheduleFunc_5MsInfinite(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
-func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
+func TestXTimingWheelsV2_AfterFunc_Slots(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 500*time.Millisecond, errors.New("timeout"))
 	defer cancel()
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
 	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
 
-	tw := NewXTimingWheels(
+	tw := NewXTimingWheelsV2(
 		ctx,
 	)
 
@@ -332,11 +297,11 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 	<-ctx.Done()
 }
 
-func BenchmarkNewTimingWheels_AfterFunc(b *testing.B) {
+func BenchmarkNewTimingWheelsV2_AfterFunc(b *testing.B) {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
 	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
-	tw := NewXTimingWheels(
+	tw := NewXTimingWheelsV2(
 		ctx,
 		WithTimingWheelsTickMs(1*time.Millisecond),
 		WithTimingWheelsSlotSize(20),
