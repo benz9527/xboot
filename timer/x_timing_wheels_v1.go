@@ -36,7 +36,7 @@ type timingWheel struct {
 	interval         int64
 	currentTimeMs    int64
 	slotSize         int64 // in kafka it is wheelSize
-	globalStats      *timingWheelStats
+	globalStats      *xTimingWheelsStats
 	clock            hrtime.Clock
 }
 
@@ -147,7 +147,7 @@ func newTimingWheel(
 	tickMs int64,
 	slotSize int64,
 	startMs int64,
-	stats *timingWheelStats,
+	stats *xTimingWheelsStats,
 	dq queue.DelayQueue[TimingWheelSlot],
 	clock hrtime.Clock,
 ) TimingWheel {
@@ -180,21 +180,20 @@ const (
 type TimingWheelTimeSourceEnum int8
 
 type xTimingWheels struct {
-	tw             TimingWheel
-	ctx            context.Context
-	dq             queue.DelayQueue[TimingWheelSlot] // Do not use the timer.Ticker
-	tasksMap       map[JobID]Task
-	stopC          chan struct{}
-	expiredSlotC   infra.ClosableChannel[TimingWheelSlot]
-	twEventC       infra.ClosableChannel[*timingWheelEvent]
-	twEventPool    *timingWheelEventsPool
-	gPool          *ants.Pool
-	stats          *timingWheelStats
-	isRunning      *atomic.Bool
-	clock          hrtime.Clock
-	idGenerator    id.Gen
-	name           string
-	isStatsEnabled bool
+	tw           TimingWheel
+	ctx          context.Context
+	dq           queue.DelayQueue[TimingWheelSlot] // Do not use the timer.Ticker
+	tasksMap     map[JobID]Task
+	stopC        chan struct{}
+	expiredSlotC infra.ClosableChannel[TimingWheelSlot]
+	twEventC     infra.ClosableChannel[*timingWheelEvent]
+	twEventPool  *timingWheelEventsPool
+	gPool        *ants.Pool
+	stats        *xTimingWheelsStats
+	isRunning    *atomic.Bool
+	clock        hrtime.Clock
+	idGenerator  id.Gen
+	name         string
 }
 
 func (xtw *xTimingWheels) GetTickMs() int64 {
@@ -363,7 +362,9 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 						goto recycle
 					}
 					if err := xtw.addTask(task); errors.Is(err, ErrTimingWheelTaskIsExpired) {
-						xtw.handleTask(task)
+						_ = xtw.gPool.Submit(func() {
+							xtw.handleTask(task)
+						})
 					} else if errors.Is(err, ErrTimingWheelTaskUnableToBeAddedToSlot) {
 						slog.Error("unable add a task to slot", "ms", task.GetExpiredMs())
 					}
@@ -375,7 +376,9 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 					if !ok || cancelDisabled.(bool) {
 						goto recycle
 					}
-					_ = xtw.cancelTask(jobID)
+					_ = xtw.gPool.Submit(func() {
+						_ = xtw.cancelTask(jobID)
+					})
 				case unknown:
 					fallthrough
 				default:
@@ -533,42 +536,51 @@ func (xtw *xTimingWheels) cancelTask(jobID JobID) error {
 	return nil
 }
 
-type TimingWheelsOption func(*xTimingWheels)
+// NewXTimingWheels creates a new timing wheel.
+// The same as the kafka, Time.SYSTEM.hiResClockMs() is used.
+func NewXTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWheels {
+	if ctx == nil {
+		return nil
+	}
 
-func WithTimingWheelTickMs(basicTickMs time.Duration) TimingWheelsOption {
-	return func(xtw *xTimingWheels) {
-		tw := xtw.tw.(*timingWheel)
-		if tw == nil {
-			return
+	xtwOpt := &xTimingWheelsOption{}
+	for _, o := range opts {
+		if o != nil {
+			o(xtwOpt)
 		}
-		tw.tickMs = basicTickMs.Milliseconds()
 	}
-}
 
-func WithTimingWheelSlotSize(slotSize int64) TimingWheelsOption {
-	return func(xtw *xTimingWheels) {
-		tw := xtw.tw.(*timingWheel)
-		if tw == nil {
-			return
-		}
-		tw.slotSize = slotSize
+	xtw := &xTimingWheels{
+		ctx:          ctx,
+		stopC:        make(chan struct{}),
+		twEventC:     infra.NewSafeClosableChannel[*timingWheelEvent](xtwOpt.getEventBufferSize()),
+		expiredSlotC: infra.NewSafeClosableChannel[TimingWheelSlot](xtwOpt.getExpiredSlotBufferSize()),
+		tasksMap:     make(map[JobID]Task),
+		isRunning:    &atomic.Bool{},
+		clock:        xtwOpt.getClock(),
+		idGenerator:  xtwOpt.getIDGenerator(),
+		twEventPool:  newTimingWheelEventsPool(),
+		stats:        xtwOpt.getStats(),
+		name:         xtwOpt.name,
 	}
-}
-
-func WithTimingWheelName(name string) TimingWheelsOption {
-	return func(xtw *xTimingWheels) {
-		xtw.name = name
+	xtw.isRunning.Store(false)
+	if p, err := ants.NewPool(xtwOpt.getWorkerPoolSize(), ants.WithPreAlloc(true)); err != nil {
+		panic(err)
+	} else {
+		xtw.gPool = p
 	}
-}
-
-func WithTimingWheelSnowflakeID(datacenterID, machineID int64) TimingWheelsOption {
-	return func(xtw *xTimingWheels) {
-		idGenerator, err := id.StandardSnowFlakeID(datacenterID, machineID, func() time.Time {
-			return xtw.clock.NowInDefaultTZ()
-		})
-		if err != nil {
-			panic(err)
-		}
-		xtw.idGenerator = idGenerator
-	}
+	// Temporarily store the configuration
+	xtw.dq = queue.NewArrayDelayQueue[TimingWheelSlot](ctx, xtwOpt.defaultDelayQueueCapacity())
+	xtw.tw = newTimingWheel(
+		ctx,
+		xtwOpt.getBasicTickMilliseconds(),
+		xtwOpt.getSlotIncrementSize(),
+		xtwOpt.getClock().NowInDefaultTZ().UnixMilli(),
+		xtw.stats,
+		xtw.dq,
+		xtw.clock,
+	)
+	xtw.isRunning.Store(true)
+	xtw.schedule(ctx)
+	return xtw
 }

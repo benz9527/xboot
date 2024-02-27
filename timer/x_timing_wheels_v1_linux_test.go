@@ -20,10 +20,10 @@ func TestXTimingWheels_ScheduleFunc_goNativeClock_1MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "goNative1msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		withTimingWheelStatsInit(5),
-		WithTimingWheelStats(),
+		withTimingWheelsStatsInit(5),
+		WithTimingWheelsStats(),
 		WithTimingWheelTimeSource(GoNativeClock),
 	)
 
@@ -52,13 +52,13 @@ func TestXTimingWheels_ScheduleFunc_goNativeClock_2MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "goNative2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		WithTimingWheelTickMs(2*time.Millisecond),
-		WithTimingWheelSlotSize(20),
+		WithTimingWheelsTickMs(2*time.Millisecond),
+		WithTimingWheelsSlotSize(20),
 		WithTimingWheelTimeSource(GoNativeClock),
-		withTimingWheelStatsInit(5),
-		WithTimingWheelStats(),
+		withTimingWheelsStatsInit(5),
+		WithTimingWheelsStats(),
 	)
 
 	delays := []time.Duration{
@@ -86,11 +86,11 @@ func TestXTimingWheels_ScheduleFunc_unixClock_1MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "unix1msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
 		WithTimingWheelTimeSource(UnixClock),
-		WithTimingWheelStats(),
-		withTimingWheelStatsInit(5),
+		WithTimingWheelsStats(),
+		withTimingWheelsStatsInit(5),
 	)
 
 	delays := []time.Duration{
@@ -118,13 +118,13 @@ func TestXTimingWheels_ScheduleFunc_unixClock_2MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "unix2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		WithTimingWheelTickMs(2*time.Millisecond),
-		WithTimingWheelSlotSize(20),
+		WithTimingWheelsTickMs(2*time.Millisecond),
+		WithTimingWheelsSlotSize(20),
 		WithTimingWheelTimeSource(UnixClock),
-		withTimingWheelStatsInit(5),
-		WithTimingWheelStats(),
+		withTimingWheelsStatsInit(5),
+		WithTimingWheelsStats(),
 	)
 
 	delays := []time.Duration{

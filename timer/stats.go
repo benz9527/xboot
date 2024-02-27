@@ -16,7 +16,7 @@ const (
 	TimingWheelStatsName = "xboot/xtw"
 )
 
-type timingWheelStats struct {
+type xTimingWheelsStats struct {
 	ctx                 context.Context
 	minTickMs           int64
 	clock               hrtime.Clock
@@ -33,28 +33,28 @@ type timingWheelStats struct {
 	slotActiveCounter   metric.Int64ObservableUpDownCounter
 }
 
-func (stats *timingWheelStats) RecordJobAliveCount(count int64) {
+func (stats *xTimingWheelsStats) RecordJobAliveCount(count int64) {
 	if stats == nil {
 		return
 	}
 	stats.jobAliveCounter.Add(stats.ctx, count)
 }
 
-func (stats *timingWheelStats) UpdateSlotActiveCount(count int64) {
+func (stats *xTimingWheelsStats) UpdateSlotActiveCount(count int64) {
 	if stats == nil {
 		return
 	}
 	stats.slotActiveCount.Swap(count)
 }
 
-func (stats *timingWheelStats) RecordSlotCount(count int64) {
+func (stats *xTimingWheelsStats) RecordSlotCount(count int64) {
 	if stats == nil {
 		return
 	}
 	stats.slotCounter.Add(stats.ctx, count)
 }
 
-func (stats *timingWheelStats) IncreaseJobExecutedCount() {
+func (stats *xTimingWheelsStats) IncreaseJobExecutedCount() {
 	if stats == nil {
 		return
 	}
@@ -62,14 +62,14 @@ func (stats *timingWheelStats) IncreaseJobExecutedCount() {
 	stats.jobExecutedCount.Add(1)
 }
 
-func (stats *timingWheelStats) IncreaseJobCancelledCount() {
+func (stats *xTimingWheelsStats) IncreaseJobCancelledCount() {
 	if stats == nil {
 		return
 	}
 	stats.jobCancelledCounter.Add(stats.ctx, 1)
 }
 
-func (stats *timingWheelStats) RecordJobLatency(latencyMs int64) {
+func (stats *xTimingWheelsStats) RecordJobLatency(latencyMs int64) {
 	if stats == nil {
 		return
 	}
@@ -82,7 +82,7 @@ func (stats *timingWheelStats) RecordJobLatency(latencyMs int64) {
 	}
 }
 
-func (stats *timingWheelStats) RecordJobExecuteDuration(durationMs int64) {
+func (stats *xTimingWheelsStats) RecordJobExecuteDuration(durationMs int64) {
 	if stats == nil {
 		return
 	}
@@ -92,19 +92,13 @@ func (stats *timingWheelStats) RecordJobExecuteDuration(durationMs int64) {
 	stats.jobExecuteDurations.Record(stats.ctx, durationMs, metric.WithAttributeSet(as))
 }
 
-func WithTimingWheelStats() TimingWheelsOption {
-	return func(xtw *xTimingWheels) {
-		xtw.isStatsEnabled = true
-	}
-}
-
-func newTimingWheelStats(ref *xTimingWheels) *timingWheelStats {
-	meterName := fmt.Sprintf("%s/%s", TimingWheelStatsName, ref.name)
-	tickMs := ref.GetTickMs()
-	stats := &timingWheelStats{
+func newTimingWheelStats(ref *xTimingWheelsOption) *xTimingWheelsStats {
+	meterName := fmt.Sprintf("%s/%s", TimingWheelStatsName, ref.getName())
+	tickMs := ref.getBasicTickMilliseconds()
+	stats := &xTimingWheelsStats{
 		ctx:       context.Background(),
 		minTickMs: tickMs,
-		clock:     ref.clock,
+		clock:     ref.getClock(),
 		jobAliveCounter: lo.Must[metric.Int64UpDownCounter](otel.Meter(meterName).
 			Int64UpDownCounter(
 				"xtw.job.count",

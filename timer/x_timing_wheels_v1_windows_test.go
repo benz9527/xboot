@@ -26,11 +26,11 @@ func TestXTimingWheels_ScheduleFunc_windowsClock_1MsInfinite(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
 		WithTimingWheelTimeSource(WindowsClock),
-		WithTimingWheelStats(),
-		withTimingWheelStatsInit(5),
+		WithTimingWheelsStats(),
+		withTimingWheelsStatsInit(5),
 	)
 
 	delays := []time.Duration{
@@ -62,11 +62,11 @@ func TestXTimingWheels_ScheduleFunc_windowsClock_1MsInfinite_4Procs(t *testing.T
 	}()
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
 		WithTimingWheelTimeSource(WindowsClock),
-		WithTimingWheelStats(),
-		withTimingWheelStatsInit(5),
+		WithTimingWheelsStats(),
+		withTimingWheelsStatsInit(5),
 	)
 
 	delays := []time.Duration{
@@ -95,13 +95,13 @@ func TestXTimingWheels_ScheduleFunc_windowsClock_2MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "window2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		WithTimingWheelTickMs(2*time.Millisecond),
-		WithTimingWheelSlotSize(20),
+		WithTimingWheelsTickMs(2*time.Millisecond),
+		WithTimingWheelsSlotSize(20),
 		WithTimingWheelTimeSource(WindowsClock),
-		withTimingWheelStatsInit(5),
-		WithTimingWheelStats(),
+		withTimingWheelsStatsInit(5),
+		WithTimingWheelsStats(),
 	)
 
 	delays := []time.Duration{

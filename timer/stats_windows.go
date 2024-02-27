@@ -7,7 +7,7 @@ import (
 	"context"
 )
 
-func jobStatsWrapper(stats *timingWheelStats, invoke Job) Job {
+func jobStatsWrapper(stats *xTimingWheelsStats, invoke Job) Job {
 	if stats == nil {
 		return invoke
 	}

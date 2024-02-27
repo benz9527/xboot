@@ -3,7 +3,6 @@ package timer
 import (
 	"context"
 	"errors"
-	"os"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -12,34 +11,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/benz9527/xboot/observability"
 )
 
-func withTimingWheelStatsInit(interval int64) TimingWheelsOption {
-	return func(xtw *xTimingWheels) {
-		exp, err := stdoutmetric.New(
-			stdoutmetric.WithWriter(os.Stdout),
-		)
-		if err != nil {
-			panic(err)
-		}
-		mp := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(exp, metric.WithInterval(time.Duration(interval)*time.Second))))
-		otel.SetMeterProvider(mp)
-	}
-}
-
 func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
 		WithTimingWheelTimeSource(SdkDefaultTime),
-		WithTimingWheelSnowflakeID(0, 0),
-		withTimingWheelStatsInit(2),
-		WithTimingWheelStats(),
+		WithTimingWheelsSnowflakeID(0, 0),
+		withTimingWheelsStatsInit(2),
+		WithTimingWheelsStats(),
 	)
 	defer func() {
 		mp, ok := otel.GetMeterProvider().(*metric.MeterProvider)
@@ -140,10 +125,10 @@ func TestXTimingWheels_AlignmentAndSize(t *testing.T) {
 func TestNewTimingWheels(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.TODO(), time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		WithTimingWheelTickMs(100),
-		WithTimingWheelSlotSize(32),
+		WithTimingWheelsTickMs(100),
+		WithTimingWheelsSlotSize(32),
 	)
 	t.Logf("tw tickMs: %d\n", tw.GetTickMs())
 	t.Logf("tw startMs: %d\n", tw.GetStartMs())
@@ -154,10 +139,10 @@ func TestNewTimingWheels(t *testing.T) {
 func TestXTimingWheels_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		withTimingWheelStatsInit(2),
-		WithTimingWheelStats(),
+		withTimingWheelsStatsInit(2),
+		WithTimingWheelsStats(),
 	)
 
 	delays := []time.Duration{
@@ -209,10 +194,10 @@ func TestXTimingWheels_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "sdk1msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		withTimingWheelStatsInit(5),
-		WithTimingWheelStats(),
+		withTimingWheelsStatsInit(5),
+		WithTimingWheelsStats(),
 	)
 
 	delays := []time.Duration{
@@ -239,12 +224,12 @@ func TestXTimingWheels_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "sdk2msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		WithTimingWheelTickMs(2*time.Millisecond),
-		WithTimingWheelSlotSize(20),
-		withTimingWheelStatsInit(5),
-		WithTimingWheelStats(),
+		WithTimingWheelsTickMs(2*time.Millisecond),
+		WithTimingWheelsSlotSize(20),
+		withTimingWheelsStatsInit(5),
+		WithTimingWheelsStats(),
 	)
 
 	delays := []time.Duration{
@@ -271,12 +256,12 @@ func TestXTimingWheels_ScheduleFunc_5MsInfinite(t *testing.T) {
 	observability.InitAppStats(context.Background(), "sdk5msInfinite")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, errors.New("timeout"))
 	defer cancel()
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		WithTimingWheelTickMs(5*time.Millisecond),
-		WithTimingWheelSlotSize(20),
-		withTimingWheelStatsInit(5),
-		WithTimingWheelStats(),
+		WithTimingWheelsTickMs(5*time.Millisecond),
+		WithTimingWheelsSlotSize(20),
+		withTimingWheelsStatsInit(5),
+		WithTimingWheelsStats(),
 	)
 
 	delays := []time.Duration{
@@ -305,7 +290,7 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
 	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
 
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
 	)
 
@@ -351,10 +336,10 @@ func BenchmarkNewTimingWheels_AfterFunc(b *testing.B) {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
 	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
-	tw := NewTimingWheels(
+	tw := NewXTimingWheels(
 		ctx,
-		WithTimingWheelTickMs(1),
-		WithTimingWheelSlotSize(20),
+		WithTimingWheelsTickMs(1),
+		WithTimingWheelsSlotSize(20),
 	)
 	defer tw.Shutdown()
 	b.ResetTimer()

@@ -27,9 +27,9 @@ var (
 )
 
 type TimingWheelCommonMetadata interface {
-	// GetTickMs returns the baseline tick ms (interval) of the timing wheel.
+	// GetTickMs returns the baseline tick ms (interval) of the timing-wheel.
 	GetTickMs() int64
-	// GetStartMs returns the start ms of the timing wheel.
+	// GetStartMs returns the start ms of the timing-wheel.
 	GetStartMs() int64
 }
 
