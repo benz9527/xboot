@@ -73,9 +73,13 @@ func (opt *xTimingWheelsOption) getClock() hrtime.Clock {
 
 func (opt *xTimingWheelsOption) getIDGenerator() id.Gen {
 	if opt.idGenerator == nil {
-		return func() uint64 {
-			return uint64(opt.getClock().NowInDefaultTZ().UnixNano())
+		gen, err := id.StandardSnowFlakeID(0, 0, func() time.Time {
+			return opt.getClock().NowInDefaultTZ()
+		})
+		if err != nil {
+			panic(err)
 		}
+		opt.idGenerator = gen
 	}
 	return opt.idGenerator
 }
