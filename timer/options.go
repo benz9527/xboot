@@ -5,9 +5,12 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"log/slog"
+	"math"
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/benz9527/xboot/lib/hrtime"
@@ -17,22 +20,27 @@ import (
 const (
 	defaultMinEventBufferSize          = 1024
 	defaultMinWorkerPoolSize           = 128
-	defaultMinSlotIncrementSize        = 4
+	defaultMinSlotIncrementSize        = 10
+	defaultMinIntervalMilliseconds     = 20 // lt 20ms will overflow
 	defaultMinTickAccuracyMilliseconds = 1
 )
 
 type xTimingWheelsOption struct {
-	name         string
-	basicTickMs  int64
-	slotIncrSize int64
-	idGenerator  id.Gen
-	stats        *xTimingWheelsStats
-	clock        hrtime.Clock
-	bufferSize   int
-	workPoolSize int
+	name            string
+	basicTickMs     int64
+	slotIncrSize    int64
+	idGenerator     id.Gen
+	stats           *xTimingWheelsStats
+	clock           hrtime.Clock
+	bufferSize      int
+	workPoolSize    int
+	_isValueChecked *atomic.Bool
 }
 
 func (opt *xTimingWheelsOption) getBasicTickMilliseconds() int64 {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	if opt.basicTickMs < defaultMinTickAccuracyMilliseconds {
 		return defaultMinTickAccuracyMilliseconds
 	}
@@ -40,6 +48,9 @@ func (opt *xTimingWheelsOption) getBasicTickMilliseconds() int64 {
 }
 
 func (opt *xTimingWheelsOption) getEventBufferSize() int {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	if opt.bufferSize < defaultMinEventBufferSize {
 		return defaultMinEventBufferSize
 	}
@@ -47,6 +58,9 @@ func (opt *xTimingWheelsOption) getEventBufferSize() int {
 }
 
 func (opt *xTimingWheelsOption) getSlotIncrementSize() int64 {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	if opt.slotIncrSize < defaultMinSlotIncrementSize {
 		return defaultMinSlotIncrementSize
 	}
@@ -54,6 +68,9 @@ func (opt *xTimingWheelsOption) getSlotIncrementSize() int64 {
 }
 
 func (opt *xTimingWheelsOption) getWorkerPoolSize() int {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	if opt.workPoolSize < defaultMinWorkerPoolSize {
 		return defaultMinWorkerPoolSize
 	}
@@ -61,10 +78,16 @@ func (opt *xTimingWheelsOption) getWorkerPoolSize() int {
 }
 
 func (opt *xTimingWheelsOption) getExpiredSlotBufferSize() int {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	return int(opt.getSlotIncrementSize() + 8)
 }
 
 func (opt *xTimingWheelsOption) getClock() hrtime.Clock {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	if opt.clock == nil {
 		return hrtime.SdkClock
 	}
@@ -72,6 +95,9 @@ func (opt *xTimingWheelsOption) getClock() hrtime.Clock {
 }
 
 func (opt *xTimingWheelsOption) getIDGenerator() id.Gen {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	if opt.idGenerator == nil {
 		gen, err := id.StandardSnowFlakeID(0, 0, func() time.Time {
 			return opt.getClock().NowInDefaultTZ()
@@ -85,18 +111,46 @@ func (opt *xTimingWheelsOption) getIDGenerator() id.Gen {
 }
 
 func (opt *xTimingWheelsOption) getStats() *xTimingWheelsStats {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	return opt.stats
 }
 
 func (opt *xTimingWheelsOption) defaultDelayQueueCapacity() int {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	return 128
 }
 
 func (opt *xTimingWheelsOption) getName() string {
+	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+		panic("value unchecked")
+	}
 	if opt.name == "" {
 		return fmt.Sprintf("xtw-%s-%d", runtime.GOOS, opt.getIDGenerator()())
 	}
 	return opt.name
+}
+
+func (opt *xTimingWheelsOption) Validate() {
+	opt._isValueChecked = &atomic.Bool{}
+	if opt.basicTickMs < 1 {
+		opt.basicTickMs = defaultMinTickAccuracyMilliseconds
+		slog.Warn("adjust the tick accuracy", "from", 0, "to", opt.basicTickMs)
+	}
+	if opt.basicTickMs > 0 && opt.slotIncrSize > 0 &&
+		opt.basicTickMs*opt.slotIncrSize < defaultMinIntervalMilliseconds {
+		from := opt.slotIncrSize
+		opt.slotIncrSize = int64(math.Ceil(float64(defaultMinIntervalMilliseconds) / float64(opt.basicTickMs)))
+		slog.Warn("adjust the slot increment size", "from", from, "to", opt.slotIncrSize)
+	}
+	if opt.basicTickMs >= 1 && opt.slotIncrSize < 1 {
+		opt.slotIncrSize = int64(math.Ceil(float64(defaultMinIntervalMilliseconds) / float64(opt.basicTickMs)))
+		slog.Warn("adjust the slot increment size", "from", 0, "to", opt.slotIncrSize)
+	}
+	opt._isValueChecked.Store(true)
 }
 
 type TimingWheelsOption func(option *xTimingWheelsOption)
@@ -112,8 +166,8 @@ func WithTimingWheelsTickMs(basicTickMs time.Duration) TimingWheelsOption {
 
 func WithTimingWheelsSlotSize(slotSize int64) TimingWheelsOption {
 	return func(opt *xTimingWheelsOption) {
-		if slotSize < defaultMinSlotIncrementSize {
-			panic(fmt.Sprintf("timing-wheels' slot size must be greater than or equals to %d", defaultMinSlotIncrementSize))
+		if slotSize < 1 {
+			panic("empty slot increment size")
 		}
 		opt.slotIncrSize = slotSize
 	}

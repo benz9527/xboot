@@ -16,6 +16,7 @@ import (
 	"github.com/benz9527/xboot/lib/id"
 	"github.com/benz9527/xboot/lib/infra"
 	"github.com/benz9527/xboot/lib/ipc"
+	"github.com/benz9527/xboot/lib/kv"
 	"github.com/benz9527/xboot/lib/queue"
 )
 
@@ -23,7 +24,7 @@ type xTimingWheelsV2 struct {
 	tw               TimingWheel
 	ctx              context.Context
 	dq               queue.DelayQueue[TimingWheelSlot] // Do not use the timer.Ticker
-	tasksMap         map[JobID]Task
+	tasksMap         kv.ThreadSafeStorer[JobID, Task]
 	stopC            chan struct{}
 	expiredSlotC     infra.ClosableChannel[TimingWheelSlot]
 	twEventDisruptor ipc.Disruptor[*timingWheelEvent]
@@ -62,7 +63,7 @@ func (xtw *xTimingWheelsV2) Shutdown() {
 
 	runtime.SetFinalizer(xtw, func(xtw *xTimingWheelsV2) {
 		xtw.dq = nil
-		clear(xtw.tasksMap)
+		_ = xtw.tasksMap.Purge()
 	})
 }
 
@@ -141,7 +142,7 @@ func (xtw *xTimingWheelsV2) CancelTask(jobID JobID) error {
 	if xtw.isRunning.Load() {
 		return ErrTimingWheelStopped
 	}
-	task, ok := xtw.tasksMap[jobID]
+	task, ok := xtw.tasksMap.Get(jobID)
 	if !ok {
 		return ErrTimingWheelTaskNotFound
 	}
@@ -267,7 +268,7 @@ func (xtw *xTimingWheelsV2) addTask(task Task) error {
 	}
 	err := xtw.tw.(*timingWheel).addTask(task, 0)
 	if err == nil || errors.Is(err, ErrTimingWheelTaskIsExpired) {
-		xtw.tasksMap[task.GetJobID()] = task
+		xtw.tasksMap.AddOrUpdate(task.GetJobID(), task)
 	}
 	return err
 }
@@ -362,7 +363,7 @@ func (xtw *xTimingWheelsV2) cancelTask(jobID JobID) error {
 		return ErrTimingWheelStopped
 	}
 
-	task, ok := xtw.tasksMap[jobID]
+	task, ok := xtw.tasksMap.Get(jobID)
 	if !ok {
 		return ErrTimingWheelTaskNotFound
 	}
@@ -378,7 +379,7 @@ func (xtw *xTimingWheelsV2) cancelTask(jobID JobID) error {
 
 	task.Cancel()
 
-	delete(xtw.tasksMap, jobID)
+	xtw.tasksMap.Delete(jobID)
 	return nil
 }
 
@@ -395,18 +396,19 @@ func NewXTimingWheelsV2(ctx context.Context, opts ...TimingWheelsOption) TimingW
 			o(xtwOpt)
 		}
 	}
+	xtwOpt.Validate()
 
 	xtw := &xTimingWheelsV2{
 		ctx:          ctx,
 		stopC:        make(chan struct{}),
 		expiredSlotC: infra.NewSafeClosableChannel[TimingWheelSlot](xtwOpt.getExpiredSlotBufferSize()),
-		tasksMap:     make(map[JobID]Task),
+		tasksMap:     kv.NewThreadSafeMap[JobID, Task](),
 		isRunning:    &atomic.Bool{},
 		clock:        xtwOpt.getClock(),
 		idGenerator:  xtwOpt.getIDGenerator(),
 		twEventPool:  newTimingWheelEventsPool(),
 		stats:        xtwOpt.getStats(),
-		name:         xtwOpt.name,
+		name:         xtwOpt.getName(),
 	}
 	xtw.isRunning.Store(false)
 	if p, err := ants.NewPool(xtwOpt.getWorkerPoolSize(), ants.WithPreAlloc(true)); err != nil {
