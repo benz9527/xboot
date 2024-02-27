@@ -112,7 +112,12 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 		slotID := virtualID % slotSize
 		slot := tw.slots[slotID]
 		if slot.GetExpirationMs() == virtualID*tickMs {
-			if err := slot.AddTask(task); err != nil {
+			if err := slot.AddTask(task); errors.Is(err, ErrTimingWheelTaskUnableToBeAddedToSlot) {
+				slog.Warn("unable add a task to slot, set it as immediately expired", "ms", task.GetExpiredMs(), "ID", task.GetJobID())
+				task.setSlot(immediateExpiredSlot)
+				return fmt.Errorf("[timing wheel] task task expired ms  %d is before %d, %w",
+					taskExpiredMs, currentTimeMs+tickMs, ErrTimingWheelTaskIsExpired)
+			} else if err != nil {
 				return err
 			}
 		} else {
@@ -351,9 +356,7 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 					xtw.stats.UpdateSlotActiveCount(xtw.dq.Len())
 					// Reset the slot, ready for the next round.
 					slot.setExpirationMs(slotHasBeenFlushedMs)
-					_ = xtw.gPool.Submit(func() {
-						slot.Flush(xtw.handleTask)
-					})
+					slot.Flush(xtw.handleTask)
 				}
 			case event := <-eventC:
 				switch op := event.GetOperation(); op {
@@ -363,11 +366,8 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 						goto recycle
 					}
 					if err := xtw.addTask(task); errors.Is(err, ErrTimingWheelTaskIsExpired) {
-						_ = xtw.gPool.Submit(func() {
-							xtw.handleTask(task)
-						})
-					} else if errors.Is(err, ErrTimingWheelTaskUnableToBeAddedToSlot) {
-						slog.Error("unable add a task to slot", "ms", task.GetExpiredMs())
+						// Avoid data race.
+						xtw.handleTask(task)
 					}
 					if op == addTask {
 						xtw.stats.RecordJobAliveCount(1)
@@ -377,9 +377,8 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 					if !ok || cancelDisabled.(bool) {
 						goto recycle
 					}
-					_ = xtw.gPool.Submit(func() {
-						_ = xtw.cancelTask(jobID)
-					})
+					// Avoid data race
+					_ = xtw.cancelTask(jobID)
 				case unknown:
 					fallthrough
 				default:

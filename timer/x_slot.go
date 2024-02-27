@@ -84,6 +84,9 @@ func (slot *xSlot) AddTask(task Task) error {
 	if task == nil {
 		return nil
 	}
+	if slot.GetExpirationMs() == slotHasBeenFlushedMs {
+		return ErrTimingWheelTaskUnableToBeAddedToSlot
+	}
 
 	elementRefs := slot.tasks.AppendValue(task)
 	task.setSlot(slot)

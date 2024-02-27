@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"runtime"
 	"runtime/debug"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,6 +36,7 @@ type xTimingWheelsV2 struct {
 	clock            hrtime.Clock
 	idGenerator      id.Gen
 	name             string
+	schedLock        sync.Mutex
 	isStatsEnabled   bool
 }
 
@@ -192,8 +194,12 @@ func (xtw *xTimingWheelsV2) schedule(ctx context.Context) {
 				if slot != nil && slot.GetExpirationMs() > slotHasBeenFlushedMs {
 					xtw.stats.UpdateSlotActiveCount(xtw.dq.Len())
 					// Reset the slot, ready for the next round.
+					xtw.schedLock.Lock()
 					slot.setExpirationMs(slotHasBeenFlushedMs)
+					xtw.schedLock.Unlock()
 					_ = xtw.gPool.Submit(func() {
+						xtw.schedLock.Lock()
+						defer xtw.schedLock.Unlock()
 						slot.Flush(xtw.handleTask)
 					})
 				}
@@ -234,8 +240,6 @@ func (xtw *xTimingWheelsV2) handleEvent(event *timingWheelEvent) error {
 			_ = xtw.gPool.Submit(func() {
 				xtw.handleTask(task)
 			})
-		} else if errors.Is(err, ErrTimingWheelTaskUnableToBeAddedToSlot) {
-			slog.Error("unable add a task to slot", "ms", task.GetExpiredMs())
 		}
 		if op == addTask {
 			xtw.stats.RecordJobAliveCount(1)
@@ -266,7 +270,9 @@ func (xtw *xTimingWheelsV2) addTask(task Task) error {
 	if task == nil || task.Cancelled() || !xtw.isRunning.Load() {
 		return ErrTimingWheelStopped
 	}
+	xtw.schedLock.Lock()
 	err := xtw.tw.(*timingWheel).addTask(task, 0)
+	xtw.schedLock.Unlock()
 	if err == nil || errors.Is(err, ErrTimingWheelTaskIsExpired) {
 		xtw.tasksMap.AddOrUpdate(task.GetJobID(), task)
 	}
@@ -368,9 +374,12 @@ func (xtw *xTimingWheelsV2) cancelTask(jobID JobID) error {
 		return ErrTimingWheelTaskNotFound
 	}
 
+	xtw.schedLock.Lock()
 	if task.GetSlot() != nil && !task.GetSlot().RemoveTask(task) {
+		xtw.schedLock.Unlock()
 		return ErrTimingWheelTaskUnableToBeRemoved
 	}
+	xtw.schedLock.Unlock()
 
 	defer func() {
 		xtw.stats.IncreaseJobCancelledCount()
