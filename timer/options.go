@@ -26,19 +26,20 @@ const (
 )
 
 type xTimingWheelsOption struct {
-	name            string
-	basicTickMs     int64
-	slotIncrSize    int64
-	idGenerator     id.Gen
-	stats           *xTimingWheelsStats
-	clock           hrtime.Clock
-	bufferSize      int
-	workPoolSize    int
-	_isValueChecked *atomic.Bool
+	name           string
+	basicTickMs    int64
+	slotIncrSize   int64
+	idGenerator    id.Gen
+	stats          *xTimingWheelsStats
+	clock          hrtime.Clock
+	bufferSize     int
+	workPoolSize   int
+	isValueChecked *atomic.Bool
+	enableStats    bool
 }
 
 func (opt *xTimingWheelsOption) getBasicTickMilliseconds() int64 {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	if opt.basicTickMs < defaultMinTickAccuracyMilliseconds {
@@ -48,7 +49,7 @@ func (opt *xTimingWheelsOption) getBasicTickMilliseconds() int64 {
 }
 
 func (opt *xTimingWheelsOption) getEventBufferSize() int {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	if opt.bufferSize < defaultMinEventBufferSize {
@@ -58,7 +59,7 @@ func (opt *xTimingWheelsOption) getEventBufferSize() int {
 }
 
 func (opt *xTimingWheelsOption) getSlotIncrementSize() int64 {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	if opt.slotIncrSize < defaultMinSlotIncrementSize {
@@ -68,7 +69,7 @@ func (opt *xTimingWheelsOption) getSlotIncrementSize() int64 {
 }
 
 func (opt *xTimingWheelsOption) getWorkerPoolSize() int {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	if opt.workPoolSize < defaultMinWorkerPoolSize {
@@ -78,14 +79,14 @@ func (opt *xTimingWheelsOption) getWorkerPoolSize() int {
 }
 
 func (opt *xTimingWheelsOption) getExpiredSlotBufferSize() int {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	return int(opt.getSlotIncrementSize() + 8)
 }
 
 func (opt *xTimingWheelsOption) getClock() hrtime.Clock {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	if opt.clock == nil {
@@ -95,7 +96,7 @@ func (opt *xTimingWheelsOption) getClock() hrtime.Clock {
 }
 
 func (opt *xTimingWheelsOption) getIDGenerator() id.Gen {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	if opt.idGenerator == nil {
@@ -111,21 +112,15 @@ func (opt *xTimingWheelsOption) getIDGenerator() id.Gen {
 }
 
 func (opt *xTimingWheelsOption) getStats() *xTimingWheelsStats {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
-		panic("value unchecked")
-	}
 	return opt.stats
 }
 
 func (opt *xTimingWheelsOption) defaultDelayQueueCapacity() int {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
-		panic("value unchecked")
-	}
 	return 128
 }
 
 func (opt *xTimingWheelsOption) getName() string {
-	if opt._isValueChecked == nil || !opt._isValueChecked.Load() {
+	if opt.isValueChecked == nil || !opt.isValueChecked.Load() {
 		panic("value unchecked")
 	}
 	if opt.name == "" {
@@ -135,7 +130,7 @@ func (opt *xTimingWheelsOption) getName() string {
 }
 
 func (opt *xTimingWheelsOption) Validate() {
-	opt._isValueChecked = &atomic.Bool{}
+	opt.isValueChecked = &atomic.Bool{}
 	if opt.basicTickMs < 1 {
 		opt.basicTickMs = defaultMinTickAccuracyMilliseconds
 		slog.Warn("adjust the tick accuracy", "from", 0, "to", opt.basicTickMs)
@@ -150,7 +145,10 @@ func (opt *xTimingWheelsOption) Validate() {
 		opt.slotIncrSize = int64(math.Ceil(float64(defaultMinIntervalMilliseconds) / float64(opt.basicTickMs)))
 		slog.Warn("adjust the slot increment size", "from", 0, "to", opt.slotIncrSize)
 	}
-	opt._isValueChecked.Store(true)
+	opt.isValueChecked.Store(true)
+	if opt.enableStats {
+		opt.stats = newTimingWheelStats(opt)
+	}
 }
 
 type TimingWheelsOption func(option *xTimingWheelsOption)
@@ -199,7 +197,7 @@ func WithTimingWheelsSnowflakeID(datacenterID, machineID int64) TimingWheelsOpti
 
 func WithTimingWheelsStats() TimingWheelsOption {
 	return func(opt *xTimingWheelsOption) {
-		opt.stats = newTimingWheelStats(opt)
+		opt.enableStats = true
 	}
 }
 
@@ -221,7 +219,7 @@ func WithTimingWheelsEventBufferSize(size int) TimingWheelsOption {
 	}
 }
 
-func withTimingWheelsStatsInit(interval int64) TimingWheelsOption {
+func withTimingWheelsDebugStatsInit(interval int64) TimingWheelsOption {
 	return func(opt *xTimingWheelsOption) {
 		exp, err := stdoutmetric.New(
 			stdoutmetric.WithWriter(os.Stdout),

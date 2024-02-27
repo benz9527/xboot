@@ -30,7 +30,7 @@ func TestXTimingWheels_ScheduleFunc_windowsClock_1MsInfinite(t *testing.T) {
 		ctx,
 		WithTimingWheelTimeSource(WindowsClock),
 		WithTimingWheelsStats(),
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 	)
 
 	delays := []time.Duration{
@@ -66,7 +66,7 @@ func TestXTimingWheels_ScheduleFunc_windowsClock_1MsInfinite_4Procs(t *testing.T
 		ctx,
 		WithTimingWheelTimeSource(WindowsClock),
 		WithTimingWheelsStats(),
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 	)
 
 	delays := []time.Duration{
@@ -100,7 +100,7 @@ func TestXTimingWheels_ScheduleFunc_windowsClock_2MsInfinite(t *testing.T) {
 		WithTimingWheelsTickMs(2*time.Millisecond),
 		WithTimingWheelsSlotSize(20),
 		WithTimingWheelTimeSource(WindowsClock),
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 		WithTimingWheelsStats(),
 	)
 

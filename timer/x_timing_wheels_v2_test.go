@@ -23,7 +23,7 @@ func testSimpleAfterFuncSdkDefaultTimeV2(t *testing.T) {
 		ctx,
 		WithTimingWheelTimeSource(SdkDefaultTime),
 		WithTimingWheelsSnowflakeID(0, 0),
-		withTimingWheelsStatsInit(2),
+		withTimingWheelsDebugStatsInit(2),
 		WithTimingWheelsStats(),
 	)
 	defer func() {
@@ -106,7 +106,7 @@ func TestXTimingWheelsV2_ScheduleFunc_ConcurrentFinite(t *testing.T) {
 	defer cancel()
 	tw := NewXTimingWheelsV2(
 		ctx,
-		withTimingWheelsStatsInit(2),
+		withTimingWheelsDebugStatsInit(2),
 		WithTimingWheelsStats(),
 	)
 
@@ -161,7 +161,7 @@ func TestXTimingWheelsV2_ScheduleFunc_sdkClock_1MsInfinite(t *testing.T) {
 	defer cancel()
 	tw := NewXTimingWheelsV2(
 		ctx,
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 		WithTimingWheelsStats(),
 	)
 
@@ -193,7 +193,7 @@ func TestXTimingWheelsV2_ScheduleFunc_sdkClock_2MsInfinite(t *testing.T) {
 		ctx,
 		WithTimingWheelsTickMs(2*time.Millisecond),
 		WithTimingWheelsSlotSize(20),
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 		WithTimingWheelsStats(),
 	)
 
@@ -225,7 +225,7 @@ func TestXTimingWheelsV2_ScheduleFunc_5MsInfinite(t *testing.T) {
 		ctx,
 		WithTimingWheelsTickMs(5*time.Millisecond),
 		WithTimingWheelsSlotSize(20),
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 		WithTimingWheelsStats(),
 	)
 

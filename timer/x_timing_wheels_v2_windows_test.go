@@ -27,7 +27,7 @@ func TestXTimingWheelsV2_ScheduleFunc_windowsClock_1MsInfinite(t *testing.T) {
 		ctx,
 		WithTimingWheelTimeSource(WindowsClock),
 		WithTimingWheelsStats(),
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 	)
 
 	delays := []time.Duration{

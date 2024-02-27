@@ -22,7 +22,7 @@ func TestXTimingWheelsV2_ScheduleFunc_goNativeClock_1MsInfinite(t *testing.T) {
 	defer cancel()
 	tw := NewXTimingWheelsV2(
 		ctx,
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 		WithTimingWheelsStats(),
 		WithTimingWheelTimeSource(GoNativeClock),
 	)
@@ -57,7 +57,7 @@ func TestXTimingWheelsV2_ScheduleFunc_goNativeClock_2MsInfinite(t *testing.T) {
 		WithTimingWheelsTickMs(2*time.Millisecond),
 		WithTimingWheelsSlotSize(20),
 		WithTimingWheelTimeSource(GoNativeClock),
-		withTimingWheelsStatsInit(5),
+		withTimingWheelsDebugStatsInit(5),
 		WithTimingWheelsStats(),
 	)
 
