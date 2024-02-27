@@ -2,9 +2,6 @@ package timer
 
 import (
 	"fmt"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
-	"go.opentelemetry.io/otel/sdk/metric"
 	"log/slog"
 	"math"
 	"os"
@@ -12,6 +9,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+	"go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/benz9527/xboot/lib/hrtime"
 	"github.com/benz9527/xboot/lib/id"
@@ -133,17 +134,17 @@ func (opt *xTimingWheelsOption) Validate() {
 	opt.isValueChecked = &atomic.Bool{}
 	if opt.basicTickMs < 1 {
 		opt.basicTickMs = defaultMinTickAccuracyMilliseconds
-		slog.Warn("adjust the tick accuracy", "from", 0, "to", opt.basicTickMs)
+		slog.Warn("[x-timing-wheels options] adjust the tick accuracy milliseconds", "from", 0, "to", opt.basicTickMs)
 	}
 	if opt.basicTickMs > 0 && opt.slotIncrSize > 0 &&
 		opt.basicTickMs*opt.slotIncrSize < defaultMinIntervalMilliseconds {
 		from := opt.slotIncrSize
 		opt.slotIncrSize = int64(math.Ceil(float64(defaultMinIntervalMilliseconds) / float64(opt.basicTickMs)))
-		slog.Warn("adjust the slot increment size", "from", from, "to", opt.slotIncrSize)
+		slog.Warn("[x-timing-wheels options] adjust the slot increment size", "from", from, "to", opt.slotIncrSize)
 	}
 	if opt.basicTickMs >= 1 && opt.slotIncrSize < 1 {
 		opt.slotIncrSize = int64(math.Ceil(float64(defaultMinIntervalMilliseconds) / float64(opt.basicTickMs)))
-		slog.Warn("adjust the slot increment size", "from", 0, "to", opt.slotIncrSize)
+		slog.Warn("[x-timing-wheels options] adjust the slot increment size", "from", 0, "to", opt.slotIncrSize)
 	}
 	opt.isValueChecked.Store(true)
 	if opt.enableStats {

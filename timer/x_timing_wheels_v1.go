@@ -26,7 +26,7 @@ var (
 )
 
 type timingWheel struct {
-	slots []TimingWheelSlot // alignment 8, size 24; in kafka it is buckets
+	slots []TimingWheelSlot // In kafka it is buckets
 	// ctx is used to shut down the timing wheel and pass
 	// value to control debug info.
 	ctx              context.Context
@@ -163,7 +163,7 @@ func newTimingWheel(
 		startMs:       startMs,
 		slotSize:      slotSize,
 		globalStats:   stats,
-		interval:      tickMs * slotSize,
+		interval:      tickMs * slotSize,            // Pay attention to the overflow
 		currentTimeMs: startMs - (startMs % tickMs), // truncate the remainder as startMs left boundary
 		slots:         make([]TimingWheelSlot, slotSize),
 		globalDqRef:   dq,
@@ -215,7 +215,7 @@ func (xtw *xTimingWheels) Shutdown() {
 		return
 	}
 	if old := xtw.isRunning.Swap(false); !old {
-		slog.Warn("[timing wheel] timing wheel is already shutdown")
+		slog.Warn("[x-timing-wheels] timing wheel is already shutdown")
 		return
 	}
 	xtw.isRunning.Store(false)
@@ -248,7 +248,7 @@ func (xtw *xTimingWheels) AddTask(task Task) error {
 
 func (xtw *xTimingWheels) AfterFunc(delayMs time.Duration, fn Job) (Task, error) {
 	if delayMs.Milliseconds() < xtw.GetTickMs() {
-		return nil, fmt.Errorf("[timing wheel] delay ms %d is less than tick ms %d, %w",
+		return nil, fmt.Errorf("[x-timing-wheels] delay ms %d is less than tick ms %d, %w",
 			delayMs.Milliseconds(), xtw.GetTickMs(), ErrTimingWheelTaskTooShortExpiration)
 	}
 	if fn == nil {
@@ -258,7 +258,7 @@ func (xtw *xTimingWheels) AfterFunc(delayMs time.Duration, fn Job) (Task, error)
 	var now = xtw.clock.NowInDefaultTZ()
 	task := NewOnceTask(
 		xtw.ctx,
-		JobID(fmt.Sprintf("%d", xtw.idGenerator())),
+		JobID(fmt.Sprintf("%v", xtw.idGenerator())),
 		now.Add(delayMs).UnixMilli(),
 		fn,
 	)
@@ -283,7 +283,7 @@ func (xtw *xTimingWheels) ScheduleFunc(schedFn func() Scheduler, fn Job) (Task, 
 	var now = xtw.clock.NowInDefaultTZ()
 	task := NewRepeatTask(
 		xtw.ctx,
-		JobID(fmt.Sprintf("%d", xtw.idGenerator())),
+		JobID(fmt.Sprintf("%v", xtw.idGenerator())),
 		now.UnixMilli(), schedFn(),
 		fn,
 	)
@@ -325,7 +325,7 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 	_ = xtw.gPool.Submit(func() {
 		defer func() {
 			if err := recover(); err != nil {
-				slog.Error("[timing wheel] event schedule panic recover", "error", err, "stack", debug.Stack())
+				slog.Error("[x-timing-wheels] event schedule panic recover", "error", err, "stack", debug.Stack())
 			}
 		}()
 		cancelDisabled := ctx.Value(disableTimingWheelsScheduleCancelTask)
@@ -343,7 +343,11 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 				return
 			default:
 				if xtw.twEventC.IsClosed() {
-					slog.Warn("[timing wheel] event channel has been closed")
+					slog.Warn("[x-timing-wheels] event channel has been closed")
+					return
+				}
+				if xtw.expiredSlotC.IsClosed() {
+					slog.Warn("[x-timing-wheels] slot channel has been closed")
 					return
 				}
 			}
@@ -392,14 +396,14 @@ func (xtw *xTimingWheels) schedule(ctx context.Context) {
 	_ = xtw.gPool.Submit(func() {
 		func(disabled any) {
 			if disabled != nil && disabled.(bool) {
-				slog.Warn("[timing wheel] delay queue poll disabled")
+				slog.Warn("[x-timing-wheels] delay queue poll disabled")
 				return
 			}
 			defer func() {
 				if err := recover(); err != nil {
-					slog.Error("[timing wheel] poll schedule panic recover", "error", err, "stack", debug.Stack())
+					slog.Error("[x-timing-wheels] poll schedule panic recover", "error", err, "stack", debug.Stack())
 				}
-				slog.Warn("[timing wheel] delay queue exit")
+				slog.Warn("[x-timing-wheels] delay queue exit")
 			}()
 			xtw.dq.PollToChan(func() int64 {
 				return xtw.clock.NowInDefaultTZ().UnixMilli()
@@ -431,7 +435,10 @@ func (xtw *xTimingWheels) addTask(task Task) error {
 // has been expired.
 func (xtw *xTimingWheels) handleTask(t Task) {
 	if t == nil || !xtw.isRunning.Load() {
-		slog.Info("[timing wheel] task is nil or timing wheel is stopped")
+		slog.Warn("[x-timing-wheels] handle task failed",
+			"task is nil", t == nil,
+			"timing wheel is running", xtw.isRunning.Load(),
+		)
 		return
 	}
 
@@ -570,7 +577,6 @@ func NewXTimingWheels(ctx context.Context, opts ...TimingWheelsOption) TimingWhe
 	} else {
 		xtw.gPool = p
 	}
-	// Temporarily store the configuration
 	xtw.dq = queue.NewArrayDelayQueue[TimingWheelSlot](ctx, xtwOpt.defaultDelayQueueCapacity())
 	xtw.tw = newTimingWheel(
 		ctx,

@@ -3,13 +3,15 @@ package timer
 import (
 	"context"
 	"fmt"
-	"github.com/benz9527/xboot/lib/hrtime"
+	"strconv"
+	"sync/atomic"
+
 	"github.com/samber/lo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"strconv"
-	"sync/atomic"
+
+	"github.com/benz9527/xboot/lib/hrtime"
 )
 
 const (

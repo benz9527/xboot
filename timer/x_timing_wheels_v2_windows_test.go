@@ -6,12 +6,13 @@ package timer
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/benz9527/xboot/lib/hrtime"
 	"github.com/benz9527/xboot/observability"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/automaxprocs/maxprocs"
-	"testing"
-	"time"
 )
 
 func TestXTimingWheelsV2_ScheduleFunc_windowsClock_1MsInfinite(t *testing.T) {

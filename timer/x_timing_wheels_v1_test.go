@@ -321,15 +321,15 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 	t.Logf("tw startMs: %d\n", tw.GetStartMs())
 
 	<-time.After(100 * time.Millisecond)
-	taskIDs := make([]string, 0, len(delays))
+	jobIDs := make([]string, 0, len(delays))
 	keys := tw.(*xTimingWheels).tasksMap.ListKeys()
 	for _, k := range keys {
-		taskIDs = append(taskIDs, string(k))
+		jobIDs = append(jobIDs, string(k))
 	}
-	sort.Strings(taskIDs)
-	for _, taskID := range taskIDs {
-		v, _ := tw.(*xTimingWheels).tasksMap.Get(JobID(taskID))
-		t.Logf("slot level: %d, ID %d, %d\n", v.GetSlot().GetLevel(), v.GetSlot().GetSlotID(), v.GetExpiredMs())
+	sort.Strings(jobIDs)
+	for _, jobID := range jobIDs {
+		v, _ := tw.(*xTimingWheels).tasksMap.Get(JobID(jobID))
+		t.Logf("job ID: %s, slot level: %d, ID %d, %d\n", jobID, v.GetSlot().GetLevel(), v.GetSlot().GetSlotID(), v.GetExpiredMs())
 	}
 	<-ctx.Done()
 }

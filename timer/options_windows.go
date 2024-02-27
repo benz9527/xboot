@@ -3,7 +3,9 @@
 
 package timer
 
-import "github.com/benz9527/xboot/lib/hrtime"
+import (
+	"github.com/benz9527/xboot/lib/hrtime"
+)
 
 const (
 	SdkDefaultTime TimingWheelTimeSourceEnum = iota

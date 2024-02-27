@@ -14,6 +14,19 @@ const (
 	cancelTask
 )
 
+func (op timingWheelOperation) String() string {
+	switch op {
+	case addTask:
+		return "add"
+	case reAddTask:
+		return "re-add"
+	case cancelTask:
+		return "cancel"
+	default:
+		return "unknown"
+	}
+}
+
 type timingWheelEvent struct {
 	operation timingWheelOperation
 	obj       *atomic.Value // Task or JobID

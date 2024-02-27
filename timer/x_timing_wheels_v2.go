@@ -36,7 +36,7 @@ type xTimingWheelsV2 struct {
 	clock            hrtime.Clock
 	idGenerator      id.Gen
 	name             string
-	schedLock        sync.Mutex
+	schedLock        sync.Mutex // Pay attention to the lock granularity
 	isStatsEnabled   bool
 }
 
@@ -53,7 +53,7 @@ func (xtw *xTimingWheelsV2) Shutdown() {
 		return
 	}
 	if old := xtw.isRunning.Swap(false); !old {
-		slog.Warn("[timing wheel v2] timing wheel is already shutdown")
+		slog.Warn("[x-timing-wheels v2] x-timing-wheels has been shutdown!")
 		return
 	}
 	xtw.isRunning.Store(false)
@@ -87,7 +87,7 @@ func (xtw *xTimingWheelsV2) AddTask(task Task) error {
 
 func (xtw *xTimingWheelsV2) AfterFunc(delayMs time.Duration, fn Job) (Task, error) {
 	if delayMs.Milliseconds() < xtw.GetTickMs() {
-		return nil, fmt.Errorf("[timing wheel] delay ms %d is less than tick ms %d, %w",
+		return nil, fmt.Errorf("[x-timing-wheels v2] job's delay ms %d is less than tick ms %d, %w",
 			delayMs.Milliseconds(), xtw.GetTickMs(), ErrTimingWheelTaskTooShortExpiration)
 	}
 	if fn == nil {
@@ -97,7 +97,7 @@ func (xtw *xTimingWheelsV2) AfterFunc(delayMs time.Duration, fn Job) (Task, erro
 	var now = xtw.clock.NowInDefaultTZ()
 	task := NewOnceTask(
 		xtw.ctx,
-		JobID(fmt.Sprintf("%d", xtw.idGenerator())),
+		JobID(fmt.Sprintf("%v", xtw.idGenerator())),
 		now.Add(delayMs).UnixMilli(),
 		fn,
 	)
@@ -122,7 +122,7 @@ func (xtw *xTimingWheelsV2) ScheduleFunc(schedFn func() Scheduler, fn Job) (Task
 	var now = xtw.clock.NowInDefaultTZ()
 	task := NewRepeatTask(
 		xtw.ctx,
-		JobID(fmt.Sprintf("%d", xtw.idGenerator())),
+		JobID(fmt.Sprintf("%v", xtw.idGenerator())),
 		now.UnixMilli(), schedFn(),
 		fn,
 	)
@@ -165,7 +165,7 @@ func (xtw *xTimingWheelsV2) schedule(ctx context.Context) {
 	_ = xtw.gPool.Submit(func() {
 		defer func() {
 			if err := recover(); err != nil {
-				slog.Error("[timing wheel] event schedule panic recover", "error", err, "stack", debug.Stack())
+				slog.Error("[x-timing-wheels v2] event schedule panic recover", "error", err, "stack", debug.Stack())
 			}
 		}()
 		cancelDisabled := ctx.Value(disableTimingWheelsScheduleCancelTask)
@@ -182,7 +182,7 @@ func (xtw *xTimingWheelsV2) schedule(ctx context.Context) {
 				return
 			default:
 				if xtw.expiredSlotC.IsClosed() {
-					slog.Warn("[timing wheel] slot channel has been closed")
+					slog.Warn("[x-timing-wheels v2] slot channel has been closed")
 					return
 				}
 			}
@@ -209,14 +209,14 @@ func (xtw *xTimingWheelsV2) schedule(ctx context.Context) {
 	_ = xtw.gPool.Submit(func() {
 		func(disabled any) {
 			if disabled != nil && disabled.(bool) {
-				slog.Warn("[timing wheel] delay queue poll disabled")
+				slog.Warn("[x-timing-wheels v2] delay queue poll disabled")
 				return
 			}
 			defer func() {
 				if err := recover(); err != nil {
-					slog.Error("[timing wheel] poll schedule panic recover", "error", err, "stack", debug.Stack())
+					slog.Error("[x-timing-wheels v2] poll schedule panic recover", "error", err, "stack", debug.Stack())
 				}
-				slog.Warn("[timing wheel] delay queue exit")
+				slog.Warn("[x-timing-wheels v2] delay queue exit")
 			}()
 			xtw.dq.PollToChan(func() int64 {
 				return xtw.clock.NowInDefaultTZ().UnixMilli()
@@ -237,9 +237,15 @@ func (xtw *xTimingWheelsV2) handleEvent(event *timingWheelEvent) error {
 			goto recycle
 		}
 		if err := xtw.addTask(task); errors.Is(err, ErrTimingWheelTaskIsExpired) {
-			_ = xtw.gPool.Submit(func() {
+			if err = xtw.gPool.Submit(func() {
 				xtw.handleTask(task)
-			})
+			}); err != nil {
+				slog.Warn("[x-timing-wheels v2] submit job to pool failed", "op", op.String(),
+					"job", task.GetJobID(),
+					"execAt", hrtime.MillisToDefaultTzTime(task.GetExpiredMs()),
+					"error", err,
+				)
+			}
 		}
 		if op == addTask {
 			xtw.stats.RecordJobAliveCount(1)
@@ -249,9 +255,14 @@ func (xtw *xTimingWheelsV2) handleEvent(event *timingWheelEvent) error {
 		if !ok {
 			goto recycle
 		}
-		_ = xtw.gPool.Submit(func() {
+		if err := xtw.gPool.Submit(func() {
 			_ = xtw.cancelTask(jobID)
-		})
+		}); err != nil {
+			slog.Warn("[x-timing-wheels v2] submit job to pool failed", "op", op.String(),
+				"job", jobID,
+				"error", err,
+			)
+		}
 	default:
 
 	}
@@ -284,7 +295,10 @@ func (xtw *xTimingWheelsV2) addTask(task Task) error {
 // has been expired.
 func (xtw *xTimingWheelsV2) handleTask(t Task) {
 	if t == nil || !xtw.isRunning.Load() {
-		slog.Info("[timing wheel] task is nil or timing wheel is stopped")
+		slog.Warn("[x-timing-wheels v2] handle task failed",
+			"task is nil", t == nil,
+			"timing wheel is running", xtw.isRunning.Load(),
+		)
 		return
 	}
 
@@ -430,7 +444,6 @@ func NewXTimingWheelsV2(ctx context.Context, opts ...TimingWheelsOption) TimingW
 		ipc.NewXGoSchedBlockStrategy(),
 		xtw.handleEvent,
 	)
-	// Temporarily store the configuration
 	xtw.dq = queue.NewArrayDelayQueue[TimingWheelSlot](ctx, xtwOpt.defaultDelayQueueCapacity())
 	xtw.tw = newTimingWheel(
 		ctx,
