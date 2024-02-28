@@ -1,5 +1,9 @@
 package list
 
+// References:
+// Valois, John D. "Lock-free linked lists using compare-and-swap."
+//  https://dl.acm.org/doi/pdf/10.1145/224964.224988
+
 import (
 	"sync/atomic"
 )
@@ -19,6 +23,7 @@ const (
 	inMiddle
 )
 
+// TODO Lock-free linked list
 type doublyLinkedList[T comparable] struct {
 	root nodeElement[T]
 	len  atomic.Int64
