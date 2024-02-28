@@ -25,14 +25,29 @@ import (
 
 // Way 1: Update the Windows time resolution to 1ms.
 
+var (
+	windowsHighResolutionEnabled = atomic.Bool{}
+)
+
 func SetTimeResolutionTo1ms() {
+	if windowsHighResolutionEnabled.Load() {
+		return
+	}
 	if err := windows.TimeBeginPeriod(1); err != nil {
 		panic(err)
 	}
+	windowsHighResolutionEnabled.Store(true)
 }
 
 func ResetTimeResolutionFrom1ms() error {
-	return windows.TimeEndPeriod(1)
+	if !windowsHighResolutionEnabled.Load() {
+		return nil
+	}
+	if err := windows.TimeEndPeriod(1); err != nil {
+		return err
+	}
+	windowsHighResolutionEnabled.Store(false)
+	return nil
 }
 
 // Way 2: Use the Windows high-resolution performance counter API.
