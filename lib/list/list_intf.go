@@ -64,3 +64,33 @@ type LinkedList[T comparable] interface {
 	// PushBackList inserts a copy of another linked list at the back of list l.
 	PushBackList(srcList LinkedList[T])
 }
+
+type SkipListNodeElement[E comparable] interface {
+	GetObject() E
+	GetVerticalBackward() SkipListNodeElement[E]
+	SetVerticalBackward(backward SkipListNodeElement[E])
+	GetLevels() []SkipListLevel[E]
+	Free()
+}
+
+type SkipListLevel[E comparable] interface {
+	GetSpan() int64
+	SetSpan(span int64)
+	GetHorizontalForward() SkipListNodeElement[E]
+	SetHorizontalForward(forward SkipListNodeElement[E])
+}
+
+type SkipList[E comparable] interface {
+	GetLevel() int
+	Len() int64
+	Insert(v E) SkipListNodeElement[E]
+	Remove(v E) SkipListNodeElement[E]
+	Find(v E) SkipListNodeElement[E]
+	ForEach(fn func(idx int64, v E))
+	PopHead() E
+	PopTail() E
+	Free()
+}
+
+// LessThan is the compare function.
+type compareTo[E comparable] func(a, b E) int
