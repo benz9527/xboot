@@ -46,21 +46,13 @@ func TestRandomLevelV2(t *testing.T) {
 	}
 }
 
-func TestXSkipList_Insert(t *testing.T) {
-	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
-		return i - j
-	})
-	xsl.Insert(1, &xSkipListObject{id: "2"})
-	xsl.Insert(1, &xSkipListObject{id: "1"})
-	xsl.Insert(1, &xSkipListObject{id: "3"})
-	xsl.Insert(1, &xSkipListObject{id: "2"})
-	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-		t.Logf("idx: %d, weight: %d, obj id: %s\n", idx, weight, object.id)
-	})
-	t.Logf("xsl levels: %d\n", xsl.Level())
-}
+func TestXSkipList_SimpleCRUD(t *testing.T) {
 
-func TestXSkipList_Insert_Remove(t *testing.T) {
+	type element struct {
+		w  int
+		id string
+	}
+
 	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
 		return i - j
 	})
@@ -68,10 +60,13 @@ func TestXSkipList_Insert_Remove(t *testing.T) {
 	xsl.Insert(1, &xSkipListObject{id: "1"})
 	xsl.Insert(1, &xSkipListObject{id: "3"})
 	xsl.Insert(1, &xSkipListObject{id: "2"})
+	expectedOrder := []element{{1, "3"}, {1, "2"}, {1, "1"}}
 	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-		t.Logf("idx: %d, weight: %d, obj id: %s\n", idx, weight, object.id)
+		assert.Equal(t, expectedOrder[idx].w, weight)
+		assert.Equal(t, expectedOrder[idx].id, object.id)
 	})
-	t.Logf("xsl levels: %d\n", xsl.Level())
+	assert.Equal(t, int32(3), xsl.Len())
+
 	xsl.RemoveFirst(1, func(obj *xSkipListObject) int {
 		if obj.id == "2" {
 			return 0
@@ -82,6 +77,71 @@ func TestXSkipList_Insert_Remove(t *testing.T) {
 		t.Logf("idx: %d, weight: %d, obj id: %s\n", idx, weight, object.id)
 	})
 	t.Logf("xsl levels: %d\n", xsl.Level())
+
+	e := xsl.FindFirst(1, func(obj *xSkipListObject) int {
+		if obj.id == "2" {
+			return 0
+		}
+		return -1
+	})
+	assert.Nil(t, e)
+	expectedOrder = []element{{1, "3"}, {1, "1"}}
+	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+		assert.Equal(t, expectedOrder[idx].w, weight)
+		assert.Equal(t, expectedOrder[idx].id, object.id)
+	})
+	assert.Equal(t, int32(2), xsl.Len())
+
+	e = xsl.FindFirst(1, func(obj *xSkipListObject) int {
+		if obj.id == "1" {
+			return 0
+		}
+		return -1
+	})
+	assert.NotNil(t, e)
+	assert.Equal(t, "1", e.Object().id)
+
+	xsl.Insert(2, &xSkipListObject{id: "2"})
+	xsl.Insert(3, &xSkipListObject{id: "1"})
+	xsl.Insert(4, &xSkipListObject{id: "3"})
+	xsl.Insert(2, &xSkipListObject{id: "4"})
+	xsl.Insert(5, &xSkipListObject{id: "1"})
+	xsl.Insert(6, &xSkipListObject{id: "8"})
+	expectedOrder = []element{
+		{1, "3"}, {1, "1"},
+		{2, "4"}, {2, "2"},
+		{3, "1"},
+		{4, "3"},
+		{5, "1"},
+		{6, "8"},
+	}
+	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+		assert.Equal(t, expectedOrder[idx].w, weight)
+		assert.Equal(t, expectedOrder[idx].id, object.id)
+	})
+	assert.Equal(t, int32(len(expectedOrder)), xsl.Len())
+
+	e = xsl.RemoveFirst(2, func(obj *xSkipListObject) int {
+		if obj.id == "2" {
+			return 0
+		}
+		return -1
+	})
+	assert.Equal(t, "2", e.Object().id)
+
+	expectedOrder = []element{
+		{1, "3"}, {1, "1"},
+		{2, "4"},
+		{3, "1"},
+		{4, "3"},
+		{5, "1"},
+		{6, "8"},
+	}
+	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+		assert.Equal(t, expectedOrder[idx].w, weight)
+		assert.Equal(t, expectedOrder[idx].id, object.id)
+	})
+	assert.Equal(t, int32(len(expectedOrder)), xsl.Len())
 }
 
 func BenchmarkRandomLevelV2(b *testing.B) {

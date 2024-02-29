@@ -108,15 +108,22 @@ type SkipList[W SkipListWeight, V HashObject] interface {
 	ForEach(fn func(idx int64, weight W, object V))
 	Insert(weight W, object V) SkipListNode[W, V]
 	RemoveFirst(weight W, cmp func(v V) int) SkipListElement[W, V]
-	//Find(weight W, cmp func(v V) int) SkipListElement[W, V]
+	FindFirst(weight W, cmp func(v V) int) SkipListElement[W, V]
 	//PopHead() SkipListElement[W, V]
 	//PopTail() SkipListElement[W, V]
 }
 
-// SkipListComparator
+// SkipListWeightComparator
 // Assume j is the weight of the new element.
 //  1. i == j (i-j == 0, return 0), contains the same element.
 //     If insert a new element, we have to linear probe the next position that can be inserted.
 //  2. i > j (i-j > 0, return 1), find left part.
 //  3. i < j (i-j < 0, return -1), find right part.
-type SkipListComparator[W SkipListWeight] func(i, j W) int
+type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
+
+// SkipListObjectMatcher
+// return true, if object is satisfied the query condition.
+// return false is used to find predecessor, for the reason that those same weight elements
+//
+//	need to do iteration.
+type SkipListObjectMatcher[V HashObject] func(obj V) bool

@@ -108,10 +108,16 @@ type skipListLevel[W SkipListWeight, V HashObject] struct {
 }
 
 func (lvl *skipListLevel[W, V]) horizontalForward() SkipListNode[W, V] {
+	if lvl == nil {
+		return nil
+	}
 	return lvl.hForward
 }
 
 func (lvl *skipListLevel[W, V]) setHorizontalForward(forward SkipListNode[W, V]) {
+	if lvl == nil {
+		return
+	}
 	lvl.hForward = forward
 }
 
@@ -135,22 +141,37 @@ type xSkipListNode[W SkipListWeight, V HashObject] struct {
 }
 
 func (node *xSkipListNode[W, V]) Element() SkipListElement[W, V] {
+	if node == nil {
+		return nil
+	}
 	return node.element
 }
 
 func (node *xSkipListNode[W, V]) setElement(e SkipListElement[W, V]) {
+	if node == nil {
+		return
+	}
 	node.element = e
 }
 
 func (node *xSkipListNode[W, V]) verticalBackward() SkipListNode[W, V] {
+	if node == nil {
+		return nil
+	}
 	return node.vBackward
 }
 
 func (node *xSkipListNode[W, V]) setVerticalBackward(backward SkipListNode[W, V]) {
+	if node == nil {
+		return
+	}
 	node.vBackward = backward
 }
 
 func (node *xSkipListNode[W, V]) levels() []SkipListLevel[W, V] {
+	if node == nil {
+		return nil
+	}
 	return node.lvls
 }
 
@@ -187,7 +208,7 @@ type xSkipList[W SkipListWeight, V HashObject] struct {
 	// The real max level in used. And the max limitation is xSkipListMaxLevel.
 	level *atomic.Int32
 	len   *atomic.Int32
-	cmp   SkipListComparator[W]
+	cmp   SkipListWeightComparator[W]
 }
 
 func (xsl *xSkipList[W, V]) Level() int32 {
@@ -293,8 +314,12 @@ func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp func(V) int) SkipListEleme
 		traverse[levelIndex] = x
 	}
 
+	if x == nil {
+		return nil // not found
+	}
+
 	x = x.levels()[0].horizontalForward()
-	if x != nil && cmp(x.Element().Object()) == 0 {
+	if x != nil && xsl.cmp(x.Element().Weight(), weight) == 0 && cmp(x.Element().Object()) == 0 {
 		// TODO lock-free
 		xsl.removeNode(x, traverse)
 		return x.Element()
@@ -321,25 +346,39 @@ func (xsl *xSkipList[W, V]) removeNode(x SkipListNode[W, V], traverse [xSkipList
 	xsl.len.Add(-1)
 }
 
-//
-//func (sl *xSkipList[W, V]) Find(object E) SkipListNode[W, V] {
-//	var (
-//		x   SkipListNode[W, V]
-//		idx int
-//	)
-//	x = sl.head
-//	for idx = sl.level - 1; idx >= 0; idx-- {
-//		for x.levels()[idx].horizontalForward() != nil &&
-//			sl.localCompareTo(x.levels()[idx].horizontalForward().GetObject(), object) < 0 {
-//			x = x.levels()[idx].horizontalForward()
-//		}
-//	}
-//	x = x.levels()[0].horizontalForward()
-//	if x != nil && sl.localCompareTo(x.GetObject(), object) == 0 {
-//		return x
-//	}
-//	return nil
-//}
+func (xsl *xSkipList[W, V]) FindFirst(weight W, cmp func(V) int) SkipListElement[W, V] {
+	var (
+		x SkipListNode[W, V]
+	)
+	x = xsl.head
+outer:
+	for levelIndex := xsl.level.Load() - 1; levelIndex >= 0; levelIndex-- {
+		for x.levels()[levelIndex].horizontalForward() != nil {
+			cur := x.levels()[levelIndex].horizontalForward()
+			res := xsl.cmp(cur.Element().Weight(), weight)
+			// find predecessor node
+			if res < 0 || (res == 0 && cmp(cur.Element().Object()) < 0) {
+				x = cur
+			} else if res == 0 && cmp(cur.Element().Object()) == 0 {
+				break outer
+			} else {
+				break
+			}
+		}
+		x = x.levels()[levelIndex].horizontalForward()
+	}
+
+	if x == nil {
+		return nil // not found
+	}
+
+	x = x.levels()[0].horizontalForward()
+	if x != nil && xsl.cmp(x.Element().Weight(), weight) == 0 && cmp(x.Element().Object()) == 0 {
+		return x.Element()
+	}
+	return nil // not found
+}
+
 //
 //func (sl *xSkipList[W,V]) PopHead() (object E) {
 //	x := sl.head
@@ -384,7 +423,7 @@ func (xsl *xSkipList[W, V]) Free() {
 	xsl.len = nil
 }
 
-func NewXSkipList[K SkipListWeight, V HashObject](cmp SkipListComparator[K]) SkipList[K, V] {
+func NewXSkipList[K SkipListWeight, V HashObject](cmp SkipListWeightComparator[K]) SkipList[K, V] {
 	sl := &xSkipList[K, V]{
 		level: &atomic.Int32{},
 		len:   &atomic.Int32{},
