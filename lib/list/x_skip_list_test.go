@@ -15,7 +15,8 @@ type xSkipListObject struct {
 func (o *xSkipListObject) Hash() uint64 {
 	hash := fnv.New64()
 	_, _ = hash.Write([]byte(o.id))
-	return hash.Sum64()
+	val := hash.Sum64()
+	return val
 }
 
 func TestStringHash_FNV(t *testing.T) {
@@ -143,6 +144,74 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		assert.Equal(t, expectedOrder[idx].id, object.id)
 	})
 	assert.Equal(t, int32(len(expectedOrder)), xsl.Len())
+}
+
+func TestNewXSkipList_PopHead(t *testing.T) {
+	type element struct {
+		w  int
+		id string
+	}
+	orders := []element{
+		{1, "3"}, {1, "2"}, {1, "1"},
+		{2, "4"}, {2, "2"},
+		{3, "1"},
+		{4, "3"},
+		{5, "1"},
+		{6, "8"}, {6, "100"},
+	}
+	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
+		return i - j
+	})
+	for _, o := range orders {
+		xsl.Insert(o.w, &xSkipListObject{id: o.id})
+	}
+	for i := 0; i < len(orders); i++ {
+		e := xsl.PopHead()
+		assert.Equal(t, orders[i].w, e.Weight())
+		assert.Equal(t, orders[i].id, e.Object().id)
+		//restOrders := orders[i+1:]
+		//internalIndex := 0
+		t.Logf("loop %d\n", i)
+		xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+			//assert.Equal(t, restOrders[internalIndex].w, weight)
+			//assert.Equal(t, restOrders[internalIndex].id, object.id)
+			//internalIndex++
+			//t.Logf("idx: %d, weight: %d, id: %s\n", idx, weight, object.id)
+		})
+	}
+}
+
+func TestNewXSkipList_PopTail(t *testing.T) {
+	type element struct {
+		w  int
+		id string
+	}
+	orders := []element{
+		{1, "3"}, {1, "2"}, {1, "1"},
+		{2, "4"}, {2, "2"},
+		{3, "1"},
+		{4, "3"},
+		{5, "1"},
+		{6, "8"}, {6, "100"},
+	}
+	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
+		return i - j
+	})
+	for _, o := range orders {
+		xsl.Insert(o.w, &xSkipListObject{id: o.id})
+	}
+	for i := 0; i < len(orders); i++ {
+		e := xsl.PopTail()
+		assert.Equal(t, orders[i].w, e.Weight())
+		assert.Equal(t, orders[i].id, e.Object().id)
+		restOrders := orders[0 : len(orders)-i]
+		internalIndex := 0
+		xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+			assert.Equal(t, restOrders[internalIndex].w, weight)
+			assert.Equal(t, restOrders[internalIndex].id, object.id)
+			internalIndex++
+		})
+	}
 }
 
 func BenchmarkRandomLevelV2(b *testing.B) {

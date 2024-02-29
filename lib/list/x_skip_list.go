@@ -1,6 +1,7 @@
 package list
 
 import (
+	"log/slog"
 	"math"
 	"math/bits"
 	randv2 "math/rand/v2"
@@ -268,6 +269,9 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 	// It means that duplicated weight elements query through the cache (O(logN))
 	lvl := randomLevelV2(xSkipListMaxLevel, xsl.len.Load())
 	if lvl > xsl.level.Load() {
+		for i := xsl.Level(); i < lvl; i++ {
+			traverse[i] = xsl.head
+		}
 		xsl.level.Store(lvl)
 	}
 	x = newXSkipListNode[W, V](lvl, weight, obj)
@@ -315,15 +319,18 @@ func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp SkipListObjectMatcher[V]) 
 	}
 
 	if x == nil {
+		slog.Warn("remove not found (pre)", "weight", weight)
 		return nil // not found
 	}
 
+	slog.Info("remove (middle)", "weight", weight, "x w", x.Element().Weight(), "x obj", x.Element().Object())
 	x = x.levels()[0].horizontalForward()
 	if x != nil && xsl.cmp(x.Element().Weight(), weight) == 0 && cmp(x.Element().Object()) {
 		// TODO lock-free
 		xsl.removeNode(x, traverse)
 		return x.Element()
 	}
+	slog.Warn("remove not found (post)", "weight", weight, "x weight", x.Element().Weight(), "x obj", x.Element().Object())
 	return nil // not found
 }
 
@@ -379,29 +386,42 @@ outer:
 	return nil // not found
 }
 
-//
-//func (sl *xSkipList[W,V]) PopHead() (object E) {
-//	x := sl.head
-//	x = x.levels()[0].horizontalForward()
-//	if x == nil {
-//		return object
-//	}
-//	object = x.GetObject()
-//	sl.RemoveFirst(object)
-//	return
-//}
-//
-//func (sl *xSkipList[W, V]) PopTail() (object E) {
-//	x := sl.tail
-//	if x == nil {
-//		return *new(E)
-//	}
-//	object = x.GetObject()
-//	sl.RemoveFirst(object)
-//	return
-//}
-//
-//
+func (xsl *xSkipList[W, V]) PopHead() (e SkipListElement[W, V]) {
+	x := xsl.head
+	if x == nil {
+		return e
+	}
+	if x = x.levels()[0].horizontalForward(); x == nil {
+		return e
+	}
+	e = x.Element()
+	slog.Info("pop head", "e w", e.Weight(), "e val", e.Object(), "e hash", e.Object().Hash())
+	e1 := xsl.RemoveFirst(e.Weight(), func(obj V) bool {
+		tarval := e.Object().Hash()
+		slobjval := obj.Hash()
+		slog.Info("target obj cmp sl obj", "tar hash", tarval, "sl hash", slobjval)
+		return tarval == slobjval
+	})
+	if e1 == nil {
+		panic("unable remove element")
+	}
+	return
+}
+
+func (xsl *xSkipList[W, V]) PopTail() (e SkipListElement[W, V]) {
+	x := xsl.tail
+	if x == nil {
+		return
+	}
+	e = x.Element()
+	xsl.RemoveFirst(e.Weight(), func(obj V) bool {
+		tarval := e.Object().Hash()
+		slobjval := obj.Hash()
+		slog.Info("target obj cmp sl obj", "tar obj", e, "tar hash", tarval, "sl obj", obj, "sl hash", slobjval)
+		return tarval == slobjval
+	})
+	return
+}
 
 func (xsl *xSkipList[W, V]) Free() {
 	var (

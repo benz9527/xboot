@@ -109,8 +109,8 @@ type SkipList[W SkipListWeight, V HashObject] interface {
 	Insert(weight W, object V) SkipListNode[W, V]
 	RemoveFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V]
 	FindFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V]
-	//PopHead() SkipListElement[W, V]
-	//PopTail() SkipListElement[W, V]
+	PopHead() SkipListElement[W, V]
+	PopTail() SkipListElement[W, V]
 }
 
 // SkipListWeightComparator
