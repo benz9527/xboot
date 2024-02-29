@@ -294,7 +294,7 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 	return x
 }
 
-func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp func(V) int) SkipListElement[W, V] {
+func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V] {
 	var (
 		x        SkipListNode[W, V]
 		traverse [xSkipListMaxLevel]SkipListNode[W, V]
@@ -305,7 +305,7 @@ func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp func(V) int) SkipListEleme
 			cur := x.levels()[levelIndex].horizontalForward()
 			res := xsl.cmp(cur.Element().Weight(), weight)
 			// find predecessor node
-			if res < 0 || (res == 0 && cmp(cur.Element().Object()) < 0) {
+			if res < 0 || (res == 0 && !cmp(cur.Element().Object())) {
 				x = cur
 			} else {
 				break
@@ -319,7 +319,7 @@ func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp func(V) int) SkipListEleme
 	}
 
 	x = x.levels()[0].horizontalForward()
-	if x != nil && xsl.cmp(x.Element().Weight(), weight) == 0 && cmp(x.Element().Object()) == 0 {
+	if x != nil && xsl.cmp(x.Element().Weight(), weight) == 0 && cmp(x.Element().Object()) {
 		// TODO lock-free
 		xsl.removeNode(x, traverse)
 		return x.Element()
@@ -346,7 +346,7 @@ func (xsl *xSkipList[W, V]) removeNode(x SkipListNode[W, V], traverse [xSkipList
 	xsl.len.Add(-1)
 }
 
-func (xsl *xSkipList[W, V]) FindFirst(weight W, cmp func(V) int) SkipListElement[W, V] {
+func (xsl *xSkipList[W, V]) FindFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V] {
 	var (
 		x SkipListNode[W, V]
 	)
@@ -357,9 +357,9 @@ outer:
 			cur := x.levels()[levelIndex].horizontalForward()
 			res := xsl.cmp(cur.Element().Weight(), weight)
 			// find predecessor node
-			if res < 0 || (res == 0 && cmp(cur.Element().Object()) < 0) {
+			if res < 0 || (res == 0 && !cmp(cur.Element().Object())) {
 				x = cur
-			} else if res == 0 && cmp(cur.Element().Object()) == 0 {
+			} else if res == 0 && cmp(cur.Element().Object()) {
 				break outer
 			} else {
 				break
@@ -373,7 +373,7 @@ outer:
 	}
 
 	x = x.levels()[0].horizontalForward()
-	if x != nil && xsl.cmp(x.Element().Weight(), weight) == 0 && cmp(x.Element().Object()) == 0 {
+	if x != nil && xsl.cmp(x.Element().Weight(), weight) == 0 && cmp(x.Element().Object()) {
 		return x.Element()
 	}
 	return nil // not found
@@ -424,19 +424,19 @@ func (xsl *xSkipList[W, V]) Free() {
 }
 
 func NewXSkipList[K SkipListWeight, V HashObject](cmp SkipListWeightComparator[K]) SkipList[K, V] {
-	sl := &xSkipList[K, V]{
+	xsl := &xSkipList[K, V]{
 		level: &atomic.Int32{},
 		len:   &atomic.Int32{},
 		cmp:   cmp,
 	}
-	sl.level.Store(1)
-	sl.head = newXSkipListNode[K, V](xSkipListMaxLevel, *new(K), *new(V))
+	xsl.level.Store(1)
+	xsl.head = newXSkipListNode[K, V](xSkipListMaxLevel, *new(K), *new(V))
 	// Initialization.
 	// The head must be initialized with array element size with xSkipListMaxLevel.
 	for i := 0; i < xSkipListMaxLevel; i++ {
-		sl.head.levels()[i].setHorizontalForward(nil)
+		xsl.head.levels()[i].setHorizontalForward(nil)
 	}
-	sl.head.setVerticalBackward(nil)
-	sl.tail = nil
-	return sl
+	xsl.head.setVerticalBackward(nil)
+	xsl.tail = nil
+	return xsl
 }

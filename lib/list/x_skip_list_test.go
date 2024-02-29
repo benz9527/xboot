@@ -67,22 +67,11 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	})
 	assert.Equal(t, int32(3), xsl.Len())
 
-	xsl.RemoveFirst(1, func(obj *xSkipListObject) int {
-		if obj.id == "2" {
-			return 0
-		}
-		return -1
+	xsl.RemoveFirst(1, func(obj *xSkipListObject) bool {
+		return obj.id == "2"
 	})
-	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-		t.Logf("idx: %d, weight: %d, obj id: %s\n", idx, weight, object.id)
-	})
-	t.Logf("xsl levels: %d\n", xsl.Level())
-
-	e := xsl.FindFirst(1, func(obj *xSkipListObject) int {
-		if obj.id == "2" {
-			return 0
-		}
-		return -1
+	e := xsl.FindFirst(1, func(obj *xSkipListObject) bool {
+		return obj.id == "2"
 	})
 	assert.Nil(t, e)
 	expectedOrder = []element{{1, "3"}, {1, "1"}}
@@ -92,11 +81,8 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	})
 	assert.Equal(t, int32(2), xsl.Len())
 
-	e = xsl.FindFirst(1, func(obj *xSkipListObject) int {
-		if obj.id == "1" {
-			return 0
-		}
-		return -1
+	e = xsl.FindFirst(1, func(obj *xSkipListObject) bool {
+		return obj.id == "1"
 	})
 	assert.NotNil(t, e)
 	assert.Equal(t, "1", e.Object().id)
@@ -121,11 +107,8 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	})
 	assert.Equal(t, int32(len(expectedOrder)), xsl.Len())
 
-	e = xsl.RemoveFirst(2, func(obj *xSkipListObject) int {
-		if obj.id == "2" {
-			return 0
-		}
-		return -1
+	e = xsl.RemoveFirst(2, func(obj *xSkipListObject) bool {
+		return obj.id == "2"
 	})
 	assert.Equal(t, "2", e.Object().id)
 
@@ -135,6 +118,24 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{3, "1"},
 		{4, "3"},
 		{5, "1"},
+		{6, "8"},
+	}
+	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+		assert.Equal(t, expectedOrder[idx].w, weight)
+		assert.Equal(t, expectedOrder[idx].id, object.id)
+	})
+	assert.Equal(t, int32(len(expectedOrder)), xsl.Len())
+
+	e = xsl.RemoveFirst(5, func(obj *xSkipListObject) bool {
+		return obj.id == "1"
+	})
+	assert.Equal(t, "1", e.Object().id)
+
+	expectedOrder = []element{
+		{1, "3"}, {1, "1"},
+		{2, "4"},
+		{3, "1"},
+		{4, "3"},
 		{6, "8"},
 	}
 	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {

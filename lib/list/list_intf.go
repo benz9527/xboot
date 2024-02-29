@@ -88,9 +88,9 @@ type SkipListElement[W SkipListWeight, V HashObject] interface {
 }
 
 type SkipListNode[W SkipListWeight, V HashObject] interface {
+	Free()
 	Element() SkipListElement[W, V]
 	setElement(e SkipListElement[W, V])
-	Free()
 	verticalBackward() SkipListNode[W, V]
 	setVerticalBackward(backward SkipListNode[W, V])
 	levels() []SkipListLevel[W, V]
@@ -107,8 +107,8 @@ type SkipList[W SkipListWeight, V HashObject] interface {
 	Free()
 	ForEach(fn func(idx int64, weight W, object V))
 	Insert(weight W, object V) SkipListNode[W, V]
-	RemoveFirst(weight W, cmp func(v V) int) SkipListElement[W, V]
-	FindFirst(weight W, cmp func(v V) int) SkipListElement[W, V]
+	RemoveFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V]
+	FindFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V]
 	//PopHead() SkipListElement[W, V]
 	//PopTail() SkipListElement[W, V]
 }
