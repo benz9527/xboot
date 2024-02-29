@@ -106,7 +106,7 @@ type SkipList[W SkipListWeight, O HashObject] interface {
 	Len() int32
 	Free()
 	ForEach(fn func(idx int64, weight W, object O))
-	Insert(weight W, object O) SkipListNode[W, O]
+	Insert(weight W, object O) (SkipListNode[W, O], bool)
 	RemoveFirst(weight W, cmp SkipListObjectMatcher[O]) SkipListElement[W, O]
 	FindFirst(weight W, cmp SkipListObjectMatcher[O]) SkipListElement[W, O]
 	PopHead() SkipListElement[W, O]

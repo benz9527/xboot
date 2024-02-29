@@ -234,25 +234,22 @@ func (xsl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
 	}
 }
 
-func (xsl *xSkipList[W, O]) Insert(weight W, obj O) SkipListNode[W, O] {
+func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	var (
-		x          SkipListNode[W, O]
-		traverse   [xSkipListMaxLevel]SkipListNode[W, O]
-		levelIndex int32
+		x        SkipListNode[W, O]
+		traverse [xSkipListMaxLevel]SkipListNode[W, O]
 	)
 	x = xsl.head
 	// Iteration from top to bottom.
 	// First to iterate the cache and access the data finally.
-	for levelIndex = xsl.level.Load() - 1; levelIndex >= 0; levelIndex-- { // move down level
-		for x.levels()[levelIndex].horizontalForward() != nil {
-			cur := x.levels()[levelIndex].horizontalForward()
+	for i := xsl.level.Load() - 1; i >= 0; i-- { // move down level
+		for x.levels()[i].horizontalForward() != nil {
+			cur := x.levels()[i].horizontalForward()
 			res := xsl.cmp(cur.Element().Weight(), weight)
 			if res < 0 || (res == 0 && cur.Element().Object().Hash() < obj.Hash()) {
 				x = cur // Changes the node iteration path to locate different node.
 			} else if res == 0 && cur.Element().Object().Hash() == obj.Hash() {
-				// Replaces the value.
-				cur.setElement(&xSkipListElement[W, O]{weight: weight, object: obj})
-				return cur
+				return nil, false
 			} else {
 				break
 			}
@@ -262,26 +259,25 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) SkipListNode[W, O] {
 		// 3. (weight duplicated) If new element hash equals to current node's (replace element, because the hash
 		//      value and element are not strongly correlated)
 		// 4. (new weight) If new element is not exist, (do append next to current node)
-		traverse[levelIndex] = x
+		traverse[i] = x
 	}
 
 	// Each duplicated weight elements may contain its cache levels.
 	// It means that duplicated weight elements query through the cache (O(logN))
+	// But duplicated elements query (liner probe) will be degraded into O(N)
 	lvl := randomLevelV2(xSkipListMaxLevel, xsl.len.Load())
 	if lvl > xsl.level.Load() {
 		for i := xsl.Level(); i < lvl; i++ {
-			traverse[i] = xsl.head
+			// Update the whole traverse path, from top to bottom.
+			traverse[i] = xsl.head // avoid nil pointer
 		}
 		xsl.level.Store(lvl)
 	}
 	x = newXSkipListNode[W, O](lvl, weight, obj)
 	for i := int32(0); i < lvl; i++ {
 		cache := traverse[i]
-		if cache == nil {
-			break
-		}
 		x.levels()[i].setHorizontalForward(cache.levels()[i].horizontalForward())
-		// may pre-append to adjust 2 elements' order
+		// May pre-append to adjust 2 elements' order
 		cache.levels()[i].setHorizontalForward(x)
 	}
 	if traverse[0] == xsl.head {
@@ -295,7 +291,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) SkipListNode[W, O] {
 		x.levels()[0].horizontalForward().setVerticalBackward(x)
 	}
 	xsl.len.Add(1)
-	return x
+	return x, true
 }
 
 func (xsl *xSkipList[W, O]) RemoveFirst(weight W, cmp SkipListObjectMatcher[O]) SkipListElement[W, O] {
