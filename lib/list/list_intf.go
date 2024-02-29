@@ -82,35 +82,35 @@ type SkipListWeight interface {
 	// ~uint8 == byte
 }
 
-type SkipListElement[W SkipListWeight, V HashObject] interface {
+type SkipListElement[W SkipListWeight, O HashObject] interface {
 	Weight() W
-	Object() V
+	Object() O
 }
 
-type SkipListNode[W SkipListWeight, V HashObject] interface {
+type SkipListNode[W SkipListWeight, O HashObject] interface {
 	Free()
-	Element() SkipListElement[W, V]
-	setElement(e SkipListElement[W, V])
-	verticalBackward() SkipListNode[W, V]
-	setVerticalBackward(backward SkipListNode[W, V])
-	levels() []SkipListLevel[W, V]
+	Element() SkipListElement[W, O]
+	setElement(e SkipListElement[W, O])
+	verticalBackward() SkipListNode[W, O]
+	setVerticalBackward(backward SkipListNode[W, O])
+	levels() []SkipListLevel[W, O]
 }
 
-type SkipListLevel[W SkipListWeight, V HashObject] interface {
-	horizontalForward() SkipListNode[W, V]
-	setHorizontalForward(forward SkipListNode[W, V])
+type SkipListLevel[W SkipListWeight, O HashObject] interface {
+	horizontalForward() SkipListNode[W, O]
+	setHorizontalForward(forward SkipListNode[W, O])
 }
 
-type SkipList[W SkipListWeight, V HashObject] interface {
+type SkipList[W SkipListWeight, O HashObject] interface {
 	Level() int32
 	Len() int32
 	Free()
-	ForEach(fn func(idx int64, weight W, object V))
-	Insert(weight W, object V) SkipListNode[W, V]
-	RemoveFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V]
-	FindFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V]
-	PopHead() SkipListElement[W, V]
-	PopTail() SkipListElement[W, V]
+	ForEach(fn func(idx int64, weight W, object O))
+	Insert(weight W, object O) SkipListNode[W, O]
+	RemoveFirst(weight W, cmp SkipListObjectMatcher[O]) SkipListElement[W, O]
+	FindFirst(weight W, cmp SkipListObjectMatcher[O]) SkipListElement[W, O]
+	PopHead() SkipListElement[W, O]
+	PopTail() SkipListElement[W, O]
 }
 
 // SkipListWeightComparator
@@ -126,4 +126,4 @@ type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
 // return false is used to find predecessor, for the reason that those same weight elements
 //
 //	need to do iteration.
-type SkipListObjectMatcher[V HashObject] func(obj V) bool
+type SkipListObjectMatcher[O HashObject] func(obj O) bool

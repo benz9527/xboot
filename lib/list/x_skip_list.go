@@ -89,33 +89,33 @@ var (
 	_ SkipList[uint8, *emptyHashObject]        = (*xSkipList[uint8, *emptyHashObject])(nil)
 )
 
-type xSkipListElement[W SkipListWeight, V HashObject] struct {
+type xSkipListElement[W SkipListWeight, O HashObject] struct {
 	weight W
-	object V
+	object O
 }
 
-func (e *xSkipListElement[W, V]) Weight() W {
+func (e *xSkipListElement[W, O]) Weight() W {
 	return e.weight
 }
 
-func (e *xSkipListElement[W, V]) Object() V {
+func (e *xSkipListElement[W, O]) Object() O {
 	return e.object
 }
 
-type skipListLevel[W SkipListWeight, V HashObject] struct {
+type skipListLevel[W SkipListWeight, O HashObject] struct {
 	// The next node element in horizontal direction.
-	hForward SkipListNode[W, V]
+	hForward SkipListNode[W, O]
 	// Ignore the node level span metadata.
 }
 
-func (lvl *skipListLevel[W, V]) horizontalForward() SkipListNode[W, V] {
+func (lvl *skipListLevel[W, O]) horizontalForward() SkipListNode[W, O] {
 	if lvl == nil {
 		return nil
 	}
 	return lvl.hForward
 }
 
-func (lvl *skipListLevel[W, V]) setHorizontalForward(forward SkipListNode[W, V]) {
+func (lvl *skipListLevel[W, O]) setHorizontalForward(forward SkipListNode[W, O]) {
 	if lvl == nil {
 		return
 	}
@@ -128,101 +128,101 @@ func newSkipListLevel[W SkipListWeight, V HashObject](forward SkipListNode[W, V]
 	}
 }
 
-type xSkipListNode[W SkipListWeight, V HashObject] struct {
+type xSkipListNode[W SkipListWeight, O HashObject] struct {
 	// The cache part.
 	// When current node work as data node, it doesn't contain levels metadata.
 	// If a node is a level node, the cache is from levels[0], but it is differ
 	//  to the sentinel's levels[0].
-	lvls    []SkipListLevel[W, V]
-	element SkipListElement[W, V]
+	lvls    []SkipListLevel[W, O]
+	element SkipListElement[W, O]
 	// The next node element in the vertical direction.
 	// A node with level 0 without any next node element at all usually.
 	// A node work as level node (i.e. the cache node) must contain vBackward metadata.
-	vBackward SkipListNode[W, V]
+	vBackward SkipListNode[W, O]
 }
 
-func (node *xSkipListNode[W, V]) Element() SkipListElement[W, V] {
+func (node *xSkipListNode[W, O]) Element() SkipListElement[W, O] {
 	if node == nil {
 		return nil
 	}
 	return node.element
 }
 
-func (node *xSkipListNode[W, V]) setElement(e SkipListElement[W, V]) {
+func (node *xSkipListNode[W, O]) setElement(e SkipListElement[W, O]) {
 	if node == nil {
 		return
 	}
 	node.element = e
 }
 
-func (node *xSkipListNode[W, V]) verticalBackward() SkipListNode[W, V] {
+func (node *xSkipListNode[W, O]) verticalBackward() SkipListNode[W, O] {
 	if node == nil {
 		return nil
 	}
 	return node.vBackward
 }
 
-func (node *xSkipListNode[W, V]) setVerticalBackward(backward SkipListNode[W, V]) {
+func (node *xSkipListNode[W, O]) setVerticalBackward(backward SkipListNode[W, O]) {
 	if node == nil {
 		return
 	}
 	node.vBackward = backward
 }
 
-func (node *xSkipListNode[W, V]) levels() []SkipListLevel[W, V] {
+func (node *xSkipListNode[W, O]) levels() []SkipListLevel[W, O] {
 	if node == nil {
 		return nil
 	}
 	return node.lvls
 }
 
-func (node *xSkipListNode[W, V]) Free() {
+func (node *xSkipListNode[W, O]) Free() {
 	node.element = nil
 	node.vBackward = nil
 	node.lvls = nil
 }
 
-func newXSkipListNode[W SkipListWeight, V HashObject](level int32, weight W, obj V) SkipListNode[W, V] {
-	e := &xSkipListNode[W, V]{
-		element: &xSkipListElement[W, V]{
+func newXSkipListNode[W SkipListWeight, O HashObject](level int32, weight W, obj O) SkipListNode[W, O] {
+	e := &xSkipListNode[W, O]{
+		element: &xSkipListElement[W, O]{
 			weight: weight,
 			object: obj,
 		},
 		// Fill zero to all level span.
 		// Initialization.
-		lvls: make([]SkipListLevel[W, V], level),
+		lvls: make([]SkipListLevel[W, O], level),
 	}
 	for i := int32(0); i < level; i++ {
-		e.lvls[i] = newSkipListLevel[W, V](nil)
+		e.lvls[i] = newSkipListLevel[W, O](nil)
 	}
 	return e
 }
 
 // This is a sentinel node and used to point to nodes in memory.
-type xSkipList[W SkipListWeight, V HashObject] struct {
+type xSkipList[W SkipListWeight, O HashObject] struct {
 	// sentinel node
 	// The head.levels[0].hForward is the first data node of skip-list.
 	// From head.levels[1], they point to the levels node (i.e. the cache metadata)
-	head SkipListNode[W, V]
+	head SkipListNode[W, O]
 	// sentinel node
-	tail SkipListNode[W, V]
+	tail SkipListNode[W, O]
 	// The real max level in used. And the max limitation is xSkipListMaxLevel.
 	level *atomic.Int32
 	len   *atomic.Int32
 	cmp   SkipListWeightComparator[W]
 }
 
-func (xsl *xSkipList[W, V]) Level() int32 {
+func (xsl *xSkipList[W, O]) Level() int32 {
 	return xsl.level.Load()
 }
 
-func (xsl *xSkipList[W, V]) Len() int32 {
+func (xsl *xSkipList[W, O]) Len() int32 {
 	return xsl.len.Load()
 }
 
-func (xsl *xSkipList[W, V]) ForEach(fn func(idx int64, weight W, obj V)) {
+func (xsl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
 	var (
-		x   SkipListNode[W, V]
+		x   SkipListNode[W, O]
 		idx int64
 	)
 	x = xsl.head.levels()[0].horizontalForward()
@@ -234,10 +234,10 @@ func (xsl *xSkipList[W, V]) ForEach(fn func(idx int64, weight W, obj V)) {
 	}
 }
 
-func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
+func (xsl *xSkipList[W, O]) Insert(weight W, obj O) SkipListNode[W, O] {
 	var (
-		x          SkipListNode[W, V]
-		traverse   [xSkipListMaxLevel]SkipListNode[W, V]
+		x          SkipListNode[W, O]
+		traverse   [xSkipListMaxLevel]SkipListNode[W, O]
 		levelIndex int32
 	)
 	x = xsl.head
@@ -251,7 +251,7 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 				x = cur // Changes the node iteration path to locate different node.
 			} else if res == 0 && cur.Element().Object().Hash() == obj.Hash() {
 				// Replaces the value.
-				cur.setElement(&xSkipListElement[W, V]{weight: weight, object: obj})
+				cur.setElement(&xSkipListElement[W, O]{weight: weight, object: obj})
 				return cur
 			} else {
 				break
@@ -274,7 +274,7 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 		}
 		xsl.level.Store(lvl)
 	}
-	x = newXSkipListNode[W, V](lvl, weight, obj)
+	x = newXSkipListNode[W, O](lvl, weight, obj)
 	for i := int32(0); i < lvl; i++ {
 		cache := traverse[i]
 		if cache == nil {
@@ -298,10 +298,10 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 	return x
 }
 
-func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V] {
+func (xsl *xSkipList[W, O]) RemoveFirst(weight W, cmp SkipListObjectMatcher[O]) SkipListElement[W, O] {
 	var (
-		x        SkipListNode[W, V]
-		traverse [xSkipListMaxLevel]SkipListNode[W, V]
+		x        SkipListNode[W, O]
+		traverse [xSkipListMaxLevel]SkipListNode[W, O]
 	)
 	x = xsl.head
 	for levelIndex := xsl.level.Load() - 1; levelIndex >= 0; levelIndex-- {
@@ -334,7 +334,7 @@ func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp SkipListObjectMatcher[V]) 
 	return nil // not found
 }
 
-func (xsl *xSkipList[W, V]) removeNode(x SkipListNode[W, V], traverse [xSkipListMaxLevel]SkipListNode[W, V]) {
+func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse [xSkipListMaxLevel]SkipListNode[W, O]) {
 	var levelIndex int32
 	for levelIndex = 0; levelIndex < xsl.level.Load(); levelIndex++ {
 		if traverse[levelIndex].levels()[levelIndex].horizontalForward() == x {
@@ -353,9 +353,9 @@ func (xsl *xSkipList[W, V]) removeNode(x SkipListNode[W, V], traverse [xSkipList
 	xsl.len.Add(-1)
 }
 
-func (xsl *xSkipList[W, V]) FindFirst(weight W, cmp SkipListObjectMatcher[V]) SkipListElement[W, V] {
+func (xsl *xSkipList[W, O]) FindFirst(weight W, cmp SkipListObjectMatcher[O]) SkipListElement[W, O] {
 	var (
-		x SkipListNode[W, V]
+		x SkipListNode[W, O]
 	)
 	x = xsl.head
 outer:
@@ -386,7 +386,7 @@ outer:
 	return nil // not found
 }
 
-func (xsl *xSkipList[W, V]) PopHead() (e SkipListElement[W, V]) {
+func (xsl *xSkipList[W, O]) PopHead() (e SkipListElement[W, O]) {
 	x := xsl.head
 	if x == nil {
 		return e
@@ -396,7 +396,7 @@ func (xsl *xSkipList[W, V]) PopHead() (e SkipListElement[W, V]) {
 	}
 	e = x.Element()
 	slog.Info("pop head", "e w", e.Weight(), "e val", e.Object(), "e hash", e.Object().Hash())
-	e1 := xsl.RemoveFirst(e.Weight(), func(obj V) bool {
+	e1 := xsl.RemoveFirst(e.Weight(), func(obj O) bool {
 		tarval := e.Object().Hash()
 		slobjval := obj.Hash()
 		slog.Info("target obj cmp sl obj", "tar hash", tarval, "sl hash", slobjval)
@@ -408,13 +408,13 @@ func (xsl *xSkipList[W, V]) PopHead() (e SkipListElement[W, V]) {
 	return
 }
 
-func (xsl *xSkipList[W, V]) PopTail() (e SkipListElement[W, V]) {
+func (xsl *xSkipList[W, O]) PopTail() (e SkipListElement[W, O]) {
 	x := xsl.tail
 	if x == nil {
 		return
 	}
 	e = x.Element()
-	xsl.RemoveFirst(e.Weight(), func(obj V) bool {
+	xsl.RemoveFirst(e.Weight(), func(obj O) bool {
 		tarval := e.Object().Hash()
 		slobjval := obj.Hash()
 		slog.Info("target obj cmp sl obj", "tar obj", e, "tar hash", tarval, "sl obj", obj, "sl hash", slobjval)
@@ -423,9 +423,9 @@ func (xsl *xSkipList[W, V]) PopTail() (e SkipListElement[W, V]) {
 	return
 }
 
-func (xsl *xSkipList[W, V]) Free() {
+func (xsl *xSkipList[W, O]) Free() {
 	var (
-		x, next SkipListNode[W, V]
+		x, next SkipListNode[W, O]
 		idx     int
 	)
 	x = xsl.head.levels()[0].horizontalForward()
@@ -443,14 +443,14 @@ func (xsl *xSkipList[W, V]) Free() {
 	xsl.len = nil
 }
 
-func NewXSkipList[K SkipListWeight, V HashObject](cmp SkipListWeightComparator[K]) SkipList[K, V] {
-	xsl := &xSkipList[K, V]{
+func NewXSkipList[W SkipListWeight, O HashObject](cmp SkipListWeightComparator[W]) SkipList[W, O] {
+	xsl := &xSkipList[W, O]{
 		level: &atomic.Int32{},
 		len:   &atomic.Int32{},
 		cmp:   cmp,
 	}
 	xsl.level.Store(1)
-	xsl.head = newXSkipListNode[K, V](xSkipListMaxLevel, *new(K), *new(V))
+	xsl.head = newXSkipListNode[W, O](xSkipListMaxLevel, *new(W), *new(O))
 	// Initialization.
 	// The head must be initialized with array element size with xSkipListMaxLevel.
 	for i := 0; i < xSkipListMaxLevel; i++ {
