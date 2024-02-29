@@ -65,32 +65,60 @@ type LinkedList[T comparable] interface {
 	PushBackList(srcList LinkedList[T])
 }
 
-type SkipListNodeElement[E comparable] interface {
-	GetObject() E
-	GetVerticalBackward() SkipListNodeElement[E]
-	SetVerticalBackward(backward SkipListNodeElement[E])
-	GetLevels() []SkipListLevel[E]
+type HashObject interface {
+	comparable
+	Hash() uint64
+}
+
+type emptyHashObject struct{}
+
+func (o *emptyHashObject) Hash() uint64 { return 0 }
+
+type SkipListWeight interface {
+	~string | ~int8 | ~int16 | ~int32 | ~int64 | ~int |
+		~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uint |
+		~float32 | ~float64 |
+		~complex64 | ~complex128
+	// ~uint8 == byte
+}
+
+type SkipListElement[W SkipListWeight, V HashObject] interface {
+	Weight() W
+	Object() V
+}
+
+type SkipListNode[W SkipListWeight, V HashObject] interface {
+	Element() SkipListElement[W, V]
+	setElement(e SkipListElement[W, V])
 	Free()
+	verticalBackward() SkipListNode[W, V]
+	setVerticalBackward(backward SkipListNode[W, V])
+	levels() []SkipListLevel[W, V]
 }
 
-type SkipListLevel[E comparable] interface {
-	GetSpan() int64
-	SetSpan(span int64)
-	GetHorizontalForward() SkipListNodeElement[E]
-	SetHorizontalForward(forward SkipListNodeElement[E])
+type SkipListLevel[W SkipListWeight, V HashObject] interface {
+	horizontalForward() SkipListNode[W, V]
+	setHorizontalForward(forward SkipListNode[W, V])
 }
 
-type SkipList[E comparable] interface {
-	GetLevel() int
-	Len() int64
-	Insert(v E) SkipListNodeElement[E]
-	Remove(v E) SkipListNodeElement[E]
-	Find(v E) SkipListNodeElement[E]
-	ForEach(fn func(idx int64, v E))
-	PopHead() E
-	PopTail() E
+type SkipList[W SkipListWeight, V HashObject] interface {
+	Level() int32
+	Len() int32
 	Free()
+	ForEach(fn func(idx int64, weight W, object V))
+	Insert(weight W, object V) SkipListNode[W, V]
+	//Remove(weight W, compareTo func(v V) bool) SkipListElement[W, V]
+	//Find(weight W, compareTo func(v V) bool) SkipListElement[W, V]
+	//PopHead() SkipListElement[W, V]
+	//PopTail() SkipListElement[W, V]
 }
 
-// LessThan is the compare function.
-type compareTo[E comparable] func(a, b E) int
+// SkipListComparator
+// Assume j is the weight of the new element.
+//  1. i == j (i-j == 0, return 0), contains the same element.
+//     If insert a new element, we have to linear probe the next position that can be inserted.
+//  2. i > j (i-j > 0, return 1), find left part.
+//  3. i < j (i-j < 0, return -1), find right part.
+type SkipListComparator[W SkipListWeight] func(i, j W) int
+
+type skipListElementOp uint8
