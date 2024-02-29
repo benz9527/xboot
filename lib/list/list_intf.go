@@ -107,8 +107,8 @@ type SkipList[W SkipListWeight, V HashObject] interface {
 	Free()
 	ForEach(fn func(idx int64, weight W, object V))
 	Insert(weight W, object V) SkipListNode[W, V]
-	//Remove(weight W, compareTo func(v V) bool) SkipListElement[W, V]
-	//Find(weight W, compareTo func(v V) bool) SkipListElement[W, V]
+	RemoveFirst(weight W, cmp func(v V) int) SkipListElement[W, V]
+	//Find(weight W, cmp func(v V) int) SkipListElement[W, V]
 	//PopHead() SkipListElement[W, V]
 	//PopTail() SkipListElement[W, V]
 }
@@ -120,5 +120,3 @@ type SkipList[W SkipListWeight, V HashObject] interface {
 //  2. i > j (i-j > 0, return 1), find left part.
 //  3. i < j (i-j < 0, return -1), find right part.
 type SkipListComparator[W SkipListWeight] func(i, j W) int
-
-type skipListElementOp uint8

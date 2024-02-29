@@ -60,6 +60,30 @@ func TestXSkipList_Insert(t *testing.T) {
 	t.Logf("xsl levels: %d\n", xsl.Level())
 }
 
+func TestXSkipList_Insert_Remove(t *testing.T) {
+	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
+		return i - j
+	})
+	xsl.Insert(1, &xSkipListObject{id: "2"})
+	xsl.Insert(1, &xSkipListObject{id: "1"})
+	xsl.Insert(1, &xSkipListObject{id: "3"})
+	xsl.Insert(1, &xSkipListObject{id: "2"})
+	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+		t.Logf("idx: %d, weight: %d, obj id: %s\n", idx, weight, object.id)
+	})
+	t.Logf("xsl levels: %d\n", xsl.Level())
+	xsl.RemoveFirst(1, func(obj *xSkipListObject) int {
+		if obj.id == "2" {
+			return 0
+		}
+		return -1
+	})
+	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+		t.Logf("idx: %d, weight: %d, obj id: %s\n", idx, weight, object.id)
+	})
+	t.Logf("xsl levels: %d\n", xsl.Level())
+}
+
 func BenchmarkRandomLevelV2(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		randomLevelV2(xSkipListMaxLevel, int32(i))

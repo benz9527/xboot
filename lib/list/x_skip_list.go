@@ -215,7 +215,7 @@ func (xsl *xSkipList[W, V]) ForEach(fn func(idx int64, weight W, obj V)) {
 func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 	var (
 		x          SkipListNode[W, V]
-		update     [xSkipListMaxLevel]SkipListNode[W, V]
+		traverse   [xSkipListMaxLevel]SkipListNode[W, V]
 		levelIndex int32
 	)
 	x = xsl.head
@@ -240,7 +240,7 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 		// 3. (weight duplicated) If new element hash equals to current node's (replace element, because the hash
 		//      value and element are not strongly correlated)
 		// 4. (new weight) If new element is not exist, (do append next to current node)
-		update[levelIndex] = x
+		traverse[levelIndex] = x
 	}
 
 	// Each duplicated weight elements may contain its cache levels.
@@ -251,7 +251,7 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 	}
 	x = newXSkipListNode[W, V](lvl, weight, obj)
 	for i := int32(0); i < lvl; i++ {
-		cache := update[i]
+		cache := traverse[i]
 		if cache == nil {
 			break
 		}
@@ -259,10 +259,10 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 		// may pre-append to adjust 2 elements' order
 		cache.levels()[i].setHorizontalForward(x)
 	}
-	if update[0] == xsl.head {
+	if traverse[0] == xsl.head {
 		x.setVerticalBackward(nil)
 	} else {
-		x.setVerticalBackward(update[0])
+		x.setVerticalBackward(traverse[0])
 	}
 	if x.levels()[0].horizontalForward() == nil {
 		xsl.tail = x
@@ -273,28 +273,54 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 	return x
 }
 
-//func (sl *xSkipList[W, V]) Remove(object E) SkipListNode[E] {
-//	var (
-//		update [xSkipListMaxLevel]SkipListNode[E]
-//		x      SkipListNode[E]
-//		idx    int
-//	)
-//	x = sl.head
-//	for idx = sl.level - 1; idx >= 0; idx-- {
-//		for x.levels()[idx].horizontalForward() != nil &&
-//			sl.localCompareTo(x.levels()[idx].horizontalForward().GetObject(), object) < 0 {
-//			x = x.levels()[idx].horizontalForward()
-//		}
-//		update[idx] = x
-//	}
-//
-//	x = x.levels()[0].horizontalForward()
-//	if x != nil && sl.localCompareTo(x.GetObject(), object) == 0 {
-//		sl.deleteNode(x, update)
-//		return x
-//	}
-//	return nil
-//}
+func (xsl *xSkipList[W, V]) RemoveFirst(weight W, cmp func(V) int) SkipListElement[W, V] {
+	var (
+		x        SkipListNode[W, V]
+		traverse [xSkipListMaxLevel]SkipListNode[W, V]
+	)
+	x = xsl.head
+	for levelIndex := xsl.level.Load() - 1; levelIndex >= 0; levelIndex-- {
+		for x.levels()[levelIndex].horizontalForward() != nil {
+			cur := x.levels()[levelIndex].horizontalForward()
+			res := xsl.cmp(cur.Element().Weight(), weight)
+			// find predecessor node
+			if res < 0 || (res == 0 && cmp(cur.Element().Object()) < 0) {
+				x = cur
+			} else {
+				break
+			}
+		}
+		traverse[levelIndex] = x
+	}
+
+	x = x.levels()[0].horizontalForward()
+	if x != nil && cmp(x.Element().Object()) == 0 {
+		// TODO lock-free
+		xsl.removeNode(x, traverse)
+		return x.Element()
+	}
+	return nil // not found
+}
+
+func (xsl *xSkipList[W, V]) removeNode(x SkipListNode[W, V], traverse [xSkipListMaxLevel]SkipListNode[W, V]) {
+	var levelIndex int32
+	for levelIndex = 0; levelIndex < xsl.level.Load(); levelIndex++ {
+		if traverse[levelIndex].levels()[levelIndex].horizontalForward() == x {
+			traverse[levelIndex].levels()[levelIndex].setHorizontalForward(x.levels()[levelIndex].horizontalForward())
+		}
+	}
+	if x.levels()[0].horizontalForward() != nil {
+		// Adjust the cache levels
+		x.levels()[0].horizontalForward().setVerticalBackward(x.verticalBackward())
+	} else {
+		xsl.tail = x.verticalBackward()
+	}
+	for xsl.level.Load() > 1 && xsl.head.levels()[xsl.level.Load()-1].horizontalForward() == nil {
+		xsl.level.Add(-1)
+	}
+	xsl.len.Add(-1)
+}
+
 //
 //func (sl *xSkipList[W, V]) Find(object E) SkipListNode[W, V] {
 //	var (
@@ -322,7 +348,7 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 //		return object
 //	}
 //	object = x.GetObject()
-//	sl.Remove(object)
+//	sl.RemoveFirst(object)
 //	return
 //}
 //
@@ -332,31 +358,11 @@ func (xsl *xSkipList[W, V]) Insert(weight W, obj V) SkipListNode[W, V] {
 //		return *new(E)
 //	}
 //	object = x.GetObject()
-//	sl.Remove(object)
+//	sl.RemoveFirst(object)
 //	return
 //}
 //
 //
-//func (sl *xSkipList[W, V]) deleteNode(x SkipListNode[W, V], update [32]SkipListNode[W, V]) {
-//	var idx int32
-//	for idx = 0; idx < sl.level.Load(); idx++ {
-//		if update[idx].levels()[idx].horizontalForward() == x {
-//			update[idx].levels()[idx].setSpan(update[idx].levels()[idx].Span() + x.levels()[idx].Span() - 1)
-//			update[idx].levels()[idx].setHorizontalForward(x.levels()[idx].horizontalForward())
-//		} else {
-//			update[idx].levels()[idx].setSpan(update[idx].levels()[idx].Span() - 1)
-//		}
-//	}
-//	if x.levels()[0].horizontalForward() != nil {
-//		x.levels()[0].horizontalForward().setVerticalBackward(x.verticalBackward())
-//	} else {
-//		sl.tail = x.verticalBackward()
-//	}
-//	for sl.level > 1 && sl.head.levels()[sl.level-1].horizontalForward() == nil {
-//		sl.level--
-//	}
-//	sl.len.Add(-1)
-//}
 
 func (xsl *xSkipList[W, V]) Free() {
 	var (
