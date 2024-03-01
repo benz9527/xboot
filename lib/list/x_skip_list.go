@@ -128,12 +128,17 @@ func newSkipListLevel[W SkipListWeight, V HashObject](forward SkipListNode[W, V]
 	}
 }
 
+// The cache level array index > 0, it is the Y axis, and it means that it is the interval after
+//
+//	the bisection search. Used to locate an element quickly.
+//
+// The cache level array index == 0, it is the X axis, and it means that it is the data container.
 type xSkipListNode[W SkipListWeight, O HashObject] struct {
 	// The cache part.
 	// When current node work as data node, it doesn't contain levels metadata.
 	// If a node is a level node, the cache is from levels[0], but it is differ
 	//  to the sentinel's levels[0].
-	lvls    []SkipListLevel[W, O]
+	lvls    []SkipListLevel[W, O] // The cache level array.
 	element SkipListElement[W, O]
 	// The next node element in the vertical direction.
 	// A node with level 0 without any next node element at all usually.
@@ -273,25 +278,27 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 		}
 		xsl.level.Store(lvl)
 	}
-	predecessor = newXSkipListNode[W, O](lvl, weight, obj)
+
+	newNode := newXSkipListNode[W, O](lvl, weight, obj)
+	// Insert new node and update the new node levels metadata.
 	for i := int32(0); i < lvl; i++ {
-		cache := traverse[i]
-		predecessor.levels()[i].setHorizontalForward(cache.levels()[i].horizontalForward())
+		next := traverse[i].levels()[i].horizontalForward()
+		newNode.levels()[i].setHorizontalForward(next)
 		// May pre-append to adjust 2 elements' order
-		cache.levels()[i].setHorizontalForward(predecessor)
+		traverse[i].levels()[i].setHorizontalForward(newNode)
 	}
 	if traverse[0] == xsl.head {
-		predecessor.setVerticalBackward(nil)
+		newNode.setVerticalBackward(nil)
 	} else {
-		predecessor.setVerticalBackward(traverse[0])
+		newNode.setVerticalBackward(traverse[0])
 	}
-	if predecessor.levels()[0].horizontalForward() == nil {
-		xsl.tail = predecessor
+	if newNode.levels()[0].horizontalForward() == nil {
+		xsl.tail = newNode
 	} else {
-		predecessor.levels()[0].horizontalForward().setVerticalBackward(predecessor)
+		newNode.levels()[0].horizontalForward().setVerticalBackward(newNode)
 	}
 	xsl.len.Add(1)
-	return predecessor, true
+	return newNode, true
 }
 
 // findPredecessor0 is used to find the first element whose weight equals to target value.
@@ -339,9 +346,9 @@ func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse [xSkipList
 			traverse[i].levels()[i].setHorizontalForward(x.levels()[i].horizontalForward())
 		}
 	}
-	if x.levels()[0].horizontalForward() != nil {
+	if next := x.levels()[0].horizontalForward(); next != nil {
 		// Adjust the cache levels
-		x.levels()[0].horizontalForward().setVerticalBackward(x.verticalBackward())
+		next.setVerticalBackward(x.verticalBackward())
 	} else {
 		xsl.tail = x.verticalBackward()
 	}
@@ -392,14 +399,15 @@ func (xsl *xSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]
 		if cmp(cur.Element().Object()) {
 			xsl.removeNode(cur, traverse)
 			elements = append(elements, cur.Element())
-			free := cur
-			cur = cur.levels()[0].horizontalForward()
-			free.Free()
+			next := cur.levels()[0].horizontalForward()
+			cur.Free()
+			cur = next
 		} else {
-			// Merge the traverse path
+			// Merge the traverse path.
 			for i := 0; i < len(cur.levels()); i++ {
-				traverse[i] = cur.levels()[i].horizontalForward()
+				traverse[i] = cur
 			}
+			cur = cur.levels()[0].horizontalForward()
 		}
 	}
 	return elements

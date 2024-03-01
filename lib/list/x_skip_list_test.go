@@ -137,6 +137,32 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		assert.Equal(t, first.id, ele.Object().id)
 	}
 
+	expectedRemoveList = []element{
+		{7, "2"}, {5, "6"}, {3, "8"},
+	}
+	for _, e := range expectedRemoveList {
+		eleList = xsl.RemoveIfMatch(e.w, func(obj *xSkipListObject) bool {
+			return obj.id == e.id
+		})
+		assert.NotNil(t, eleList)
+		assert.Equal(t, 1, len(eleList))
+		assert.Equal(t, e.w, eleList[0].Weight())
+		assert.Equal(t, e.id, eleList[0].Object().id)
+	}
+
+	orders = []element{
+		{1, "3"}, {1, "2"}, {1, "1"},
+		{2, "4"}, {2, "2"},
+		{3, "9"}, {3, "7"}, {3, "1"},
+		{5, "7"}, {5, "2"},
+		{6, "8"}, {6, "100"},
+		{7, "8"}, {7, "7"}, {7, "1"},
+	}
+	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+		assert.Equal(t, orders[idx].w, weight)
+		assert.Equal(t, orders[idx].id, object.id)
+	})
+	assert.Equal(t, int32(len(orders)), xsl.Len())
 }
 
 //func TestNewXSkipList_PopHead(t *testing.T) {
