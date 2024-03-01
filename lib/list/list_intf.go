@@ -111,6 +111,7 @@ type SkipList[W SkipListWeight, O HashObject] interface {
 	RemoveFirst(weight W) SkipListElement[W, O]
 	RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O]
 	FindFirst(weight W) SkipListElement[W, O]
+	FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O]
 	PopHead() SkipListElement[W, O]
 }
 
