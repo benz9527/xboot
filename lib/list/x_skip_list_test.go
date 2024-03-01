@@ -40,6 +40,13 @@ func TestMaxLevel(t *testing.T) {
 	assert.GreaterOrEqual(t, 1, levels)
 }
 
+func TestRandomLevel(t *testing.T) {
+	loop := 10
+	for i := 0; i < loop; i++ {
+		t.Log(randomLevel())
+	}
+}
+
 func TestRandomLevelV2(t *testing.T) {
 	loop := 10
 	for i := 0; i < loop; i++ {
@@ -231,6 +238,13 @@ func TestNewXSkipList_PopHead(t *testing.T) {
 			internalIndex++
 		})
 	}
+}
+
+func BenchmarkRandomLevel(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		randomLevel()
+	}
+	b.ReportAllocs()
 }
 
 func BenchmarkRandomLevelV2(b *testing.B) {
