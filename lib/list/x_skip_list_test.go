@@ -199,40 +199,39 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 
 }
 
-//func TestNewXSkipList_PopHead(t *testing.T) {
-//	type element struct {
-//		w  int
-//		id string
-//	}
-//	orders := []element{
-//		{1, "3"}, {1, "2"}, {1, "1"},
-//		{2, "4"}, {2, "2"},
-//		{3, "1"},
-//		{4, "3"},
-//		{5, "1"},
-//		{6, "8"}, {6, "100"},
-//	}
-//	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
-//		return i - j
-//	})
-//	for _, o := range orders {
-//		xsl.Insert(o.w, &xSkipListObject{id: o.id})
-//	}
-//	for i := 0; i < len(orders); i++ {
-//		e := xsl.PopHead()
-//		assert.Equal(t, orders[i].w, e.Weight())
-//		assert.Equal(t, orders[i].id, e.Object().id)
-//		//restOrders := orders[i+1:]
-//		//internalIndex := 0
-//		t.Logf("loop %d\n", i)
-//		xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-//			//assert.Equal(t, restOrders[internalIndex].w, weight)
-//			//assert.Equal(t, restOrders[internalIndex].id, object.id)
-//			//internalIndex++
-//			//t.Logf("idx: %d, weight: %d, id: %s\n", idx, weight, object.id)
-//		})
-//	}
-//}
+func TestNewXSkipList_PopHead(t *testing.T) {
+	type element struct {
+		w  int
+		id string
+	}
+	orders := []element{
+		{1, "3"}, {1, "2"}, {1, "1"},
+		{2, "4"}, {2, "2"},
+		{3, "9"}, {3, "8"}, {3, "7"}, {3, "1"},
+		{4, "9"}, {4, "6"}, {4, "3"},
+		{5, "7"}, {5, "6"}, {5, "2"},
+		{6, "8"}, {6, "100"},
+		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
+	}
+	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
+		return i - j
+	})
+	for _, o := range orders {
+		xsl.Insert(o.w, &xSkipListObject{id: o.id})
+	}
+	for i := 0; i < len(orders); i++ {
+		e := xsl.PopHead()
+		assert.Equal(t, orders[i].w, e.Weight())
+		assert.Equal(t, orders[i].id, e.Object().id)
+		restOrders := orders[i+1:]
+		internalIndex := 0
+		xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
+			assert.Equal(t, restOrders[internalIndex].w, weight)
+			assert.Equal(t, restOrders[internalIndex].id, object.id)
+			internalIndex++
+		})
+	}
+}
 
 func BenchmarkRandomLevelV2(b *testing.B) {
 	for i := 0; i < b.N; i++ {

@@ -1,7 +1,6 @@
 package list
 
 import (
-	"log/slog"
 	"math"
 	"math/bits"
 	randv2 "math/rand/v2"
@@ -263,7 +262,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 		// 2. (weight duplicated) If new element hash is greater than current node's (do append next to current node)
 		// 3. (weight duplicated) If new element hash equals to current node's (replace element, because the hash
 		//      value and element are not strongly correlated)
-		// 4. (new weight) If new element is not exist, (do append next to current node)
+		// 4. (new weight) If a new element does not exist, (do append next to current node)
 		traverse[i] = predecessor
 	}
 
@@ -449,19 +448,15 @@ func (xsl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) 
 }
 
 func (xsl *xSkipList[W, O]) PopHead() (e SkipListElement[W, O]) {
-	x := xsl.head
-	if x == nil {
-		return e
+	target := xsl.head
+	if target == nil || xsl.len.Load() <= 0 {
+		return
 	}
-	if x = x.levels()[0].horizontalForward(); x == nil {
-		return e
+	if target = target.levels()[0].horizontalForward(); target == nil {
+		return
 	}
-	e = x.Element()
-	slog.Info("pop head", "e w", e.Weight(), "e val", e.Object(), "e hash", e.Object().Hash())
-	e1 := xsl.RemoveFirst(e.Weight())
-	if e1 == nil {
-		panic("unable remove element")
-	}
+	e = target.Element()
+	e = xsl.RemoveFirst(e.Weight())
 	return
 }
 
