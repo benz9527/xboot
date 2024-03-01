@@ -1,13 +1,5 @@
 package list
 
-import (
-	"math"
-	"math/bits"
-	randv2 "math/rand/v2"
-	"sync"
-	"sync/atomic"
-)
-
 // References:
 // https://people.csail.mit.edu/shanir/publications/DCAS.pdf
 // https://www.cl.cam.ac.uk/teaching/0506/Algorithms/skiplists.pdf
@@ -19,6 +11,30 @@ import (
 // https://github.com/chen3feng/stl4go
 // test:
 // https://github.com/chen3feng/skiplist-survey
+
+// Pastes from JDK
+// Head nodes          Index nodes
+// +-+    right        +-+                      +-+
+// |2|---------------->| |--------------------->| |->null
+// +-+                 +-+                      +-+
+//  | down              |                        |
+//  v                   v                        v
+// +-+            +-+  +-+       +-+            +-+       +-+
+// |1|----------->| |->| |------>| |----------->| |------>| |->null
+// +-+            +-+  +-+       +-+            +-+       +-+
+//  v              |    |         |              |         |
+// Nodes  next     v    v         v              v         v
+// +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+
+// | |->|A|->|B|->|C|->|D|->|E|->|F|->|G|->|H|->|I|->|J|->|K|->null
+// +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+
+
+import (
+	"math"
+	"math/bits"
+	randv2 "math/rand/v2"
+	"sync"
+	"sync/atomic"
+)
 
 const (
 	xSkipListMaxLevel    = 32   // 2^32 - 1 elements
