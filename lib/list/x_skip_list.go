@@ -421,6 +421,18 @@ func (xsl *xSkipList[W, O]) FindFirst(weight W) SkipListElement[W, O] {
 	return e.levels()[0].horizontalForward().Element()
 }
 
+func (xsl *xSkipList[W, O]) FindAll(weight W) []SkipListElement[W, O] {
+	predecessor, _ := xsl.findPredecessor0(weight)
+	if predecessor == nil {
+		return nil // not found
+	}
+	elements := make([]SkipListElement[W, O], 0, 16)
+	for cur := predecessor.levels()[0].horizontalForward(); cur != nil && xsl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].horizontalForward() {
+		elements = append(elements, cur.Element())
+	}
+	return elements
+}
+
 func (xsl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
 	predecessor, _ := xsl.findPredecessor0(weight)
 	if predecessor == nil {

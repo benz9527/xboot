@@ -186,6 +186,17 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		})
 		assert.Zero(t, len(eleList))
 	}
+
+	expectedFindList = []element{
+		{3, "9"}, {3, "7"}, {3, "1"},
+	}
+	eleList = xsl.FindAll(3)
+	assert.NotZero(t, len(eleList))
+	for i, e := range eleList {
+		assert.Equal(t, expectedFindList[i].w, e.Weight())
+		assert.Equal(t, expectedFindList[i].id, e.Object().id)
+	}
+
 }
 
 //func TestNewXSkipList_PopHead(t *testing.T) {
