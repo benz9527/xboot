@@ -130,3 +130,5 @@ type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
 //
 //	need to do iteration.
 type SkipListObjectMatcher[O HashObject] func(obj O) bool
+
+type SkipListRand func(maxLevel int, currentElements int32) int32
