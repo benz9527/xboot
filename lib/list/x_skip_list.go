@@ -264,7 +264,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 
 	// Each duplicated weight elements may contain its cache levels.
 	// It means that duplicated weight elements query through the cache (O(logN))
-	// But duplicated elements query (liner probe) will be degraded into O(N)
+	// But duplicated elements query (linear probe) will be degraded into O(N)
 	lvl := randomLevelV2(xSkipListMaxLevel, xsl.len.Load())
 	if lvl > xsl.level.Load() {
 		for i := xsl.Level(); i < lvl; i++ {
@@ -295,7 +295,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 }
 
 // findPredecessor0 is used to find the first element whose weight equals to target value.
-// Preparing for liner probing. O(N)
+// Preparing for linear probing. O(N)
 // @return value 1: the predecessor node
 // @return value 2: the query traverse path (nodes)
 func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], [xSkipListMaxLevel]SkipListNode[W, O]) {
@@ -305,13 +305,16 @@ func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], [xSk
 	)
 	predecessor = xsl.head
 	for i := xsl.level.Load() - 1; i >= 0; i-- {
+		// Note: Will start probing linearly from a local position in some interval
+		// O(N)
 		for predecessor.levels()[i].horizontalForward() != nil {
 			cur := predecessor.levels()[i].horizontalForward()
 			res := xsl.cmp(cur.Element().Weight(), weight)
 			// find predecessor node
-			if res <= 0 {
+			if res < 0 {
 				predecessor = cur
 			} else {
+				// downward to next level, continue to find
 				break
 			}
 		}
@@ -322,9 +325,9 @@ func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], [xSk
 		return nil, traverse // not found
 	}
 
-	predecessor = predecessor.levels()[0].horizontalForward()
+	target := predecessor.levels()[0].horizontalForward()
 	// Check next element's weight
-	if predecessor != nil && xsl.cmp(predecessor.Element().Weight(), weight) == 0 {
+	if target != nil && xsl.cmp(target.Element().Weight(), weight) == 0 {
 		return predecessor, traverse
 	}
 	return nil, traverse // not found
@@ -354,10 +357,10 @@ func (xsl *xSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {
 		return nil // not found
 	}
 
-	predecessor = predecessor.levels()[0].horizontalForward()
-	if predecessor != nil && xsl.cmp(predecessor.Element().Weight(), weight) == 0 {
-		xsl.removeNode(predecessor, traverse)
-		return predecessor.Element()
+	target := predecessor.levels()[0].horizontalForward()
+	if target != nil && xsl.cmp(target.Element().Weight(), weight) == 0 {
+		xsl.removeNode(target, traverse)
+		return target.Element()
 	}
 	return nil // not found
 }
@@ -404,7 +407,10 @@ func (xsl *xSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]
 
 func (xsl *xSkipList[W, O]) FindFirst(weight W) SkipListElement[W, O] {
 	e, _ := xsl.findPredecessor0(weight)
-	return e.Element()
+	if e.levels() == nil {
+		return nil
+	}
+	return e.levels()[0].horizontalForward().Element()
 }
 
 func (xsl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {

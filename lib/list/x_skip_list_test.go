@@ -53,21 +53,45 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		w  int
 		id string
 	}
-
+	orders := []element{
+		{1, "3"}, {1, "2"}, {1, "1"},
+		{2, "4"}, {2, "2"},
+		{3, "9"}, {3, "8"}, {3, "7"}, {3, "1"},
+		{4, "9"}, {4, "6"}, {4, "3"},
+		{5, "7"}, {5, "6"}, {5, "2"},
+		{6, "8"}, {6, "100"},
+		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
+	}
 	xsl := NewXSkipList[int, *xSkipListObject](func(i, j int) int {
 		return i - j
 	})
-	xsl.Insert(1, &xSkipListObject{id: "2"})
-	xsl.Insert(1, &xSkipListObject{id: "1"})
-	xsl.Insert(1, &xSkipListObject{id: "3"})
+	for _, o := range orders {
+		xsl.Insert(o.w, &xSkipListObject{id: o.id})
+	}
+
 	_, ok := xsl.Insert(1, &xSkipListObject{id: "2"})
 	assert.False(t, ok)
-	expectedOrder := []element{{1, "3"}, {1, "2"}, {1, "1"}}
 	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-		assert.Equal(t, expectedOrder[idx].w, weight)
-		assert.Equal(t, expectedOrder[idx].id, object.id)
+		assert.Equal(t, orders[idx].w, weight)
+		assert.Equal(t, orders[idx].id, object.id)
 	})
-	assert.Equal(t, int32(3), xsl.Len())
+	assert.Equal(t, int32(len(orders)), xsl.Len())
+
+	expectedFirstList := []element{
+		{1, "3"},
+		{2, "4"},
+		{3, "9"},
+		{4, "9"},
+		{5, "7"},
+		{6, "8"},
+		{7, "8"},
+	}
+	for _, first := range expectedFirstList {
+		ele := xsl.FindFirst(first.w)
+		assert.NotNil(t, ele)
+		assert.Equal(t, first.w, ele.Weight())
+		assert.Equal(t, first.id, ele.Object().id)
+	}
 
 	//xsl.RemoveFirst(1, func(obj *xSkipListObject) bool {
 	//	return obj.id == "2"
