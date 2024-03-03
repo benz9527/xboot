@@ -91,14 +91,14 @@ type SkipListNode[W SkipListWeight, O HashObject] interface {
 	Free()
 	Element() SkipListElement[W, O]
 	setElement(e SkipListElement[W, O])
-	verticalBackward() SkipListNode[W, O]
-	setVerticalBackward(backward SkipListNode[W, O])
+	backwardPredecessor() SkipListNode[W, O]
+	setBackwardPredecessor(backward SkipListNode[W, O])
 	levels() []SkipListLevel[W, O]
 }
 
 type SkipListLevel[W SkipListWeight, O HashObject] interface {
-	horizontalForward() SkipListNode[W, O]
-	setHorizontalForward(forward SkipListNode[W, O])
+	forwardSuccessor() SkipListNode[W, O]
+	setForwardSuccessor(successor SkipListNode[W, O])
 }
 
 type SkipList[W SkipListWeight, O HashObject] interface {
