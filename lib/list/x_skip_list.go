@@ -59,28 +59,28 @@ func (e *xSkipListElement[W, O]) Object() O {
 }
 
 type skipListLevel[W SkipListWeight, O HashObject] struct {
-	// The next node element in horizontal direction.
-	hForward SkipListNode[W, O]
-	// Ignore the node level span metadata.
+	// Works for the forward iteration direction.
+	successor SkipListNode[W, O]
+	// Ignore the node level span metadata (for rank).
 }
 
 func (lvl *skipListLevel[W, O]) forwardSuccessor() SkipListNode[W, O] {
 	if lvl == nil {
 		return nil
 	}
-	return lvl.hForward
+	return lvl.successor
 }
 
-func (lvl *skipListLevel[W, O]) setForwardSuccessor(forward SkipListNode[W, O]) {
+func (lvl *skipListLevel[W, O]) setForwardSuccessor(succ SkipListNode[W, O]) {
 	if lvl == nil {
 		return
 	}
-	lvl.hForward = forward
+	lvl.successor = succ
 }
 
-func newSkipListLevel[W SkipListWeight, V HashObject](forward SkipListNode[W, V]) SkipListLevel[W, V] {
+func newSkipListLevel[W SkipListWeight, V HashObject](succ SkipListNode[W, V]) SkipListLevel[W, V] {
 	return &skipListLevel[W, V]{
-		hForward: forward,
+		successor: succ,
 	}
 }
 
@@ -94,12 +94,10 @@ type xSkipListNode[W SkipListWeight, O HashObject] struct {
 	// When the current node works as a data node, it doesn't contain levels metadata.
 	// If a node is a level node, the cache is from levels[0], but it is differed
 	//  to the sentinel's levels[0].
-	lvls    []SkipListLevel[W, O] // The cache level array.
-	element SkipListElement[W, O]
-	// The next node element in the vertical direction.
-	// A node with level 0 without any next node element at all usually.
-	// A node works as level node (i.e., the cache node) must contain vBackward metadata.
-	vBackward SkipListNode[W, O]
+	levelList []SkipListLevel[W, O] // The cache level array.
+	element   SkipListElement[W, O]
+	// Works for a backward iteration direction.
+	predecessor SkipListNode[W, O]
 }
 
 func (node *xSkipListNode[W, O]) Element() SkipListElement[W, O] {
@@ -120,27 +118,27 @@ func (node *xSkipListNode[W, O]) backwardPredecessor() SkipListNode[W, O] {
 	if node == nil {
 		return nil
 	}
-	return node.vBackward
+	return node.predecessor
 }
 
-func (node *xSkipListNode[W, O]) setBackwardPredecessor(backward SkipListNode[W, O]) {
+func (node *xSkipListNode[W, O]) setBackwardPredecessor(pred SkipListNode[W, O]) {
 	if node == nil {
 		return
 	}
-	node.vBackward = backward
+	node.predecessor = pred
 }
 
 func (node *xSkipListNode[W, O]) levels() []SkipListLevel[W, O] {
 	if node == nil {
 		return nil
 	}
-	return node.lvls
+	return node.levelList
 }
 
 func (node *xSkipListNode[W, O]) Free() {
 	node.element = nil
-	node.vBackward = nil
-	node.lvls = nil
+	node.predecessor = nil
+	node.levelList = nil
 }
 
 func newXSkipListNode[W SkipListWeight, O HashObject](level int32, weight W, obj O) SkipListNode[W, O] {
@@ -151,10 +149,10 @@ func newXSkipListNode[W SkipListWeight, O HashObject](level int32, weight W, obj
 		},
 		// Fill zero to all level span.
 		// Initialization.
-		lvls: make([]SkipListLevel[W, O], level),
+		levelList: make([]SkipListLevel[W, O], level),
 	}
 	for i := int32(0); i < level; i++ {
-		e.lvls[i] = newSkipListLevel[W, O](nil)
+		e.levelList[i] = newSkipListLevel[W, O](nil)
 	}
 	return e
 }
@@ -165,7 +163,7 @@ type xSkipList[W SkipListWeight, O HashObject] struct {
 	rand         SkipListRand
 	traversePool *sync.Pool
 	// The sentinel node.
-	// The head.levels[0].hForward is the first data node of skip-list.
+	// The head.levels[0].successor is the first data node of skip-list.
 	// From head.levels[1], they point to the levels node (i.e., the cache metadata)
 	head SkipListNode[W, O]
 	// The sentinel node.
@@ -277,7 +275,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	return newNode, true
 }
 
-// findPredecessor0 is used to find the (forward) first element whose weight equals to target value.
+// findPredecessor0 is used to find the (successor) first element whose weight equals to target value.
 // Preparing for linear probing. O(N)
 // @return value 1: the predecessor node
 // @return value 2: the query traverse path (nodes)
@@ -323,7 +321,7 @@ func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipList
 		}
 	}
 	if next := x.levels()[0].forwardSuccessor(); next != nil {
-		// Adjust the backward.
+		// Adjust the predecessor.
 		next.setBackwardPredecessor(x.backwardPredecessor())
 	} else {
 		xsl.tail = x.backwardPredecessor()
