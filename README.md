@@ -1,4 +1,5 @@
 # XBoot
+![xboot-goreport](https://goreportcard.com/badge/github.com/benz9527/xboot)  
 This is an easy and simple framework for lite application.
 
 # Note
