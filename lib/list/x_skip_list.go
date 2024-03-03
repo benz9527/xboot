@@ -261,6 +261,9 @@ func newXSkipListNode[W SkipListWeight, O HashObject](level int32, weight W, obj
 
 // This is a sentinel node and used to point to nodes in memory.
 type xSkipList[W SkipListWeight, O HashObject] struct {
+	cmp          SkipListWeightComparator[W]
+	rand         SkipListRand
+	traversePool *sync.Pool
 	// The sentinel node.
 	// The head.levels[0].hForward is the first data node of skip-list.
 	// From head.levels[1], they point to the levels node (i.e. the cache metadata)
@@ -268,11 +271,8 @@ type xSkipList[W SkipListWeight, O HashObject] struct {
 	// The sentinel node.
 	tail SkipListNode[W, O]
 	// The real max level in used. And the max limitation is xSkipListMaxLevel.
-	level        *atomic.Int32
-	len          *atomic.Int32
-	cmp          SkipListWeightComparator[W]
-	rand         SkipListRand
-	traversePool *sync.Pool
+	level int32
+	len   int32
 }
 
 func (xsl *xSkipList[W, O]) loadTraverse() []SkipListNode[W, O] {
@@ -291,11 +291,11 @@ func (xsl *xSkipList[W, O]) putTraverse(traverse []SkipListNode[W, O]) {
 }
 
 func (xsl *xSkipList[W, O]) Level() int32 {
-	return xsl.level.Load()
+	return atomic.LoadInt32(&xsl.level)
 }
 
 func (xsl *xSkipList[W, O]) Len() int32 {
-	return xsl.len.Load()
+	return atomic.LoadInt32(&xsl.len)
 }
 
 func (xsl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
@@ -323,7 +323,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 
 	// Iteration from top to bottom.
 	// First to iterate the cache and access the data finally.
-	for i := xsl.level.Load() - 1; i >= 0; i-- { // move down level
+	for i := atomic.LoadInt32(&xsl.level) - 1; i >= 0; i-- { // move down level
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
 			res := xsl.cmp(cur.Element().Weight(), weight)
@@ -346,13 +346,13 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	// Each duplicated weight element may contain its cache levels.
 	// It means that duplicated weight elements query through the cache (O(logN))
 	// But duplicated elements query (linear probe) will be degraded into O(N)
-	lvl := xsl.rand(xSkipListMaxLevel, xsl.len.Load())
-	if lvl > xsl.level.Load() {
+	lvl := xsl.rand(xSkipListMaxLevel, xsl.Len())
+	if lvl > xsl.Level() {
 		for i := xsl.Level(); i < lvl; i++ {
 			// Update the whole traverse path, from top to bottom.
 			traverse[i] = xsl.head // avoid nil pointer
 		}
-		xsl.level.Store(lvl)
+		atomic.StoreInt32(&xsl.level, lvl)
 	}
 
 	newNode := newXSkipListNode[W, O](lvl, weight, obj)
@@ -373,7 +373,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	} else {
 		newNode.levels()[0].forwardSuccessor().setBackwardPredecessor(newNode)
 	}
-	xsl.len.Add(1)
+	atomic.AddInt32(&xsl.len, 1)
 	return newNode, true
 }
 
@@ -387,7 +387,7 @@ func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 		traverse    = xsl.loadTraverse()
 	)
 	predecessor = xsl.head
-	for i := xsl.level.Load() - 1; i >= 0; i-- {
+	for i := xsl.Level() - 1; i >= 0; i-- {
 		// Note: Will start probing linearly from a local position in some interval
 		// O(N)
 		for predecessor.levels()[i].forwardSuccessor() != nil {
@@ -417,7 +417,7 @@ func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 }
 
 func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipListNode[W, O]) {
-	for i := int32(0); i < xsl.level.Load(); i++ {
+	for i := int32(0); i < xsl.Level(); i++ {
 		if traverse[i].levels()[i].forwardSuccessor() == x {
 			traverse[i].levels()[i].setForwardSuccessor(x.levels()[i].forwardSuccessor())
 		}
@@ -428,10 +428,10 @@ func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipList
 	} else {
 		xsl.tail = x.backwardPredecessor()
 	}
-	for xsl.level.Load() > 1 && xsl.head.levels()[xsl.level.Load()-1].forwardSuccessor() == nil {
-		xsl.level.Add(-1)
+	for xsl.Level() > 1 && xsl.head.levels()[xsl.Level()-1].forwardSuccessor() == nil {
+		atomic.AddInt32(&xsl.level, -1)
 	}
-	xsl.len.Add(-1)
+	atomic.AddInt32(&xsl.len, -1)
 }
 
 func (xsl *xSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {
@@ -547,7 +547,7 @@ func (xsl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) 
 
 func (xsl *xSkipList[W, O]) PopHead() (e SkipListElement[W, O]) {
 	target := xsl.head
-	if target == nil || xsl.len.Load() <= 0 {
+	if target == nil || xsl.Len() <= 0 {
 		return
 	}
 	if target = target.levels()[0].forwardSuccessor(); target == nil {
@@ -574,8 +574,6 @@ func (xsl *xSkipList[W, O]) Free() {
 		xsl.head.levels()[idx].setForwardSuccessor(nil)
 	}
 	xsl.tail = nil
-	xsl.level = nil
-	xsl.len = nil
 	xsl.traversePool = nil
 }
 
@@ -585,12 +583,12 @@ func NewXSkipList[W SkipListWeight, O HashObject](cmp SkipListWeightComparator[W
 	}
 
 	xsl := &xSkipList[W, O]{
-		level: &atomic.Int32{},
-		len:   &atomic.Int32{},
+		// Start from 1 means the x-skip-list cache levels at least a one level is fixed
+		level: 1,
+		len:   0,
 		cmp:   cmp,
 		rand:  rand,
 	}
-	xsl.level.Store(1)
 	xsl.head = newXSkipListNode[W, O](xSkipListMaxLevel, *new(W), *new(O))
 	// Initialization.
 	// The head must be initialized with array element size with xSkipListMaxLevel.
