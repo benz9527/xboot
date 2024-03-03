@@ -29,11 +29,6 @@ package list
 // +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+
 
 import (
-	saferand "crypto/rand"
-	"encoding/binary"
-	"math"
-	"math/bits"
-	randv2 "math/rand/v2"
 	"sync"
 	"sync/atomic"
 )
@@ -42,101 +37,6 @@ const (
 	xSkipListMaxLevel    = 32   // 2^32 - 1 elements
 	xSkipListProbability = 0.25 // P = 1/4, a skip list node element has 1/4 probability to have a level
 )
-
-func maxLevels(totalElements int64, P float64) int {
-	// Ref https://www.cl.cam.ac.uk/teaching/2005/Algorithms/skiplists.pdf
-	// maxLevels = log(1/P) * log(totalElements)
-	// P = 1/4, totalElements = 2^32 - 1
-	if totalElements <= 0 {
-		return 0
-	}
-	return int(math.Ceil(math.Log(1/P) * math.Log(float64(totalElements))))
-}
-
-func randomLevel(maxLevel int, currentElements int32) int32 {
-	level := 1
-	// goland math random (math.Float64()) contains global mutex lock
-	// Ref
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
-	// 1. Avoid to use global mutex lock
-	// 2. Avoid to generate random number each time
-	for float64(randv2.Int64()&0xFFFF) < xSkipListProbability*0xFFFF {
-		level += 1
-	}
-	if level < xSkipListMaxLevel {
-		return int32(level)
-	}
-	return xSkipListMaxLevel
-}
-
-// randomLevelV2 is the skip list level element.
-// Dynamic level calculation.
-func randomLevelV2(maxLevel int, currentElements int32) int32 {
-	// Call function maxLevels to get total?
-	// maxLevel => n, 2^n -1, there will be 2^n-1 elements in the skip list
-	var total uint64
-	if maxLevel == xSkipListMaxLevel {
-		total = uint64(math.MaxUint32)
-	} else {
-		total = uint64(1)<<maxLevel - 1
-	}
-	// goland math random (math.Float64()) contains global mutex lock
-	// Ref
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
-	// 1. Avoid to use global mutex lock
-	// 2. Avoid to generate random number each time
-	rest := randv2.Uint64() & total
-	// Bits right shift equal to manipulate a high-level bit
-	// Calculate the minimum bits of the random number
-	tmp := bits.Len64(rest) // Lookup table.
-	level := maxLevel - tmp + 1
-	// Avoid the value of randomly generated level deviates
-	//   far from the number of elements within the skip-list.
-	// level should be greater than but approximate to log(currentElements)
-	for level > 1 && uint64(1)<<(level-1) > uint64(currentElements) {
-		level--
-	}
-	return int32(level)
-}
-
-// randomLevelV3 is the skip list level element.
-// Dynamic level calculation.
-// Concurrency safe.
-func randomLevelV3(maxLevel int, currentElements int32) int32 {
-	// Call function maxLevels to get total?
-	// maxLevel => n, 2^n -1, there will be 2^n-1 elements in the skip list
-	var total uint64
-	if maxLevel == xSkipListMaxLevel {
-		total = uint64(math.MaxUint32)
-	} else {
-		total = uint64(1)<<maxLevel - 1
-	}
-	// goland math random (math.Float64()) contains global mutex lock
-	// Ref
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
-	// 1. Avoid to use global mutex lock
-	// 2. Avoid to generate random number each time
-	randUint64 := [8]byte{}
-	if _, err := saferand.Read(randUint64[:]); err != nil {
-		panic(err)
-	}
-	num := binary.LittleEndian.Uint64(randUint64[:])
-	rest := num & total
-	// Bits right shift equal to manipulate a high-level bit
-	// Calculate the minimum bits of the random number
-	tmp := bits.Len64(rest) // Lookup table.
-	level := maxLevel - tmp + 1
-	// Avoid the value of randomly generated level deviates
-	//   far from the number of elements within the skip-list.
-	// level should be greater than but approximate to log(currentElements)
-	for level > 1 && uint64(1)<<(level-1) > uint64(currentElements) {
-		level--
-	}
-	return int32(level)
-}
 
 var (
 	_ SkipListElement[uint8, *emptyHashObject] = (*xSkipListElement[uint8, *emptyHashObject])(nil)
@@ -191,14 +91,14 @@ func newSkipListLevel[W SkipListWeight, V HashObject](forward SkipListNode[W, V]
 // The cache level array index == 0, it is the X axis, and it means that it is the data container.
 type xSkipListNode[W SkipListWeight, O HashObject] struct {
 	// The cache part.
-	// When current node work as data node, it doesn't contain levels metadata.
-	// If a node is a level node, the cache is from levels[0], but it is differ
+	// When the current node works as a data node, it doesn't contain levels metadata.
+	// If a node is a level node, the cache is from levels[0], but it is differed
 	//  to the sentinel's levels[0].
 	lvls    []SkipListLevel[W, O] // The cache level array.
 	element SkipListElement[W, O]
 	// The next node element in the vertical direction.
 	// A node with level 0 without any next node element at all usually.
-	// A node work as level node (i.e. the cache node) must contain vBackward metadata.
+	// A node works as level node (i.e., the cache node) must contain vBackward metadata.
 	vBackward SkipListNode[W, O]
 }
 
@@ -266,7 +166,7 @@ type xSkipList[W SkipListWeight, O HashObject] struct {
 	traversePool *sync.Pool
 	// The sentinel node.
 	// The head.levels[0].hForward is the first data node of skip-list.
-	// From head.levels[1], they point to the levels node (i.e. the cache metadata)
+	// From head.levels[1], they point to the levels node (i.e., the cache metadata)
 	head SkipListNode[W, O]
 	// The sentinel node.
 	tail SkipListNode[W, O]
@@ -337,9 +237,9 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 		}
 		// 1. (weight duplicated) If new element hash is lower than current node's (do pre-append to current node)
 		// 2. (weight duplicated) If new element hash is greater than current node's (do append next to current node)
-		// 3. (weight duplicated) If new element hash equals to current node's (replace element, because the hash
+		// 3. (weight duplicated) If new element hash equals to current node's (replace an element, because the hash
 		//      value and element are not strongly correlated)
-		// 4. (new weight) If a new element does not exist, (do append next to current node)
+		// 4. (new weight) If a new element does not exist, (do append next to the current node)
 		traverse[i] = predecessor
 	}
 
