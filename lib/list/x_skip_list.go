@@ -57,8 +57,9 @@ type xSkipList[W SkipListWeight, O HashObject] struct {
 	// The sentinel node.
 	tail SkipListNode[W, O]
 	// The real max level in used. And the max limitation is xSkipListMaxLevel.
-	level int32
-	len   int32
+	level       int32
+	len         int32
+	isDuplicate bool
 }
 
 func (xsl *xSkipList[W, O]) loadTraverse() []SkipListNode[W, O] {
@@ -113,9 +114,9 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
 			res := xsl.cmp(cur.Element().Weight(), weight)
-			if res < 0 || (res == 0 && cur.Element().Object().Hash() < obj.Hash()) {
+			if res < 0 || (res == 0 && xsl.isDuplicate && cur.Element().Object().Hash() < obj.Hash()) {
 				predecessor = cur // Changes the node iteration path to locate different node.
-			} else if res == 0 && cur.Element().Object().Hash() == obj.Hash() {
+			} else if res == 0 && !xsl.isDuplicate || cur.Element().Object().Hash() == obj.Hash() {
 				return nil, false
 			} else {
 				break
@@ -268,9 +269,12 @@ func (xsl *xSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]
 
 	elements := make([]SkipListElement[W, O], 0, 16)
 	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && xsl.cmp(cur.Element().Weight(), weight) == 0; {
-		if cmp(cur.Element().Object()) {
+		if !xsl.isDuplicate || cmp(cur.Element().Object()) {
 			xsl.removeNode(cur, traverse)
 			elements = append(elements, cur.Element())
+			if !xsl.isDuplicate {
+				break
+			}
 			next := cur.levels()[0].forwardSuccessor()
 			cur.Free()
 			cur = next
@@ -324,8 +328,11 @@ func (xsl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) 
 
 	elements := make([]SkipListElement[W, O], 0, 16)
 	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && xsl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
-		if cmp(cur.Element().Object()) {
+		if !xsl.isDuplicate || cmp(cur.Element().Object()) {
 			elements = append(elements, cur.Element())
+			if !xsl.isDuplicate {
+				break
+			}
 		}
 	}
 	return elements
@@ -370,10 +377,11 @@ func NewXSkipList[W SkipListWeight, O HashObject](cmp SkipListWeightComparator[W
 
 	xsl := &xSkipList[W, O]{
 		// Start from 1 means the x-skip-list cache levels at least a one level is fixed
-		level: 1,
-		len:   0,
-		cmp:   cmp,
-		rand:  rand,
+		level:       1,
+		len:         0,
+		cmp:         cmp,
+		rand:        rand,
+		isDuplicate: true,
 	}
 	xsl.head = newXSkipListNode[W, O](xSkipListMaxLevel, *new(W), *new(O))
 	// Initialization.
