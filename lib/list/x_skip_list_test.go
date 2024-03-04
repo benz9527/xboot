@@ -55,7 +55,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		assert.Equal(t, orders[idx].w, weight)
 		assert.Equal(t, orders[idx].id, object.id)
 	})
-	assert.Equal(t, int32(len(orders)), xsl.Len())
+	assert.Equal(t, uint32(len(orders)), xsl.Len())
 
 	expectedFirstList := []element{
 		{1, "3"},
@@ -101,7 +101,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		assert.Equal(t, orders[idx].w, weight)
 		assert.Equal(t, orders[idx].id, object.id)
 	})
-	assert.Equal(t, int32(len(orders)), xsl.Len())
+	assert.Equal(t, uint32(len(orders)), xsl.Len())
 
 	expectedFirstList = []element{
 		{1, "3"},
@@ -143,7 +143,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		assert.Equal(t, orders[idx].w, weight)
 		assert.Equal(t, orders[idx].id, object.id)
 	})
-	assert.Equal(t, int32(len(orders)), xsl.Len())
+	assert.Equal(t, uint32(len(orders)), xsl.Len())
 
 	expectedFindList := []element{
 		{7, "7"}, {6, "100"}, {3, "7"},

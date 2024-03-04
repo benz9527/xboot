@@ -57,8 +57,8 @@ type xSkipList[W SkipListWeight, O HashObject] struct {
 	// The sentinel node.
 	tail SkipListNode[W, O]
 	// The real max level in used. And the max limitation is xSkipListMaxLevel.
-	level       int32
-	len         int32
+	level       uint32
+	len         uint32
 	isDuplicate bool
 }
 
@@ -77,12 +77,12 @@ func (xsl *xSkipList[W, O]) putTraverse(traverse []SkipListNode[W, O]) {
 	xsl.traversePool.Put(traverse)
 }
 
-func (xsl *xSkipList[W, O]) Level() int32 {
-	return atomic.LoadInt32(&xsl.level)
+func (xsl *xSkipList[W, O]) Level() uint32 {
+	return atomic.LoadUint32(&xsl.level)
 }
 
-func (xsl *xSkipList[W, O]) Len() int32 {
-	return atomic.LoadInt32(&xsl.len)
+func (xsl *xSkipList[W, O]) Len() uint32 {
+	return atomic.LoadUint32(&xsl.len)
 }
 
 func (xsl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
@@ -110,7 +110,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 
 	// Iteration from top to bottom.
 	// First to iterate the cache and access the data finally.
-	for i := atomic.LoadInt32(&xsl.level) - 1; i >= 0; i-- { // move down level
+	for i := int64(atomic.LoadUint32(&xsl.level) - 1); i >= 0; i-- { // move down level
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
 			res := xsl.cmp(cur.Element().Weight(), weight)
@@ -133,18 +133,18 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	// Each duplicated weight element may contain its cache levels.
 	// It means that duplicated weight elements query through the cache (O(logN))
 	// But duplicated elements query (linear probe) will be degraded into O(N)
-	lvl := xsl.rand(xSkipListMaxLevel, xsl.Len())
+	lvl := uint32(xsl.rand(xSkipListMaxLevel, xsl.Len()))
 	if lvl > xsl.Level() {
 		for i := xsl.Level(); i < lvl; i++ {
 			// Update the whole traverse path, from top to bottom.
 			traverse[i] = xsl.head // avoid nil pointer
 		}
-		atomic.StoreInt32(&xsl.level, lvl)
+		atomic.StoreUint32(&xsl.level, lvl)
 	}
 
 	newNode := newXSkipListNode[W, O](lvl, weight, obj)
 	// Insert new node and update the new node levels metadata.
-	for i := int32(0); i < lvl; i++ {
+	for i := uint32(0); i < lvl; i++ {
 		next := traverse[i].levels()[i].forwardSuccessor()
 		newNode.levels()[i].setForwardSuccessor(next)
 		// May pre-append to adjust 2 elements' order
@@ -160,7 +160,7 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	} else {
 		newNode.levels()[0].forwardSuccessor().setBackwardPredecessor(newNode)
 	}
-	atomic.AddInt32(&xsl.len, 1)
+	atomic.AddUint32(&xsl.len, 1)
 	return newNode, true
 }
 
@@ -174,7 +174,7 @@ func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 		traverse    = xsl.loadTraverse()
 	)
 	predecessor = xsl.head
-	for i := xsl.Level() - 1; i >= 0; i-- {
+	for i := int64(xsl.Level() - 1); i >= 0; i-- {
 		// Note: Will start probing linearly from a local position in some interval
 		// O(N)
 		for predecessor.levels()[i].forwardSuccessor() != nil {
@@ -204,7 +204,7 @@ func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 }
 
 func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipListNode[W, O]) {
-	for i := int32(0); i < xsl.Level(); i++ {
+	for i := uint32(0); i < xsl.Level(); i++ {
 		if traverse[i].levels()[i].forwardSuccessor() == x {
 			traverse[i].levels()[i].setForwardSuccessor(x.levels()[i].forwardSuccessor())
 		}
@@ -216,9 +216,9 @@ func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipList
 		xsl.tail = x.backwardPredecessor()
 	}
 	for xsl.Level() > 1 && xsl.head.levels()[xsl.Level()-1].forwardSuccessor() == nil {
-		atomic.AddInt32(&xsl.level, -1)
+		atomic.AddUint32(&xsl.level, ^uint32(0)) // -1
 	}
-	atomic.AddInt32(&xsl.len, -1)
+	atomic.AddUint32(&xsl.len, ^uint32(0)) // -1
 }
 
 func (xsl *xSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {

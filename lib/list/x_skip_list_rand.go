@@ -22,7 +22,7 @@ func maxLevels(totalElements int64, P float64) int {
 	return int(math.Ceil(math.Log(1/P) * math.Log(float64(totalElements))))
 }
 
-func randomLevel(maxLevel int, currentElements int32) int32 {
+func randomLevel(maxLevel int, currentElements uint32) int32 {
 	level := 1
 	// Goland math random (math.Float64()) contains global mutex lock
 	// Ref
@@ -41,7 +41,7 @@ func randomLevel(maxLevel int, currentElements int32) int32 {
 
 // randomLevelV2 is the skip list level element.
 // Dynamic level calculation.
-func randomLevelV2(maxLevel int, currentElements int32) int32 {
+func randomLevelV2(maxLevel int, currentElements uint32) int32 {
 	// Call function maxLevels to get total?
 	// maxLevel => n, 2^n-1, there will be 2^n-1 elements in the skip list
 	var total uint64
@@ -73,7 +73,7 @@ func randomLevelV2(maxLevel int, currentElements int32) int32 {
 // randomLevelV3 is the skip list level element.
 // Dynamic level calculation.
 // Concurrency safe.
-func randomLevelV3(maxLevel int, currentElements int32) int32 {
+func randomLevelV3(maxLevel int, currentElements uint32) int32 {
 	// Call function maxLevels to get total?
 	// maxLevel => n, 2^n-1, there will be 2^n-1 elements in the skip list
 	var total uint64

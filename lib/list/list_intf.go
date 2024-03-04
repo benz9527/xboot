@@ -102,8 +102,8 @@ type SkipListLevel[W SkipListWeight, O HashObject] interface {
 }
 
 type SkipList[W SkipListWeight, O HashObject] interface {
-	Level() int32
-	Len() int32
+	Level() uint32
+	Len() uint32
 	Free()
 	ForEach(fn func(idx int64, weight W, object O))
 	Insert(weight W, object O) (SkipListNode[W, O], bool)
@@ -131,4 +131,4 @@ type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
 //	need to do iteration.
 type SkipListObjectMatcher[O HashObject] func(obj O) bool
 
-type SkipListRand func(maxLevel int, currentElements int32) int32
+type SkipListRand func(maxLevel int, currentElements uint32) int32

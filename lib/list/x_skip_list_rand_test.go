@@ -51,9 +51,9 @@ func TestMaxLevel(t *testing.T) {
 }
 
 func TestRandomLevel(t *testing.T) {
-	loop := 10
-	for i := 0; i < loop; i++ {
-		t.Log(randomLevel(xSkipListMaxLevel, int32(i)))
+	loop := uint32(10)
+	for i := uint32(0); i < loop; i++ {
+		t.Log(randomLevel(xSkipListMaxLevel, i))
 	}
 }
 
@@ -77,9 +77,9 @@ func TestRandomLevelV2(t *testing.T) {
 	wg.Add(10)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			loop := 1000
-			for j := 0; j < loop; j++ {
-				t.Logf("randv2 id: %d; rand: %d\n", id, randomLevelV2(xSkipListMaxLevel, int32(j)))
+			loop := uint32(1000)
+			for j := uint32(0); j < loop; j++ {
+				t.Logf("randv2 id: %d; rand: %d\n", id, randomLevelV2(xSkipListMaxLevel, j))
 			}
 			wg.Done()
 		}(i)
@@ -92,9 +92,9 @@ func TestRandomLevelV3(t *testing.T) {
 	wg.Add(10)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			loop := 1000
-			for j := 0; j < loop; j++ {
-				t.Logf("randv3 id: %d; rand: %d\n", id, randomLevelV3(xSkipListMaxLevel, int32(j)))
+			loop := uint32(1000)
+			for j := uint32(0); j < loop; j++ {
+				t.Logf("randv3 id: %d; rand: %d\n", id, randomLevelV3(xSkipListMaxLevel, j))
 			}
 			wg.Done()
 		}(i)
@@ -104,14 +104,14 @@ func TestRandomLevelV3(t *testing.T) {
 
 func BenchmarkRandomLevel(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		randomLevel(xSkipListMaxLevel, int32(i))
+		randomLevel(xSkipListMaxLevel, uint32(i))
 	}
 	b.ReportAllocs()
 }
 
 func BenchmarkRandomLevelV2(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		randomLevelV2(xSkipListMaxLevel, int32(i))
+		randomLevelV2(xSkipListMaxLevel, uint32(i))
 	}
 	b.ReportAllocs()
 }

@@ -99,7 +99,7 @@ func (node *xSkipListNode[W, O]) Free() {
 	node.levelList = nil
 }
 
-func newXSkipListNode[W SkipListWeight, O HashObject](level int32, weight W, obj O) SkipListNode[W, O] {
+func newXSkipListNode[W SkipListWeight, O HashObject](level uint32, weight W, obj O) SkipListNode[W, O] {
 	e := &xSkipListNode[W, O]{
 		element: atomic.Pointer[SkipListElement[W, O]]{},
 		// Fill zero to all level span.
@@ -110,7 +110,7 @@ func newXSkipListNode[W SkipListWeight, O HashObject](level int32, weight W, obj
 		weight: weight,
 		object: obj,
 	})
-	for i := int32(0); i < level; i++ {
+	for i := uint32(0); i < level; i++ {
 		e.levelList[i] = newSkipListLevel[W, O](nil)
 	}
 	return e
