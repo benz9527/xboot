@@ -64,7 +64,7 @@ func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer
 				o := node.object.Load()
 				// It is a marker node (data racing, modifying by other g)
 				if w == nil || o == nil {
-					// Unlink index to the deleted node
+					// Unlink index to the deleted node.
 					// Reread the right index and restart the loop.
 					rightCompareAndSwap(predecessor, rightIndex, rightIndex.right.Load())
 				}
@@ -132,91 +132,131 @@ outer:
 	return nil
 }
 
+// Adds an element if not present, or replaces an object if present.
 func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O] {
 	for {
-		var b = &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
+		var baseNode = &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
 		levels := 0
-		h := xcsl.head
-		if h == nil || h.Load() == nil {
+		predecessor := xcsl.head
+		if predecessor.Load() == nil {
+			// Empty skip-list.
 			// Initialize
 			base := newXConcurrentSkipListNode[W, O](*new(W), *new(O), nil)
-			_h := newXConcurrentSkipListIndex[W, O](base, nil, nil)
-			if headCompareAndSwap(xcsl.head, nil, _h) {
-				b.Store(base)
+			idx := newXConcurrentSkipListIndex[W, O](base, nil, nil)
+			if headCompareAndSwap(xcsl.head, nil, idx) {
+				baseNode.Store(base)
 			} else {
-				b.Store(nil)
+				baseNode.Store(nil)
 			}
 		} else {
-			for q := h; q != nil && q.Load() != nil; {
-				for r := q.Load().right; r != nil; {
-					p := r.Load().node.Load()
-					if p == nil || p.weight.Load() == nil || p.object.Load() == nil {
-						rightCompareAndSwap(q, r.Load(), r.Load().right.Load())
+			for traverse := predecessor; traverse.Load() != nil; {
+				for rightIndex := traverse.Load().right; rightIndex != nil; {
+					p := rightIndex.Load().node.Load()
+					if p == nil || p.weight.Load() == nil /* It is a marker node */ || p.object.Load() == nil /* It is a marker node */ {
+						// Unlinks the deleted node.
+						rightCompareAndSwap(traverse, rightIndex.Load(), rightIndex.Load().right.Load())
 					} else if xcsl.cmp(weight, p.Weight()) > 0 {
-						q = r
+						traverse = rightIndex
 					} else {
 						break
 					}
 				}
-				if d := q.Load().down; d.Load() != nil {
+				// Descending to the dataNode
+				if nextLevelNode := traverse.Load().down; nextLevelNode.Load() != nil {
 					levels++
-					q = d
+					traverse = nextLevelNode
 				} else {
-					b = q.Load().node
+					baseNode = traverse.Load().node
 					break
 				}
 			}
 		}
-		if b != nil && b.Load() != nil {
-			z := &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
-			c := 0
+
+		if baseNode.Load() != nil {
+			x := &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
+			res := 0
 			for {
-				if n := b.Load().next; n.Load() == nil {
-					w := b.Load().weight
+				if n := baseNode.Load().next; n.Load() == nil {
+					w := baseNode.Load().weight
 					if w == nil || w.Load() == nil {
 						xcsl.cmp(weight, weight)
 					}
-					c = -1
+					res = -1
 				} else {
 					w := n.Load().weight
 					o := n.Load().object
 					if w.Load() == nil {
-						break
+						break // can't append; restart iteration
 					} else if o == nil {
-						xcsl.unlinkNode(b, n)
-						c = 1
-					} else if c = xcsl.cmp(weight, *w.Load()); c > 0 {
-						b = n
-					} else if c == 0 || objectCompareAndSet[W, O](n, *o.Load(), obj) {
+						xcsl.unlinkNode(baseNode, n)
+						res = 1
+					} else if res = xcsl.cmp(weight, *w.Load()); res > 0 {
+						baseNode = n
+					} else if res == 0 || objectCompareAndSet[W, O](n, *o.Load(), obj) {
+						// Updated old node.
 						return o
 					}
-					p := newXConcurrentSkipListNode[W, O](weight, obj, nil)
-					if c < 0 && nextCompareAndSet[W, O](b, n.Load(), p) {
-						z.Store(p)
+					newNode := newXConcurrentSkipListNode[W, O](weight, obj, nil)
+					if res < 0 && nextCompareAndSet[W, O](baseNode, n.Load(), newNode) {
+						x.Store(newNode)
 						break
 					}
 				}
 
-				if z.Load() != nil {
-
+				if x.Load() != nil {
+					lr := cryptoRand()
+					if lr&0x3 == 0 {
+						// probability 1/4
+						hr := cryptoRand()
+						rnd := hr<<32 | (lr & 0xffffffff)
+						skips := levels
+						var idx *xConcurrentSkipListIndex[W, O]
+						for {
+							idx = newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
+							if rnd >= 0 {
+								break
+							}
+							if skips--; skips < 0 {
+								break
+							}
+							rnd <<= 1
+						}
+						if xcsl.addIndexes(skips, predecessor, idx) && skips < 0 && xcsl.head.Load() == predecessor.Load() {
+							hx := newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
+							newPredecessor := newXConcurrentSkipListIndex[W, O](predecessor.Load().node.Load(), hx, predecessor.Load())
+							headCompareAndSwap[W, O](xcsl.head, predecessor.Load(), newPredecessor)
+						}
+						if x.Load().object.Load() == nil {
+							xcsl.findPredecessor0(weight)
+						}
+					}
+					atomic.AddUint32(&xcsl.len, 1)
+					return nil
 				}
 			}
 		}
 	}
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) addIndices(skips int, q, x *atomic.Pointer[xConcurrentSkipListIndex[W, O]]) bool {
+// Add indexes after the new node insertion.
+// Descends iteratively to the highest level of insertion,
+// then recursively, to chain index nodes to lower ones.
+// Returns nil on (staleness) failure, disabling higher-level
+// insertions. Recursion depths are exponentially less probable.
+func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
+	skips int,
+	q *atomic.Pointer[xConcurrentSkipListIndex[W, O]],
+	x *xConcurrentSkipListIndex[W, O],
+) bool {
 	return false
 }
 
 func (xcsl *xConcurrentSkipList[W, O]) Level() uint32 {
-	//TODO implement me
-	panic("implement me")
+	return atomic.LoadUint32(&xcsl.level)
 }
 
 func (xcsl *xConcurrentSkipList[W, O]) Len() uint32 {
-	//TODO implement me
-	panic("implement me")
+	return atomic.LoadUint32(&xcsl.len)
 }
 
 func (xcsl *xConcurrentSkipList[W, O]) Free() {
