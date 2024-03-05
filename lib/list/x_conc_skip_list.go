@@ -248,6 +248,56 @@ func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
 	q *atomic.Pointer[xConcurrentSkipListIndex[W, O]],
 	x *xConcurrentSkipListIndex[W, O],
 ) bool {
+	if x == nil {
+		return false
+	}
+	z := x.node
+	if z.Load() == nil {
+		return false
+	}
+	w := z.Load().weight
+	if w.Load() == nil {
+		return false
+	}
+	if q.Load() == nil {
+		return false
+	}
+
+	retrying := false
+	for {
+		rightIndex := q.Load().right.Load()
+		res := 0
+		if rightIndex != nil {
+			p := rightIndex.node.Load()
+			if p == nil || p.weight.Load() == nil || p.object.Load() == nil {
+				rightCompareAndSwap[W, O](q, rightIndex, rightIndex.right.Load())
+				res = 0
+			} else if res = xcsl.cmp(*w.Load(), p.Weight()); res > 0 {
+				q.Store(rightIndex)
+			} else if res == 0 {
+				break // stale
+			}
+		} else {
+			res = -1
+		}
+
+		if res < 0 {
+			d := q.Load().down
+			if d.Load() != nil && skips > 0 {
+				skips--
+				q.Store(d.Load())
+			} else if d.Load() != nil && !retrying && !xcsl.addIndexes(0, d, x.down.Load()) {
+				break
+			} else {
+				x.right.Store(rightIndex)
+				if rightCompareAndSwap(q, rightIndex, x) {
+					return true
+				} else {
+					retrying = true
+				}
+			}
+		}
+	}
 	return false
 }
 
