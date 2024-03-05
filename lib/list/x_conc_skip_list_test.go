@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestXConcurrentSkipList(t *testing.T) {
@@ -19,7 +21,15 @@ func TestXConcurrentSkipList(t *testing.T) {
 	}
 	skl.doPut(1, &xSkipListObject{id: "1"})
 	skl.doPut(2, &xSkipListObject{id: "2"})
-	skl.doPut(2, &xSkipListObject{id: "3"})
+	ele := skl.doGet(2)
+	require.NotNil(t, ele)
+	require.Equal(t, 2, ele.Weight())
+	require.Equal(t, "2", ele.Object().id)
+	skl.doPut(2, &xSkipListObject{id: "3"}, true)
+	ele = skl.doGet(2)
+	require.NotNil(t, ele)
+	require.Equal(t, 2, ele.Weight())
+	require.Equal(t, "3", ele.Object().id)
 	t.Logf("%+v\n", skl)
 }
 

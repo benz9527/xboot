@@ -42,98 +42,8 @@ func (xcsl *xConcurrentSkipList[W, O]) unlinkNode(
 	return false
 }
 
-// Returns an index node with weight (key) strictly less than given weight.
-// Also unlinks indexes to deleted nodes found along the way.
-// Callers rely on this side-effect of clearing indices to deleted nodes.
-func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
-	// Start from top of head
-	predecessor := xcsl.head
-	if predecessor == nil {
-		return nil
-	}
-
-	for {
-		for rightIndex := predecessor.Load().right.Load(); rightIndex != nil; rightIndex = predecessor.Load().right.Load() {
-			node := rightIndex.node.Load()
-			var w *W
-			if node == nil /* No more next node */ {
-				// Iterating next right index
-				rightCompareAndSwap(predecessor, rightIndex, rightIndex.right.Load())
-			} else {
-				w = node.weight.Load()
-				o := node.object.Load()
-				// It is a marker node (data racing, modifying by other g)
-				if w == nil || o == nil {
-					// Unlink index to the deleted node.
-					// Reread the right index and restart the loop.
-					rightCompareAndSwap(predecessor, rightIndex, rightIndex.right.Load())
-				}
-			}
-			res := xcsl.cmp(weigh, *w)
-			if res > 0 {
-				// Continue to iterate the same level right index
-				predecessor.Store(rightIndex)
-			} else {
-				// Down to the next level
-				break
-			}
-		}
-
-		if downIndex := predecessor.Load().down.Load(); downIndex != nil {
-			// Iterating this level's indexes
-			predecessor.Store(downIndex)
-		} else {
-			// Only one node left
-			return predecessor.Load().node
-		}
-	}
-}
-
-// Returns the node holding key or nil if no such, clearing out any deleted nodes seen
-// along the way.
-// Repeatedly traverses at base-level looking for key starting at predecessor returned
-// from findPredecessor0, processing base-level deletions as encountered.
-// Restarts occur, at a traversal step encountering next node, if next node's weight (key)
-// field is nil, indicating it is a marker node, so its predecessor is deleted before continuing,
-// which we help do by re-finding a valid predecessor.
-func (xcsl *xConcurrentSkipList[W, O]) findNode(weight W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
-	var predecessorNode *atomic.Pointer[xConcurrentSkipListNode[W, O]]
-outer:
-	for predecessorNode = xcsl.findPredecessor0(weight); predecessorNode != nil; predecessorNode = xcsl.findPredecessor0(weight) {
-		for {
-			nextNode := predecessorNode.Load().next
-			n := nextNode.Load()
-			var (
-				w *W
-				o *O
-			)
-			if n == nil {
-				break outer
-			} else {
-				if w = n.weight.Load(); w == nil {
-					break // predecessorNode is deleted
-				}
-				if o = n.object.Load(); o == nil {
-					// The next node is deleted
-					xcsl.unlinkNode(predecessorNode, nextNode)
-				} else {
-					res := xcsl.cmp(weight, nextNode.Load().Weight())
-					if res > 0 {
-						predecessorNode.Store(n)
-					} else if res == 0 {
-						return nextNode
-					} else {
-						break outer
-					}
-				}
-			}
-		}
-	}
-	return nil
-}
-
 // Adds an element if not present, or replaces an object if present.
-func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O] {
+func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *atomic.Pointer[O] {
 	for {
 		var baseNode = &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
 		levels := 0
@@ -196,6 +106,12 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 						baseNode = n
 					} else if res == 0 || objectCompareAndSet[W, O](n, *o.Load(), obj) {
 						// Updated old node.
+						if len(update) <= 0 {
+							update = []bool{false}
+						}
+						if update[0] {
+							n.Load().object.Store(&obj)
+						}
 						return o
 					}
 				}
@@ -302,6 +218,163 @@ func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
 		}
 	}
 	return false
+}
+
+// Returns an index node with weight (key) strictly less than given weight.
+// Also unlinks indexes to deleted nodes found along the way.
+// Callers rely on this side-effect of clearing indices to deleted nodes.
+func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
+	// Start from top of head
+	predecessor := xcsl.head
+	if predecessor == nil {
+		return nil
+	}
+
+	for {
+		for rightIndex := predecessor.Load().right.Load(); rightIndex != nil; rightIndex = predecessor.Load().right.Load() {
+			node := rightIndex.node.Load()
+			var w *W
+			if node == nil /* No more next node */ {
+				// Iterating next right index
+				rightCompareAndSwap(predecessor, rightIndex, rightIndex.right.Load())
+			} else {
+				w = node.weight.Load()
+				o := node.object.Load()
+				// It is a marker node (data racing, modifying by other g)
+				if w == nil || o == nil {
+					// Unlink index to the deleted node.
+					// Reread the right index and restart the loop.
+					rightCompareAndSwap(predecessor, rightIndex, rightIndex.right.Load())
+				}
+			}
+			res := xcsl.cmp(weigh, *w)
+			if res > 0 {
+				// Continue to iterate the same level right index
+				predecessor.Store(rightIndex)
+			} else {
+				// Down to the next level
+				break
+			}
+		}
+
+		if downIndex := predecessor.Load().down.Load(); downIndex != nil {
+			// Iterating this level's indexes
+			predecessor.Store(downIndex)
+		} else {
+			// Only one node left
+			return predecessor.Load().node
+		}
+	}
+}
+
+// Returns the node holding key or nil if no such, clearing out any deleted nodes seen
+// along the way.
+// Repeatedly traverses at base-level looking for key starting at predecessor returned
+// from findPredecessor0, processing base-level deletions as encountered.
+// Restarts occur, at a traversal step encountering next node, if next node's weight (key)
+// field is nil, indicating it is a marker node, so its predecessor is deleted before continuing,
+// which we help do by re-finding a valid predecessor.
+func (xcsl *xConcurrentSkipList[W, O]) findNode(weight W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
+	var predecessorNode *atomic.Pointer[xConcurrentSkipListNode[W, O]]
+outer:
+	for predecessorNode = xcsl.findPredecessor0(weight); predecessorNode != nil; predecessorNode = xcsl.findPredecessor0(weight) {
+		for {
+			nextNode := predecessorNode.Load().next
+			n := nextNode.Load()
+			var (
+				w *W
+				o *O
+			)
+			if n == nil {
+				break outer
+			} else {
+				if w = n.weight.Load(); w == nil {
+					break // predecessorNode is deleted
+				}
+				if o = n.object.Load(); o == nil {
+					// The next node is deleted
+					xcsl.unlinkNode(predecessorNode, nextNode)
+				} else {
+					res := xcsl.cmp(weight, nextNode.Load().Weight())
+					if res > 0 {
+						predecessorNode.Store(n)
+					} else if res == 0 {
+						return nextNode
+					} else {
+						break outer
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (xcsl *xConcurrentSkipList[W, O]) doGet(weight W) SkipListElement[W, O] {
+	var ele SkipListElement[W, O]
+	predecessor := xcsl.head
+	if predecessor.Load() == nil {
+		return ele
+	}
+outer:
+	for {
+		for rightIndex := predecessor.Load().right.Load(); rightIndex != nil; rightIndex = predecessor.Load().right.Load() {
+			p := rightIndex.node
+			var (
+				w   *atomic.Pointer[W]
+				o   *atomic.Pointer[O]
+				res = 0
+			)
+			if p.Load() == nil {
+				rightCompareAndSwap[W, O](predecessor, rightIndex, rightIndex.right.Load())
+			} else {
+				w = p.Load().weight
+				o = p.Load().object
+				if w.Load() == nil || o.Load() == nil {
+					rightCompareAndSwap[W, O](predecessor, rightIndex, rightIndex.right.Load())
+				} else if res = xcsl.cmp(weight, *w.Load()); res > 0 {
+					predecessor.Store(rightIndex)
+				} else if res == 0 {
+					ele = &xSkipListElement[W, O]{
+						weight: *w.Load(),
+						object: *o.Load(),
+					}
+					break outer
+				} else {
+					break
+				}
+			}
+		}
+
+		if downIndex := predecessor.Load().down.Load(); downIndex != nil {
+			// Iterating this level's indexes
+			predecessor.Store(downIndex)
+		} else {
+			if baseNode := predecessor.Load().node.Load(); baseNode != nil {
+				for nextNode := baseNode.next.Load(); nextNode != nil; nextNode = baseNode.next.Load() {
+					w := nextNode.weight.Load()
+					o := nextNode.object.Load()
+					res := 0
+					if w == nil || o == nil {
+						baseNode = nextNode
+					} else if w != nil {
+						res = xcsl.cmp(weight, *w)
+						if res > 0 {
+							baseNode = nextNode
+						} else if res == 0 {
+							ele = &xSkipListElement[W, O]{
+								weight: *w,
+								object: *o,
+							}
+							break
+						}
+					}
+				}
+			}
+			break
+		}
+	}
+	return ele
 }
 
 func (xcsl *xConcurrentSkipList[W, O]) Level() uint32 {
