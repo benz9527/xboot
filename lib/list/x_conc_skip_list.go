@@ -174,12 +174,14 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 
 		if baseNode.Load() != nil {
 			x := &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
-			res := 0
+			var n *atomic.Pointer[xConcurrentSkipListNode[W, O]]
 			for {
-				if n := baseNode.Load().next; n.Load() == nil {
+				res := 0
+				n = baseNode.Load().next
+				if n.Load() == nil {
 					w := baseNode.Load().weight
-					if w == nil || w.Load() == nil {
-						xcsl.cmp(weight, weight)
+					if isNilWeight[W](w) {
+						_ = xcsl.cmp(weight, weight)
 					}
 					res = -1
 				} else {
@@ -196,43 +198,44 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 						// Updated old node.
 						return o
 					}
-					newNode := newXConcurrentSkipListNode[W, O](weight, obj, nil)
-					if res < 0 && nextCompareAndSet[W, O](baseNode, n.Load(), newNode) {
-						x.Store(newNode)
-						break
-					}
 				}
 
-				if x.Load() != nil {
-					lr := cryptoRand()
-					if lr&0x3 == 0 {
-						// probability 1/4
-						hr := cryptoRand()
-						rnd := hr<<32 | (lr & 0xffffffff)
-						skips := levels
-						var idx *xConcurrentSkipListIndex[W, O]
-						for {
-							idx = newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
-							if rnd >= 0 {
-								break
-							}
-							if skips--; skips < 0 {
-								break
-							}
-							rnd <<= 1
-						}
-						if xcsl.addIndexes(skips, predecessor, idx) && skips < 0 && xcsl.head.Load() == predecessor.Load() {
-							hx := newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
-							newPredecessor := newXConcurrentSkipListIndex[W, O](predecessor.Load().node.Load(), hx, predecessor.Load())
-							headCompareAndSwap[W, O](xcsl.head, predecessor.Load(), newPredecessor)
-						}
-						if x.Load().object.Load() == nil {
-							xcsl.findPredecessor0(weight)
-						}
-					}
-					atomic.AddUint32(&xcsl.len, 1)
-					return nil
+				newNode := newXConcurrentSkipListNode[W, O](weight, obj, nil)
+				if res < 0 && nextCompareAndSet[W, O](baseNode, n.Load(), newNode) {
+					x.Store(newNode)
+					break
 				}
+			}
+
+			if x.Load() != nil {
+				lr := cryptoRand()
+				if lr&0x3 == 0 {
+					// probability 1/4 enter into here
+					hr := cryptoRand()
+					rnd := hr<<32 | (lr & 0xffffffff)
+					skips := levels
+					var idx *xConcurrentSkipListIndex[W, O]
+					for {
+						idx = newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
+						if rnd >= 0 {
+							break
+						}
+						if skips--; skips < 0 {
+							break
+						}
+						rnd <<= 1
+					}
+					if xcsl.addIndexes(skips, predecessor, idx) && skips < 0 && xcsl.head.Load() == predecessor.Load() {
+						hx := newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
+						newPredecessor := newXConcurrentSkipListIndex[W, O](predecessor.Load().node.Load(), hx, predecessor.Load())
+						headCompareAndSwap[W, O](xcsl.head, predecessor.Load(), newPredecessor)
+					}
+					if x.Load().object.Load() == nil {
+						xcsl.findPredecessor0(weight)
+					}
+				}
+				atomic.AddUint32(&xcsl.len, 1)
+				return nil
 			}
 		}
 	}

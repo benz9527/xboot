@@ -15,6 +15,11 @@ func (node *xConcurrentSkipListNode[W, O]) Weight() W {
 	return *w
 }
 
+func isNilWeight[W SkipListWeight](weight *atomic.Pointer[W]) bool {
+	w := weight.Load()
+	return w == nil
+}
+
 func newXConcurrentSkipListNode[W SkipListWeight, O HashObject](
 	weight W, object O, next *xConcurrentSkipListNode[W, O],
 ) *xConcurrentSkipListNode[W, O] {
@@ -23,8 +28,16 @@ func newXConcurrentSkipListNode[W SkipListWeight, O HashObject](
 		object: &atomic.Pointer[O]{},
 		next:   &atomic.Pointer[xConcurrentSkipListNode[W, O]]{},
 	}
-	node.weight.Store(&weight)
-	node.object.Store(&object)
+	if weight == *new(W) {
+		node.weight.Store(nil)
+	} else {
+		node.weight.Store(&weight)
+	}
+	if object == *new(O) {
+		node.object.Store(nil)
+	} else {
+		node.object.Store(&object)
+	}
 	node.next.Store(next)
 	return node
 }
@@ -46,7 +59,7 @@ func nextCompareAndSet[W SkipListWeight, O HashObject](
 	addr *atomic.Pointer[xConcurrentSkipListNode[W, O]],
 	old, new *xConcurrentSkipListNode[W, O],
 ) bool {
-	return addr.CompareAndSwap(old, new)
+	return addr.Load().next.CompareAndSwap(old, new)
 }
 
 func objectCompareAndSet[W SkipListWeight, O HashObject](
