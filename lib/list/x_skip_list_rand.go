@@ -88,11 +88,8 @@ func randomLevelV3(maxLevel int, currentElements uint32) int32 {
 	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
 	// 1. Avoid using global mutex lock
 	// 2. Avoid generating random number each time
-	randUint64 := [8]byte{}
-	if _, err := saferand.Read(randUint64[:]); err != nil {
-		panic(err)
-	}
-	num := binary.LittleEndian.Uint64(randUint64[:])
+
+	num := cryptoRand()
 	rest := num & total
 	// Bits right shift equal to manipulate a high-level bit
 	// Calculate the minimum bits of the random number
@@ -105,4 +102,15 @@ func randomLevelV3(maxLevel int, currentElements uint32) int32 {
 		level--
 	}
 	return int32(level)
+}
+
+func cryptoRand() uint64 {
+	randUint64 := [8]byte{}
+	if _, err := saferand.Read(randUint64[:]); err != nil {
+		panic(err)
+	}
+	if randUint64[7]&0x8 == 0x0 {
+		return binary.LittleEndian.Uint64(randUint64[:])
+	}
+	return binary.BigEndian.Uint64(randUint64[:])
 }

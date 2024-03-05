@@ -164,7 +164,7 @@ package list
 * other traversals encounter each node and value exactly once.
 * Other operations locate an element (or position to insert an
 * element) via a sequence of dereferences. This search is broken
-* into two parts. Method findPredecessor (and its specialized
+* into two parts. Method findPredecessor0 (and its specialized
 * embeddings) searches index nodes only, returning a base-level
 * predecessor of the key. Callers carry out the base-level
 * search, restarting if encountering a marker preventing link
