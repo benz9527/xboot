@@ -15,31 +15,31 @@ func (node *xConcurrentSkipListNode[W, O]) Weight() W {
 	return *w
 }
 
-func isNilWeight[W SkipListWeight](weight *atomic.Pointer[W]) bool {
-	w := weight.Load()
-	return w == nil
-}
-
 func newXConcurrentSkipListNode[W SkipListWeight, O HashObject](
-	weight W, object O, next *xConcurrentSkipListNode[W, O],
+	weight *W, object *O, next *xConcurrentSkipListNode[W, O],
 ) *xConcurrentSkipListNode[W, O] {
 	node := &xConcurrentSkipListNode[W, O]{
 		weight: &atomic.Pointer[W]{},
 		object: &atomic.Pointer[O]{},
 		next:   &atomic.Pointer[xConcurrentSkipListNode[W, O]]{},
 	}
-	if weight == *new(W) {
-		node.weight.Store(nil)
-	} else {
-		node.weight.Store(&weight)
-	}
-	if object == *new(O) {
-		node.object.Store(nil)
-	} else {
-		node.object.Store(&object)
-	}
+	node.weight.Store(weight)
+	node.object.Store(object)
 	node.next.Store(next)
 	return node
+}
+
+func newBaseNode[W SkipListWeight, O HashObject]() *xConcurrentSkipListNode[W, O] {
+	base := &xConcurrentSkipListNode[W, O]{
+		weight: &atomic.Pointer[W]{},
+		object: &atomic.Pointer[O]{},
+		next:   &atomic.Pointer[xConcurrentSkipListNode[W, O]]{},
+	}
+	// Splicing the base node with deleted node
+	base.weight.Store(nil)
+	base.object.Store(nil)
+	base.next.Store(nil)
+	return base
 }
 
 func newMarkerNode[W SkipListWeight, O HashObject](

@@ -141,7 +141,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 		if predecessor.Load() == nil {
 			// Empty skip-list.
 			// Initialize
-			base := newXConcurrentSkipListNode[W, O](*new(W), *new(O), nil)
+			base := newBaseNode[W, O]()
 			idx := newXConcurrentSkipListIndex[W, O](base, nil, nil)
 			if headCompareAndSwap(xcsl.head, nil, idx) {
 				baseNode.Store(base)
@@ -180,7 +180,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 				n = baseNode.Load().next
 				if n.Load() == nil {
 					w := baseNode.Load().weight
-					if isNilWeight[W](w) {
+					if w.Load() == nil {
 						_ = xcsl.cmp(weight, weight)
 					}
 					res = -1
@@ -200,7 +200,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 					}
 				}
 
-				newNode := newXConcurrentSkipListNode[W, O](weight, obj, nil)
+				newNode := newXConcurrentSkipListNode[W, O](&weight, &obj, nil)
 				if res < 0 && nextCompareAndSet[W, O](baseNode, n.Load(), newNode) {
 					x.Store(newNode)
 					break
@@ -225,7 +225,6 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 						}
 						rnd <<= 1
 					}
-					// FIXME: endless loop
 					if xcsl.addIndexes(skips, predecessor, idx) && skips < 0 && xcsl.head.Load() == predecessor.Load() {
 						hx := newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
 						newPredecessor := newXConcurrentSkipListIndex[W, O](predecessor.Load().node.Load(), hx, predecessor.Load())
