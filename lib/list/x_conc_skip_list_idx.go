@@ -27,7 +27,7 @@ func rightCompareAndSwap[W SkipListWeight, O HashObject](
 	addr *atomic.Pointer[xConcurrentSkipListIndex[W, O]],
 	old, new *xConcurrentSkipListIndex[W, O],
 ) bool {
-	return addr.CompareAndSwap(old, new)
+	return addr.Load().right.CompareAndSwap(old, new)
 }
 
 func headCompareAndSwap[W SkipListWeight, O HashObject](

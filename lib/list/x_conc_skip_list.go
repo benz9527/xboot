@@ -150,7 +150,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 			}
 		} else {
 			for traverse := predecessor; traverse.Load() != nil; {
-				for rightIndex := traverse.Load().right; rightIndex != nil; {
+				for rightIndex := traverse.Load().right; rightIndex.Load() != nil; rightIndex = traverse.Load().right {
 					p := rightIndex.Load().node.Load()
 					if p == nil || p.weight.Load() == nil /* It is a marker node */ || p.object.Load() == nil /* It is a marker node */ {
 						// Unlinks the deleted node.
@@ -189,7 +189,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 					o := n.Load().object
 					if w.Load() == nil {
 						break // can't append; restart iteration
-					} else if o == nil {
+					} else if o.Load() == nil {
 						xcsl.unlinkNode(baseNode, n)
 						res = 1
 					} else if res = xcsl.cmp(weight, *w.Load()); res > 0 {
@@ -208,10 +208,10 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 			}
 
 			if x.Load() != nil {
-				lr := cryptoRand()
+				lr := int64(cryptoRand())
 				if lr&0x3 == 0 {
 					// probability 1/4 enter into here
-					hr := cryptoRand()
+					hr := int64(cryptoRand())
 					rnd := hr<<32 | (lr & 0xffffffff)
 					skips := levels
 					var idx *xConcurrentSkipListIndex[W, O]
@@ -225,6 +225,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O) *atomic.Pointer[O]
 						}
 						rnd <<= 1
 					}
+					// FIXME: endless loop
 					if xcsl.addIndexes(skips, predecessor, idx) && skips < 0 && xcsl.head.Load() == predecessor.Load() {
 						hx := newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
 						newPredecessor := newXConcurrentSkipListIndex[W, O](predecessor.Load().node.Load(), hx, predecessor.Load())
