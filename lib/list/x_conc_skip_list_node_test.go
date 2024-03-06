@@ -4,6 +4,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sync/atomic"
 	"testing"
+	"unsafe"
 )
 
 func TestAtomicPointerCAS(t *testing.T) {
@@ -38,4 +39,21 @@ func TestAtomicPointerCAS(t *testing.T) {
 	res := ptr.CompareAndSwap(b, c)
 	require.True(t, res)
 	require.Equal(t, c, ptr.Load())
+}
+
+func TestUnsafePointerCAS(t *testing.T) {
+	type obj struct {
+		id int
+	}
+	a := &obj{
+		id: 1,
+	}
+	b := a
+	c := &obj{
+		id: 2,
+	}
+
+	res := atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a)), unsafe.Pointer(b), unsafe.Pointer(c))
+	require.True(t, res)
+	require.Equal(t, c, a)
 }
