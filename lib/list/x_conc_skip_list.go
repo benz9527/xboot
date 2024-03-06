@@ -21,7 +21,7 @@ type xConcurrentSkipList[W SkipListWeight, O HashObject] struct {
 // by first splicing in a marker if not already present.
 // Upon return, deleted node is sure to be unlinked from the predecessor node,
 // possibly via the actions of some other goroutines.
-func (xcsl *xConcurrentSkipList[W, O]) unlinkNode(
+func (skl *xConcurrentSkipList[W, O]) unlinkNode(
 	predecessorNode, deletedNode *atomic.Pointer[xConcurrentSkipListNode[W, O]],
 ) bool {
 	if predecessorNode.Load() != nil && deletedNode.Load() != nil {
@@ -32,49 +32,48 @@ func (xcsl *xConcurrentSkipList[W, O]) unlinkNode(
 			if nextNode != nil && nextNode.weight.Load() == nil { // Next node is a marker node
 				splicingNode = nextNode.next.Load() // The marker node next node
 				break
-			} else if nextCompareAndSet(deletedNode, nextNode, newMarkerNode(nextNode)) {
+			} else if ptrCAS[xConcurrentSkipListNode[W, O]](deletedNode.Load().next, nextNode, newMarkerNode(nextNode)) {
 				// Add marker, waiting for helping deletion
 				splicingNode = nextNode // Splicing the marker node
 				break
 			}
 		}
-		return nextCompareAndSet(predecessorNode, deletedNode.Load(), splicingNode)
+		return ptrCAS[xConcurrentSkipListNode[W, O]](predecessorNode.Load().next, deletedNode.Load(), splicingNode)
 	}
 	return false
 }
 
 // Adds an element if not present, or replaces an object if present.
-func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *atomic.Pointer[O] {
+func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *atomic.Pointer[O] {
 	for {
 		var baseNode = &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
 		levels := 0
-		predecessor := xcsl.head
-		if predecessor.Load() == nil {
-			// Empty skip-list.
-			// Initialize
+		predecessorIndex := skl.head
+		if predecessorIndex.Load() == nil {
+			// Empty skip-list (empty indexes). Initialize first base index.
 			base := newBaseNode[W, O]()
 			idx := newXConcurrentSkipListIndex[W, O](base, nil, nil)
-			if headCompareAndSwap(xcsl.head, nil, idx) {
+			if ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, nil, idx) {
 				baseNode.Store(base)
 			} else {
 				baseNode.Store(nil)
 			}
 		} else {
-			for traverse := predecessor; traverse.Load() != nil; {
+			for traverse := predecessorIndex; traverse.Load() != nil; {
 				for rightIndex := traverse.Load().right; rightIndex.Load() != nil; rightIndex = traverse.Load().right {
 					p := rightIndex.Load().node
 					if p.Load() == nil {
 						// Unlinks the deleted node.
-						rightCompareAndSwap(traverse, rightIndex.Load(), rightIndex.Load().right.Load())
+						ptrCAS[xConcurrentSkipListIndex[W, O]](traverse.Load().right, rightIndex.Load(), rightIndex.Load().right.Load())
 					} else {
 						w := p.Load().weight.Load()
 						o := p.Load().object.Load()
 						if w == nil || o == nil {
 							// It is a marker node.
 							// Unlinks the deleted node.
-							rightCompareAndSwap(traverse, rightIndex.Load(), rightIndex.Load().right.Load())
+							ptrCAS[xConcurrentSkipListIndex[W, O]](traverse.Load().right, rightIndex.Load(), rightIndex.Load().right.Load())
 						} else {
-							if xcsl.cmp(weight, *w) > 0 {
+							if skl.cmp(weight, *w) > 0 {
 								traverse = rightIndex
 							} else {
 								break
@@ -102,7 +101,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 				if n.Load() == nil {
 					w := baseNode.Load().weight
 					if w.Load() == nil {
-						_ = xcsl.cmp(weight, weight)
+						_ = skl.cmp(weight, weight)
 					}
 					res = -1
 				} else {
@@ -111,14 +110,14 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 					if w.Load() == nil {
 						break // can't append; restart iteration
 					} else if o.Load() == nil {
-						xcsl.unlinkNode(baseNode, n)
+						skl.unlinkNode(baseNode, n)
 						res = 1
 					}
 					if res == 0 {
-						res = xcsl.cmp(weight, *w.Load())
+						res = skl.cmp(weight, *w.Load())
 						if res > 0 {
 							baseNode = n
-						} else if res == 0 && objectCompareAndSet[W, O](n, o.Load(), &obj) {
+						} else if res == 0 && ptrCAS[O](n.Load().object, o.Load(), &obj) {
 							// Updated old node.
 							if len(update) <= 0 {
 								update = []bool{false}
@@ -133,7 +132,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 				}
 
 				newNode := newXConcurrentSkipListNode[W, O](&weight, &obj, nil)
-				if res < 0 && nextCompareAndSet[W, O](baseNode, n.Load(), newNode) {
+				if res < 0 && ptrCAS[xConcurrentSkipListNode[W, O]](baseNode.Load().next, n.Load(), newNode) {
 					x.Store(newNode)
 					break
 				}
@@ -157,16 +156,16 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 						}
 						rnd <<= 1
 					}
-					if xcsl.addIndexes(skips, predecessor, idx) && skips < 0 && xcsl.head.Load() == predecessor.Load() {
+					if skl.addIndexes(skips, predecessorIndex, idx) && skips < 0 && skl.head.Load() == predecessorIndex.Load() {
 						hx := newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
-						newPredecessor := newXConcurrentSkipListIndex[W, O](predecessor.Load().node.Load(), hx, predecessor.Load())
-						headCompareAndSwap[W, O](xcsl.head, predecessor.Load(), newPredecessor)
+						newPredecessor := newXConcurrentSkipListIndex[W, O](predecessorIndex.Load().node.Load(), hx, predecessorIndex.Load())
+						ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, predecessorIndex.Load(), newPredecessor)
 					}
 					if x.Load().object.Load() == nil {
-						xcsl.findPredecessor0(weight)
+						skl.findPredecessor0(weight)
 					}
 				}
-				atomic.AddUint32(&xcsl.len, 1)
+				atomic.AddUint32(&skl.len, 1)
 				slog.Info("common do put")
 				return nil
 			}
@@ -179,7 +178,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 // then recursively, to chain index nodes to lower ones.
 // Returns nil on (staleness) failure, disabling higher-level
 // insertions. Recursion depths are exponentially less probable.
-func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
+func (skl *xConcurrentSkipList[W, O]) addIndexes(
 	skips int,
 	q *atomic.Pointer[xConcurrentSkipListIndex[W, O]],
 	x *xConcurrentSkipListIndex[W, O],
@@ -206,9 +205,9 @@ func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
 		if rightIndex != nil {
 			p := rightIndex.node.Load()
 			if p == nil || p.weight.Load() == nil || p.object.Load() == nil {
-				rightCompareAndSwap[W, O](q, rightIndex, rightIndex.right.Load())
+				ptrCAS[xConcurrentSkipListIndex[W, O]](q.Load().right, rightIndex, rightIndex.right.Load())
 				res = 0
-			} else if res = xcsl.cmp(*w.Load(), *p.weight.Load()); res > 0 {
+			} else if res = skl.cmp(*w.Load(), *p.weight.Load()); res > 0 {
 				q.Store(rightIndex)
 			} else if res == 0 {
 				break // stale
@@ -222,11 +221,11 @@ func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
 			if d.Load() != nil && skips > 0 {
 				skips--
 				q.Store(d.Load())
-			} else if d.Load() != nil && !retrying && !xcsl.addIndexes(0, d, x.down.Load()) {
+			} else if d.Load() != nil && !retrying && !skl.addIndexes(0, d, x.down.Load()) {
 				break
 			} else {
 				x.right.Store(rightIndex)
-				if rightCompareAndSwap(q, rightIndex, x) {
+				if ptrCAS[xConcurrentSkipListIndex[W, O]](q.Load().right, rightIndex, x) {
 					return true
 				} else {
 					retrying = true
@@ -240,9 +239,9 @@ func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
 // Returns an index node with weight (key) strictly less than given weight.
 // Also unlinks indexes to deleted nodes found along the way.
 // Callers rely on this side effect of clearing indices to deleted nodes.
-func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
+func (skl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
 	// Start from top of head
-	predecessor := xcsl.head
+	predecessor := skl.head
 	if predecessor == nil {
 		return nil
 	}
@@ -253,7 +252,7 @@ func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer
 			var w *W
 			if node.Load() == nil /* No more next node */ {
 				// Iterating next right index
-				rightCompareAndSwap(predecessor, rightIndex.Load(), rightIndex.Load().right.Load())
+				ptrCAS[xConcurrentSkipListIndex[W, O]](predecessor.Load().right, rightIndex.Load(), rightIndex.Load().right.Load())
 			} else {
 				w = node.Load().weight.Load()
 				o := node.Load().object.Load()
@@ -261,10 +260,10 @@ func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer
 				if w == nil || o == nil {
 					// Unlink index to the deleted node.
 					// Reread the right index and restart the loop.
-					rightCompareAndSwap(predecessor, rightIndex.Load(), rightIndex.Load().right.Load())
+					ptrCAS[xConcurrentSkipListIndex[W, O]](predecessor.Load().right, rightIndex.Load(), rightIndex.Load().right.Load())
 				}
 			}
-			res := xcsl.cmp(weigh, *w)
+			res := skl.cmp(weigh, *w)
 			if res > 0 {
 				// Continue to iterate the same level right index
 				predecessor.Store(rightIndex.Load())
@@ -291,10 +290,10 @@ func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer
 // Restarts occur, at a traversal step encountering next node, if next node's weight (key)
 // field is nil, indicating it is a marker node, so its predecessor is deleted before continuing,
 // which we help do by re-finding a valid predecessor.
-func (xcsl *xConcurrentSkipList[W, O]) findNode(weight W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
+func (skl *xConcurrentSkipList[W, O]) findNode(weight W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
 	var predecessorNode *atomic.Pointer[xConcurrentSkipListNode[W, O]]
 outer:
-	for predecessorNode = xcsl.findPredecessor0(weight); predecessorNode != nil; predecessorNode = xcsl.findPredecessor0(weight) {
+	for predecessorNode = skl.findPredecessor0(weight); predecessorNode != nil; predecessorNode = skl.findPredecessor0(weight) {
 		for {
 			nextNode := predecessorNode.Load().next
 			n := nextNode.Load()
@@ -310,9 +309,9 @@ outer:
 				}
 				if o = n.object.Load(); o == nil {
 					// The next node is deleted
-					xcsl.unlinkNode(predecessorNode, nextNode)
+					skl.unlinkNode(predecessorNode, nextNode)
 				} else {
-					res := xcsl.cmp(weight, *nextNode.Load().weight.Load())
+					res := skl.cmp(weight, *nextNode.Load().weight.Load())
 					if res > 0 {
 						predecessorNode.Store(n)
 					} else if res == 0 {
@@ -327,9 +326,9 @@ outer:
 	return nil
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) doGet(weight W) SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) doGet(weight W) SkipListElement[W, O] {
 	var ele SkipListElement[W, O]
-	predecessor := xcsl.head
+	predecessor := skl.head
 	if predecessor.Load() == nil {
 		return ele
 	}
@@ -343,13 +342,13 @@ outer:
 				res = 0
 			)
 			if p.Load() == nil {
-				rightCompareAndSwap[W, O](predecessor, rightIndex, rightIndex.right.Load())
+				ptrCAS[xConcurrentSkipListIndex[W, O]](predecessor.Load().right, rightIndex, rightIndex.right.Load())
 			} else {
 				w = p.Load().weight
 				o = p.Load().object
 				if w.Load() == nil || o.Load() == nil {
-					rightCompareAndSwap[W, O](predecessor, rightIndex, rightIndex.right.Load())
-				} else if res = xcsl.cmp(weight, *w.Load()); res > 0 {
+					ptrCAS[xConcurrentSkipListIndex[W, O]](predecessor.Load().right, rightIndex, rightIndex.right.Load())
+				} else if res = skl.cmp(weight, *w.Load()); res > 0 {
 					predecessor.Store(rightIndex)
 				} else if res == 0 {
 					ele = &xSkipListElement[W, O]{
@@ -375,7 +374,7 @@ outer:
 					if w == nil || o == nil {
 						baseNode = nextNode
 					} else if w != nil {
-						res = xcsl.cmp(weight, *w)
+						res = skl.cmp(weight, *w)
 						if res > 0 {
 							baseNode = nextNode
 						} else if res == 0 {
@@ -394,8 +393,8 @@ outer:
 	return ele
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) tryReduceLevel() {
-	h := xcsl.head
+func (skl *xConcurrentSkipList[W, O]) tryReduceLevel() {
+	h := skl.head
 	if h.Load() == nil {
 		return
 	}
@@ -411,16 +410,16 @@ func (xcsl *xConcurrentSkipList[W, O]) tryReduceLevel() {
 		return
 	}
 	// double check
-	if headCompareAndSwap(xcsl.head, h.Load(), d.Load()) && h.Load().right.Load() != nil {
+	if ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, h.Load(), d.Load()) && h.Load().right.Load() != nil {
 		// try to backout
-		headCompareAndSwap(xcsl.head, d.Load(), h.Load())
+		ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, d.Load(), h.Load())
 	}
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) doRemove(weight W, object O) SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) doRemove(weight W, object O) SkipListElement[W, O] {
 	var ele SkipListElement[W, O]
 outer:
-	for predecessorNode := xcsl.findPredecessor0(weight); predecessorNode.Load() != nil && ele == nil; predecessorNode = xcsl.findPredecessor0(weight) {
+	for predecessorNode := skl.findPredecessor0(weight); predecessorNode.Load() != nil && ele == nil; predecessorNode = skl.findPredecessor0(weight) {
 		for {
 			res := 0
 			nextNode := predecessorNode.Load().next
@@ -433,9 +432,9 @@ outer:
 				}
 				o := nextNode.Load().object.Load()
 				if o == nil {
-					xcsl.unlinkNode(predecessorNode, nextNode)
+					skl.unlinkNode(predecessorNode, nextNode)
 				} else {
-					if res = xcsl.cmp(weight, *w); res > 0 {
+					if res = skl.cmp(weight, *w); res > 0 {
 						// Iterating next node.
 						predecessorNode.Store(nextNode.Load())
 					} else if res < 0 {
@@ -443,12 +442,12 @@ outer:
 					} else {
 						if (*o).Hash() != object.Hash() {
 							break outer
-						} else if objectCompareAndSet[W, O](nextNode, o, nil) {
+						} else if ptrCAS[O](nextNode.Load().object, o, nil) {
 							ele = &xSkipListElement[W, O]{
 								weight: *w,
 								object: *o,
 							}
-							xcsl.unlinkNode(predecessorNode, nextNode)
+							skl.unlinkNode(predecessorNode, nextNode)
 							break
 						}
 					}
@@ -457,28 +456,28 @@ outer:
 		}
 	}
 	if ele != nil {
-		xcsl.tryReduceLevel()
-		atomic.AddUint32(&xcsl.len, ^uint32(0)) // -1
+		skl.tryReduceLevel()
+		atomic.AddUint32(&skl.len, ^uint32(0)) // -1
 	}
 	return ele
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) Level() uint32 {
-	return atomic.LoadUint32(&xcsl.level)
+func (skl *xConcurrentSkipList[W, O]) Level() uint32 {
+	return atomic.LoadUint32(&skl.level)
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) Len() uint32 {
-	return atomic.LoadUint32(&xcsl.len)
+func (skl *xConcurrentSkipList[W, O]) Len() uint32 {
+	return atomic.LoadUint32(&skl.len)
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) Free() {
+func (skl *xConcurrentSkipList[W, O]) Free() {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) ForEach(fn func(idx int64, weight W, object O)) {
+func (skl *xConcurrentSkipList[W, O]) ForEach(fn func(idx int64, weight W, object O)) {
 	var predecessorIndex *xConcurrentSkipListIndex[W, O]
-	for predecessorIndex = xcsl.head.Load(); predecessorIndex != nil; {
+	for predecessorIndex = skl.head.Load(); predecessorIndex != nil; {
 		if downIndex := predecessorIndex.down.Load(); downIndex != nil {
 			predecessorIndex = downIndex
 		} else {
@@ -509,42 +508,42 @@ func (xcsl *xConcurrentSkipList[W, O]) ForEach(fn func(idx int64, weight W, obje
 	}
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
+func (skl *xConcurrentSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) RemoveAll(weight W) []SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) RemoveAll(weight W) []SkipListElement[W, O] {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) FindFirst(weight W) SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) FindFirst(weight W) SkipListElement[W, O] {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) FindAll(weight W) []SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) FindAll(weight W) []SkipListElement[W, O] {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (xcsl *xConcurrentSkipList[W, O]) PopHead() SkipListElement[W, O] {
+func (skl *xConcurrentSkipList[W, O]) PopHead() SkipListElement[W, O] {
 	//TODO implement me
 	panic("implement me")
 }

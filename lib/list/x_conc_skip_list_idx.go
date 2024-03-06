@@ -22,17 +22,3 @@ func newXConcurrentSkipListIndex[W SkipListWeight, O HashObject](
 	idx.down.Store(down)
 	return idx
 }
-
-func rightCompareAndSwap[W SkipListWeight, O HashObject](
-	addr *atomic.Pointer[xConcurrentSkipListIndex[W, O]],
-	old, new *xConcurrentSkipListIndex[W, O],
-) bool {
-	return addr.Load().right.CompareAndSwap(old, new)
-}
-
-func headCompareAndSwap[W SkipListWeight, O HashObject](
-	addr *atomic.Pointer[xConcurrentSkipListIndex[W, O]],
-	old, new *xConcurrentSkipListIndex[W, O],
-) bool {
-	return addr.CompareAndSwap(old, new)
-}

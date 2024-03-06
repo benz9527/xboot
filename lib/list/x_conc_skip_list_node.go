@@ -49,16 +49,3 @@ func newMarkerNode[W SkipListWeight, O HashObject](
 	marker.next.Store(deletedNode)
 	return marker
 }
-
-func nextCompareAndSet[W SkipListWeight, O HashObject](
-	addr *atomic.Pointer[xConcurrentSkipListNode[W, O]],
-	old, new *xConcurrentSkipListNode[W, O],
-) bool {
-	return addr.Load().next.CompareAndSwap(old, new)
-}
-
-func objectCompareAndSet[W SkipListWeight, O HashObject](
-	addr *atomic.Pointer[xConcurrentSkipListNode[W, O]], old, new *O,
-) bool {
-	return addr.Load().object.CompareAndSwap(old, new)
-}

@@ -1,5 +1,7 @@
 package list
 
+import "sync/atomic"
+
 // Note that the singly linked list is not thread safe.
 // And the singly linked list could be implemented by using the doubly linked list.
 // So it is a meaningless exercise to implement the singly linked list.
@@ -132,3 +134,7 @@ type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
 type SkipListObjectMatcher[O HashObject] func(obj O) bool
 
 type SkipListRand func(maxLevel int, currentElements uint32) int32
+
+func ptrCAS[T any](addr *atomic.Pointer[T], old, new *T) bool {
+	return addr.CompareAndSwap(old, new)
+}
