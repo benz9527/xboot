@@ -30,7 +30,10 @@ func TestXConcurrentSkipList(t *testing.T) {
 	require.NotNil(t, ele)
 	require.Equal(t, 2, ele.Weight())
 	require.Equal(t, "3", ele.Object().id)
-	t.Logf("%+v\n", skl)
+	ele = skl.doRemove(2, ele.Object())
+	require.NotNil(t, ele)
+	require.Equal(t, 2, ele.Weight())
+	require.Equal(t, "3", ele.Object().id)
 }
 
 func TestXConcurrentSkipList_DataRace(t *testing.T) {

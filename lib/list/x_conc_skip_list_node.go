@@ -63,7 +63,7 @@ func nextCompareAndSet[W SkipListWeight, O HashObject](
 }
 
 func objectCompareAndSet[W SkipListWeight, O HashObject](
-	addr *atomic.Pointer[xConcurrentSkipListNode[W, O]], old, new O,
+	addr *atomic.Pointer[xConcurrentSkipListNode[W, O]], old, new *O,
 ) bool {
-	return addr.Load().object.CompareAndSwap(&old, &new)
+	return addr.Load().object.CompareAndSwap(old, new)
 }

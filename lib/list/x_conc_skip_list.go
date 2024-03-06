@@ -28,7 +28,7 @@ func (xcsl *xConcurrentSkipList[W, O]) unlinkNode(
 		for {
 			nextNode = deletedNode.Load().next.Load()
 			// TODO How to identify the marker node instead of through the nil weight
-			if nextNode.weight.Load() == nil { // Next node is a marker node
+			if nextNode != nil && nextNode.weight.Load() == nil { // Next node is a marker node
 				splicingNode = nextNode.next.Load() // The marker node next node
 				break
 			} else if nextCompareAndSet(deletedNode, nextNode, newMarkerNode(nextNode)) {
@@ -104,7 +104,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 						res = 1
 					} else if res = xcsl.cmp(weight, *w.Load()); res > 0 {
 						baseNode = n
-					} else if res == 0 || objectCompareAndSet[W, O](n, *o.Load(), obj) {
+					} else if res == 0 || objectCompareAndSet[W, O](n, o.Load(), &obj) {
 						// Updated old node.
 						if len(update) <= 0 {
 							update = []bool{false}
@@ -373,6 +373,75 @@ outer:
 			}
 			break
 		}
+	}
+	return ele
+}
+
+func (xcsl *xConcurrentSkipList[W, O]) tryReduceLevel() {
+	h := xcsl.head
+	if h.Load() == nil {
+		return
+	}
+	if h.Load().right.Load() != nil {
+		return
+	}
+	d := h.Load().down
+	if d.Load() == nil || d.Load().right.Load() != nil {
+		return
+	}
+	e := d.Load().down
+	if e.Load() == nil || e.Load().right.Load() != nil {
+		return
+	}
+	// double check
+	if headCompareAndSwap(xcsl.head, h.Load(), d.Load()) && h.Load().right.Load() != nil {
+		// try to backout
+		headCompareAndSwap(xcsl.head, d.Load(), h.Load())
+	}
+}
+
+func (xcsl *xConcurrentSkipList[W, O]) doRemove(weight W, object O) SkipListElement[W, O] {
+	var ele SkipListElement[W, O]
+outer:
+	for predecessorNode := xcsl.findPredecessor0(weight); predecessorNode.Load() != nil && ele == nil; predecessorNode = xcsl.findPredecessor0(weight) {
+		for {
+			res := 0
+			nextNode := predecessorNode.Load().next
+			if nextNode.Load() == nil {
+				break outer
+			} else {
+				w := nextNode.Load().weight.Load()
+				if w == nil {
+					break
+				}
+				o := nextNode.Load().object.Load()
+				if o == nil {
+					xcsl.unlinkNode(predecessorNode, nextNode)
+				} else {
+					if res = xcsl.cmp(weight, *w); res > 0 {
+						// Iterating next node.
+						predecessorNode.Store(nextNode.Load())
+					} else if res < 0 {
+						break outer
+					} else {
+						if (*o).Hash() != object.Hash() {
+							break outer
+						} else if objectCompareAndSet[W, O](nextNode, o, nil) {
+							ele = &xSkipListElement[W, O]{
+								weight: *w,
+								object: *o,
+							}
+							xcsl.unlinkNode(predecessorNode, nextNode)
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+	if ele != nil {
+		xcsl.tryReduceLevel()
+		atomic.AddUint32(&xcsl.len, ^uint32(0)) // -1
 	}
 	return ele
 }
