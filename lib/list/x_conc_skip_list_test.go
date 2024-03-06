@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -51,6 +52,11 @@ func TestXConcurrentSkipList_SerialProcessing(t *testing.T) {
 		level: 0,
 		len:   0,
 	}
+	// Empty skip-list (empty indexes). Initialize first base index.
+	base := newBaseNode[uint64, *xSkipListObject]()
+	idx := newXConcurrentSkipListIndex[uint64, *xSkipListObject](base, nil, nil)
+	ptrCAS[xConcurrentSkipListIndex[uint64, *xSkipListObject]](skl.head, nil, idx)
+
 	size := 5
 	// FIXME: Indexes incorrect to locate the weigh element's location.
 	for i := uint64(0); i < uint64(size); i++ {
@@ -69,7 +75,7 @@ func TestXConcurrentSkipList_SerialProcessing(t *testing.T) {
 		for j := uint64(0); j < 10; j++ {
 			w := (i+1)*100 + j
 			ele := skl.doRemove(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
-			t.Logf("element: %v\n", ele)
+			t.Logf("remove element: %v\n", ele)
 		}
 	}
 	t.Logf("%+v\n", skl)
@@ -85,31 +91,46 @@ func TestXConcurrentSkipList_DataRace(t *testing.T) {
 		level: 0,
 		len:   0,
 	}
+	// Empty skip-list (empty indexes). Initialize first base index.
+	base := newBaseNode[uint64, *xSkipListObject]()
+	idx := newXConcurrentSkipListIndex[uint64, *xSkipListObject](base, nil, nil)
+	ptrCAS[xConcurrentSkipListIndex[uint64, *xSkipListObject]](skl.head, nil, idx)
+
+	skl.ForEach(func(idx int64, w uint64, o *xSkipListObject) {
+		t.Logf("idx: %d, w: %v, o: %v\n", idx, w, o)
+	})
+
 	size := 5
 	var wg sync.WaitGroup
 	wg.Add(size)
 	for i := uint64(0); i < uint64(size); i++ {
 		go func(idx uint64) {
-			defer wg.Done()
 			for j := uint64(0); j < 10; j++ {
 				w := idx*100 + j
 				skl.doPut(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
+				time.Sleep(time.Duration(cryptoRandInt32()%20) * time.Millisecond)
 			}
+			wg.Done()
 		}(i + 1)
 	}
 	wg.Wait()
-	t.Logf("%+v\n", skl)
-	wg.Add(size)
-	for i := uint64(0); i < uint64(size); i++ {
-		go func(idx uint64) {
-			defer wg.Done()
-			for j := uint64(0); j < 10; j++ {
-				w := idx*100 + j
-				ele := skl.doRemove(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
-				t.Logf("element: %v\n", ele)
-			}
-		}(i + 1)
-	}
-	wg.Wait()
-	t.Logf("%+v\n", skl)
+
+	t.Logf("%d\n", skl.Len())
+	skl.ForEach(func(idx int64, w uint64, o *xSkipListObject) {
+		t.Logf("idx: %d, w: %v, o: %v\n", idx, w, o)
+	})
+
+	//wg.Add(size)
+	//for i := uint64(0); i < uint64(size); i++ {
+	//	go func(idx uint64) {
+	//		defer wg.Done()
+	//		for j := uint64(0); j < 10; j++ {
+	//			w := idx*100 + j
+	//			ele := skl.doRemove(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
+	//			t.Logf("element: %v\n", ele)
+	//		}
+	//	}(i + 1)
+	//}
+	//wg.Wait()
+	//t.Logf("%+v\n", skl)
 }

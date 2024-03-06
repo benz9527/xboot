@@ -45,79 +45,86 @@ func (skl *xConcurrentSkipList[W, O]) unlinkNode(
 
 // Adds an element if not present, or replaces an object if present.
 func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *atomic.Pointer[O] {
+	var (
+		pNode = &atomic.Pointer[xConcurrentSkipListNode[W, O]]{} // predecessor node
+		x     *xConcurrentSkipListNode[W, O]
+	)
+
 	for {
-		var baseNode = &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
+		// recored the number of traversed levels
 		levels := 0
-		predecessorIndex := skl.head
-		if predecessorIndex.Load() == nil {
-			// Empty skip-list (empty indexes). Initialize first base index.
-			base := newBaseNode[W, O]()
-			idx := newXConcurrentSkipListIndex[W, O](base, nil, nil)
-			if ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, nil, idx) {
-				baseNode.Store(base)
-			} else {
-				baseNode.Store(nil)
-			}
-		} else {
-			for traverse := predecessorIndex; traverse.Load() != nil; {
-				for rightIndex := traverse.Load().right; rightIndex.Load() != nil; rightIndex = traverse.Load().right {
-					p := rightIndex.Load().node
-					if p.Load() == nil {
-						// Unlinks the deleted node.
-						ptrCAS[xConcurrentSkipListIndex[W, O]](traverse.Load().right, rightIndex.Load(), rightIndex.Load().right.Load())
+		// start index
+		sIdx := skl.head
+		// traverse index
+	verticalIndexes:
+		for tIdx := sIdx; tIdx.Load() != nil; {
+			// next right index (successor), at the same horizontal level
+		horizonIndexes:
+			for rIdx := tIdx.Load().right; rIdx.Load() != nil; rIdx = tIdx.Load().right {
+				// Quickly access node info.
+				if xNode := rIdx.Load().node; xNode.Load() == nil {
+					// (help deletion) Unlinks the deleted node in indexes.
+					ptrCAS[xConcurrentSkipListIndex[W, O]](tIdx.Load().right, rIdx.Load(), rIdx.Load().right.Load())
+					// If CAS is failed, it will be looped again, for the reason that traverse index isn't changed.
+				} else {
+					w := xNode.Load().weight.Load()
+					o := xNode.Load().object.Load()
+					if w == nil || o == nil {
+						// It is a marker node. (help deletion) Unlinks the deleted node.
+						ptrCAS[xConcurrentSkipListIndex[W, O]](tIdx.Load().right, rIdx.Load(), rIdx.Load().right.Load())
+						// If CAS is failed, it will be looped again, for the reason that traverse index isn't changed.
 					} else {
-						w := p.Load().weight.Load()
-						o := p.Load().object.Load()
-						if w == nil || o == nil {
-							// It is a marker node.
-							// Unlinks the deleted node.
-							ptrCAS[xConcurrentSkipListIndex[W, O]](traverse.Load().right, rightIndex.Load(), rightIndex.Load().right.Load())
+						if skl.cmp(weight, *w) > 0 {
+							// Continue next right index
+							tIdx = rIdx
 						} else {
-							if skl.cmp(weight, *w) > 0 {
-								traverse = rightIndex
-							} else {
-								break
-							}
+							// Descending to next down index
+							break horizonIndexes
 						}
 					}
 				}
-				// Descending to the dataNode
-				if nextLevelNode := traverse.Load().down; nextLevelNode.Load() != nil {
-					levels++
-					traverse = nextLevelNode
-				} else {
-					baseNode = traverse.Load().node
-					break
-				}
+			}
+
+			// next down index (successor), at the vertical level
+			if dIdx := tIdx.Load().down; dIdx.Load() != nil {
+				levels++
+				// Continue next right index
+				tIdx = dIdx
+			} else {
+				// Located a data node
+				pNode = tIdx.Load().node
+				break verticalIndexes
 			}
 		}
 
-		if baseNode.Load() != nil {
-			x := &atomic.Pointer[xConcurrentSkipListNode[W, O]]{}
-			var n *atomic.Pointer[xConcurrentSkipListNode[W, O]]
+		// If here occurs ABA/Concurrency CAS issue, restart iteration to find an insert position
+		if pNode.Load() != nil {
+			var (
+				n *atomic.Pointer[xConcurrentSkipListNode[W, O]] // Temporarily store for splicing
+			)
+		findInsertPos:
 			for {
 				res := 0
-				n = baseNode.Load().next
-				if n.Load() == nil {
-					w := baseNode.Load().weight
-					if w.Load() == nil {
-						_ = skl.cmp(weight, weight)
-					}
+				if n = pNode.Load().next; n.Load() == nil {
 					res = -1
 				} else {
-					w := n.Load().weight
-					o := n.Load().object
-					if w.Load() == nil {
-						break // can't append; restart iteration
-					} else if o.Load() == nil {
-						skl.unlinkNode(baseNode, n)
+					nw, no := n.Load().weight, n.Load().object
+					if nw.Load() == nil {
+						// can't append; restart iteration
+						break findInsertPos
+					} else if no.Load() == nil {
+						// (help deletion)
+						skl.unlinkNode(pNode, n)
 						res = 1
+						continue
 					}
+
 					if res == 0 {
-						res = skl.cmp(weight, *w.Load())
+						res = skl.cmp(weight, *nw.Load())
 						if res > 0 {
-							baseNode = n
-						} else if res == 0 && ptrCAS[O](n.Load().object, o.Load(), &obj) {
+							// Nodes has been spliced already
+							pNode = n
+						} else if res == 0 && ptrCAS[O](n.Load().object, no.Load(), &obj) {
 							// Updated old node.
 							if len(update) <= 0 {
 								update = []bool{false}
@@ -125,48 +132,50 @@ func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *at
 							if update[0] {
 								n.Load().object.Store(&obj)
 							}
-							slog.Info("common do put or replace", "w", weight, "o", obj, "o w", *w.Load())
-							return o
+							slog.Info("common do put or replace", "nw", weight, "no", obj, "no nw", *nw.Load())
+							return no
 						}
 					}
 				}
 
 				newNode := newXConcurrentSkipListNode[W, O](&weight, &obj, nil)
-				if res < 0 && ptrCAS[xConcurrentSkipListNode[W, O]](baseNode.Load().next, n.Load(), newNode) {
-					x.Store(newNode)
-					break
+				if res < 0 && ptrCAS[xConcurrentSkipListNode[W, O]](pNode.Load().next, n.Load(), newNode) {
+					// Nodes should have been spliced already
+					slog.Info("print new node info", "splice predecessor next", pNode.Load().next.Load(), "w", weight, "o", obj)
+					x = newNode
+					break findInsertPos
 				}
 			}
 
-			if x.Load() != nil {
-				lr := cryptoRandInt32()
-				if lr&0x3 == 0 {
-					// probability 1/4 enter into here
-					hr := int64(cryptoRandInt32())
-					rnd := hr<<32 | (int64(lr) & 0xffffffff)
-					skips := levels
-					var idx *xConcurrentSkipListIndex[W, O]
-					for {
-						idx = newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
-						if rnd >= 0 {
-							break
-						}
-						if skips--; skips < 0 {
-							break
-						}
-						rnd <<= 1
-					}
-					if skl.addIndexes(skips, predecessorIndex, idx) && skips < 0 && skl.head.Load() == predecessorIndex.Load() {
-						hx := newXConcurrentSkipListIndex[W, O](x.Load(), nil, idx)
-						newPredecessor := newXConcurrentSkipListIndex[W, O](predecessorIndex.Load().node.Load(), hx, predecessorIndex.Load())
-						ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, predecessorIndex.Load(), newPredecessor)
-					}
-					if x.Load().object.Load() == nil {
-						skl.findPredecessor0(weight)
-					}
-				}
+			if x != nil {
+				//lr := cryptoRandInt32()
+				//if lr&0x3 == 0 {
+				//	// probability 1/4 enter into here
+				//	hr := int64(cryptoRandInt32())
+				//	rnd := hr<<32 | (int64(lr) & 0xffffffff)
+				//	skips := levels
+				//	var idx *xConcurrentSkipListIndex[W, O]
+				//	for {
+				//		idx = newXConcurrentSkipListIndex[W, O](x, nil, idx)
+				//		if rnd >= 0 {
+				//			break
+				//		}
+				//		if skips--; skips < 0 {
+				//			break
+				//		}
+				//		rnd <<= 1
+				//	}
+				//
+				//	if skl.addIndexes(skips, sIdx, idx) && skips < 0 && skl.head.Load() == sIdx.Load() {
+				//		hx := newXConcurrentSkipListIndex[W, O](x, nil, idx)
+				//		newPredecessor := newXConcurrentSkipListIndex[W, O](sIdx.Load().node.Load(), hx, sIdx.Load())
+				//		ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, sIdx.Load(), newPredecessor)
+				//	}
+				//	if x.object.Load() == nil {
+				//		skl.findPredecessor0(weight)
+				//	}
+				//}
 				atomic.AddUint32(&skl.len, 1)
-				slog.Info("common do put")
 				return nil
 			}
 		}
@@ -476,34 +485,31 @@ func (skl *xConcurrentSkipList[W, O]) Free() {
 }
 
 func (skl *xConcurrentSkipList[W, O]) ForEach(fn func(idx int64, weight W, object O)) {
-	var predecessorIndex *xConcurrentSkipListIndex[W, O]
-	for predecessorIndex = skl.head.Load(); predecessorIndex != nil; {
-		if downIndex := predecessorIndex.down.Load(); downIndex != nil {
-			predecessorIndex = downIndex
+	var pIdx *xConcurrentSkipListIndex[W, O]
+	for pIdx = skl.head.Load(); pIdx != nil; {
+		if dIdx := pIdx.down.Load(); dIdx != nil {
+			pIdx = dIdx
 		} else {
 			break
 		}
 	}
 	idx := int64(0)
-	rightIndex := predecessorIndex.right.Load()
-	if rightIndex != nil {
-		for node := rightIndex.node.Load(); node != nil; {
-			nextNode := node.next.Load()
-			if nextNode == nil {
-				w, o := node.weight.Load(), node.object.Load()
-				if w != nil && o != nil {
-					fn(idx, *w, *o)
-				}
-				break
-			} else {
-				w, o := node.weight.Load(), node.object.Load()
-				if nextNode.weight.Load() != nil && nextNode.object.Load() != nil &&
-					w != nil && o != nil {
-					fn(idx, *w, *o)
-					idx++
-				}
-				node = nextNode
+	for node := pIdx.node.Load(); node != nil; {
+		nextNode := node.next.Load()
+		if nextNode == nil {
+			w, o := node.weight.Load(), node.object.Load()
+			if w != nil && o != nil {
+				fn(idx, *w, *o)
 			}
+			break
+		} else {
+			w, o := node.weight.Load(), node.object.Load()
+			if nextNode.weight.Load() != nil && nextNode.object.Load() != nil &&
+				w != nil && o != nil {
+				fn(idx, *w, *o)
+				idx++
+			}
+			node = nextNode
 		}
 	}
 }
@@ -549,6 +555,10 @@ func (skl *xConcurrentSkipList[W, O]) PopHead() SkipListElement[W, O] {
 }
 
 func NewXConcurrentSkipList[W SkipListWeight, O HashObject]() SkipList[W, O] {
-	xcsl := &xConcurrentSkipList[W, O]{}
-	return xcsl
+	skl := &xConcurrentSkipList[W, O]{}
+	// Empty skip-list (empty indexes). Initialize first base index.
+	base := newBaseNode[W, O]()
+	idx := newXConcurrentSkipListIndex[W, O](base, nil, nil)
+	ptrCAS[xConcurrentSkipListIndex[W, O]](skl.head, nil, idx)
+	return skl
 }
