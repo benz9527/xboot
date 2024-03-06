@@ -15,6 +15,11 @@ func (node *xConcurrentSkipListNode[W, O]) Weight() W {
 	return *w
 }
 
+func (node *xConcurrentSkipListNode[W, O]) Object() O {
+	o := node.object.Load()
+	return *o
+}
+
 func newXConcurrentSkipListNode[W SkipListWeight, O HashObject](
 	weight *W, object *O, next *xConcurrentSkipListNode[W, O],
 ) *xConcurrentSkipListNode[W, O] {

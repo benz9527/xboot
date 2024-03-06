@@ -140,11 +140,11 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 			}
 
 			if x.Load() != nil {
-				lr := int64(cryptoRand())
+				lr := cryptoRandInt32()
 				if lr&0x3 == 0 {
 					// probability 1/4 enter into here
-					hr := int64(cryptoRand())
-					rnd := hr<<32 | (lr & 0xffffffff)
+					hr := int64(cryptoRandInt32())
+					rnd := hr<<32 | (int64(lr) & 0xffffffff)
 					skips := levels
 					var idx *xConcurrentSkipListIndex[W, O]
 					for {
@@ -239,7 +239,7 @@ func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
 
 // Returns an index node with weight (key) strictly less than given weight.
 // Also unlinks indexes to deleted nodes found along the way.
-// Callers rely on this side-effect of clearing indices to deleted nodes.
+// Callers rely on this side effect of clearing indices to deleted nodes.
 func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer[xConcurrentSkipListNode[W, O]] {
 	// Start from top of head
 	predecessor := xcsl.head
@@ -248,26 +248,26 @@ func (xcsl *xConcurrentSkipList[W, O]) findPredecessor0(weigh W) *atomic.Pointer
 	}
 
 	for {
-		for rightIndex := predecessor.Load().right.Load(); rightIndex != nil; rightIndex = predecessor.Load().right.Load() {
-			node := rightIndex.node.Load()
+		for rightIndex := predecessor.Load().right; rightIndex.Load() != nil; rightIndex = predecessor.Load().right {
+			node := rightIndex.Load().node
 			var w *W
-			if node == nil /* No more next node */ {
+			if node.Load() == nil /* No more next node */ {
 				// Iterating next right index
-				rightCompareAndSwap(predecessor, rightIndex, rightIndex.right.Load())
+				rightCompareAndSwap(predecessor, rightIndex.Load(), rightIndex.Load().right.Load())
 			} else {
-				w = node.weight.Load()
-				o := node.object.Load()
+				w = node.Load().weight.Load()
+				o := node.Load().object.Load()
 				// It is a marker node (data racing, modifying by other g)
 				if w == nil || o == nil {
 					// Unlink index to the deleted node.
 					// Reread the right index and restart the loop.
-					rightCompareAndSwap(predecessor, rightIndex, rightIndex.right.Load())
+					rightCompareAndSwap(predecessor, rightIndex.Load(), rightIndex.Load().right.Load())
 				}
 			}
 			res := xcsl.cmp(weigh, *w)
 			if res > 0 {
 				// Continue to iterate the same level right index
-				predecessor.Store(rightIndex)
+				predecessor.Store(rightIndex.Load())
 			} else {
 				// Down to the next level
 				break
@@ -477,8 +477,36 @@ func (xcsl *xConcurrentSkipList[W, O]) Free() {
 }
 
 func (xcsl *xConcurrentSkipList[W, O]) ForEach(fn func(idx int64, weight W, object O)) {
-	//TODO implement me
-	panic("implement me")
+	var predecessorIndex *xConcurrentSkipListIndex[W, O]
+	for predecessorIndex = xcsl.head.Load(); predecessorIndex != nil; {
+		if downIndex := predecessorIndex.down.Load(); downIndex != nil {
+			predecessorIndex = downIndex
+		} else {
+			break
+		}
+	}
+	idx := int64(0)
+	// FIXME: Endless loop.
+	for predecessorNode := predecessorIndex.node.Load(); ; {
+		rightIndex := predecessorIndex.right.Load()
+		if rightIndex != nil {
+			nextNode := rightIndex.node.Load()
+			if nextNode.weight.Load() != nil && nextNode.object.Load() != nil {
+				fn(idx, predecessorNode.Weight(), predecessorNode.Object())
+				idx++
+				predecessorNode = nextNode
+			} else if nextNode.weight.Load() == nil || nextNode.object.Load() == nil {
+				predecessorNode = nextNode
+			} else if nextNode == nil {
+				fn(idx, predecessorNode.Weight(), predecessorNode.Object())
+				break
+			}
+		} else {
+			fn(idx, predecessorNode.Weight(), predecessorNode.Object())
+			break
+		}
+
+	}
 }
 
 func (xcsl *xConcurrentSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {

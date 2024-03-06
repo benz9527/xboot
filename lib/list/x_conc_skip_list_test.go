@@ -54,7 +54,12 @@ func TestXConcurrentSkipList_SerialProcessing(t *testing.T) {
 			skl.doPut(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
 		}
 	}
-	t.Logf("%+v\n", skl)
+	t.Logf("%d\n", skl.Len())
+
+	skl.ForEach(func(idx int64, w uint64, o *xSkipListObject) {
+		t.Logf("idx: %d, w: %v, o: %v\n", idx, w, o)
+	})
+
 	for i := uint64(0); i < uint64(size); i++ {
 		for j := uint64(0); j < 10; j++ {
 			w := (i+1)*100 + j

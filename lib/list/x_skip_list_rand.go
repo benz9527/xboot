@@ -89,7 +89,7 @@ func randomLevelV3(maxLevel int, currentElements uint32) int32 {
 	// 1. Avoid using global mutex lock
 	// 2. Avoid generating random number each time
 
-	num := cryptoRand()
+	num := cryptoRandUint64()
 	rest := num & total
 	// Bits right shift equal to manipulate a high-level bit
 	// Calculate the minimum bits of the random number
@@ -104,7 +104,7 @@ func randomLevelV3(maxLevel int, currentElements uint32) int32 {
 	return int32(level)
 }
 
-func cryptoRand() uint64 {
+func cryptoRandUint64() uint64 {
 	randUint64 := [8]byte{}
 	if _, err := saferand.Read(randUint64[:]); err != nil {
 		panic(err)
@@ -113,4 +113,15 @@ func cryptoRand() uint64 {
 		return binary.LittleEndian.Uint64(randUint64[:])
 	}
 	return binary.BigEndian.Uint64(randUint64[:])
+}
+
+func cryptoRandInt32() int32 {
+	randInt32 := [4]byte{}
+	if _, err := saferand.Read(randInt32[:]); err != nil {
+		panic(err)
+	}
+	if randInt32[3]&0x8 == 0x0 {
+		return int32(binary.LittleEndian.Uint32(randInt32[:]))
+	}
+	return int32(binary.BigEndian.Uint32(randInt32[:]))
 }
