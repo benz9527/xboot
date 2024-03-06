@@ -1,6 +1,7 @@
 package list
 
 import (
+	"log/slog"
 	"sync/atomic"
 )
 
@@ -61,14 +62,24 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 		} else {
 			for traverse := predecessor; traverse.Load() != nil; {
 				for rightIndex := traverse.Load().right; rightIndex.Load() != nil; rightIndex = traverse.Load().right {
-					p := rightIndex.Load().node.Load()
-					if p == nil || p.weight.Load() == nil /* It is a marker node */ || p.object.Load() == nil /* It is a marker node */ {
+					p := rightIndex.Load().node
+					if p.Load() == nil {
 						// Unlinks the deleted node.
 						rightCompareAndSwap(traverse, rightIndex.Load(), rightIndex.Load().right.Load())
-					} else if xcsl.cmp(weight, p.Weight()) > 0 {
-						traverse = rightIndex
 					} else {
-						break
+						w := p.Load().weight.Load()
+						o := p.Load().object.Load()
+						if w == nil || o == nil {
+							// It is a marker node.
+							// Unlinks the deleted node.
+							rightCompareAndSwap(traverse, rightIndex.Load(), rightIndex.Load().right.Load())
+						} else {
+							if xcsl.cmp(weight, *w) > 0 {
+								traverse = rightIndex
+							} else {
+								break
+							}
+						}
 					}
 				}
 				// Descending to the dataNode
@@ -102,17 +113,22 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 					} else if o.Load() == nil {
 						xcsl.unlinkNode(baseNode, n)
 						res = 1
-					} else if res = xcsl.cmp(weight, *w.Load()); res > 0 {
-						baseNode = n
-					} else if res == 0 || objectCompareAndSet[W, O](n, o.Load(), &obj) {
-						// Updated old node.
-						if len(update) <= 0 {
-							update = []bool{false}
+					}
+					if res == 0 {
+						res = xcsl.cmp(weight, *w.Load())
+						if res > 0 {
+							baseNode = n
+						} else if res == 0 && objectCompareAndSet[W, O](n, o.Load(), &obj) {
+							// Updated old node.
+							if len(update) <= 0 {
+								update = []bool{false}
+							}
+							if update[0] {
+								n.Load().object.Store(&obj)
+							}
+							slog.Info("common do put or replace", "w", weight, "o", obj, "o w", *w.Load())
+							return o
 						}
-						if update[0] {
-							n.Load().object.Store(&obj)
-						}
-						return o
 					}
 				}
 
@@ -151,6 +167,7 @@ func (xcsl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *a
 					}
 				}
 				atomic.AddUint32(&xcsl.len, 1)
+				slog.Info("common do put")
 				return nil
 			}
 		}

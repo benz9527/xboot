@@ -65,7 +65,6 @@ func TestXConcurrentSkipList_SerialProcessing(t *testing.T) {
 	t.Logf("%+v\n", skl)
 }
 
-// FIXME: Concurrent insertion loses elements.
 func TestXConcurrentSkipList_DataRace(t *testing.T) {
 	skl := &xConcurrentSkipList[uint64, *xSkipListObject]{
 		cmp: func(i, j uint64) int {
