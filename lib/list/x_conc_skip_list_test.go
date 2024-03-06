@@ -29,6 +29,11 @@ func TestXConcurrentSkipList(t *testing.T) {
 	require.NotNil(t, ele)
 	require.Equal(t, 2, ele.Weight())
 	require.Equal(t, "3", ele.Object().id)
+
+	skl.ForEach(func(idx int64, w int, o *xSkipListObject) {
+		t.Logf("idx: %d, w: %v, o: %v\n", idx, w, o)
+	})
+
 	ele = skl.doRemove(2, ele.Object())
 	require.NotNil(t, ele)
 	require.Equal(t, 2, ele.Weight())

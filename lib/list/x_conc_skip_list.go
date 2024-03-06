@@ -208,7 +208,7 @@ func (xcsl *xConcurrentSkipList[W, O]) addIndexes(
 			if p == nil || p.weight.Load() == nil || p.object.Load() == nil {
 				rightCompareAndSwap[W, O](q, rightIndex, rightIndex.right.Load())
 				res = 0
-			} else if res = xcsl.cmp(*w.Load(), p.Weight()); res > 0 {
+			} else if res = xcsl.cmp(*w.Load(), *p.weight.Load()); res > 0 {
 				q.Store(rightIndex)
 			} else if res == 0 {
 				break // stale
@@ -312,7 +312,7 @@ outer:
 					// The next node is deleted
 					xcsl.unlinkNode(predecessorNode, nextNode)
 				} else {
-					res := xcsl.cmp(weight, nextNode.Load().Weight())
+					res := xcsl.cmp(weight, *nextNode.Load().weight.Load())
 					if res > 0 {
 						predecessorNode.Store(n)
 					} else if res == 0 {
@@ -486,26 +486,26 @@ func (xcsl *xConcurrentSkipList[W, O]) ForEach(fn func(idx int64, weight W, obje
 		}
 	}
 	idx := int64(0)
-	// FIXME: Endless loop.
-	for predecessorNode := predecessorIndex.node.Load(); ; {
-		rightIndex := predecessorIndex.right.Load()
-		if rightIndex != nil {
-			nextNode := rightIndex.node.Load()
-			if nextNode.weight.Load() != nil && nextNode.object.Load() != nil {
-				fn(idx, predecessorNode.Weight(), predecessorNode.Object())
-				idx++
-				predecessorNode = nextNode
-			} else if nextNode.weight.Load() == nil || nextNode.object.Load() == nil {
-				predecessorNode = nextNode
-			} else if nextNode == nil {
-				fn(idx, predecessorNode.Weight(), predecessorNode.Object())
+	rightIndex := predecessorIndex.right.Load()
+	if rightIndex != nil {
+		for node := rightIndex.node.Load(); node != nil; {
+			nextNode := node.next.Load()
+			if nextNode == nil {
+				w, o := node.weight.Load(), node.object.Load()
+				if w != nil && o != nil {
+					fn(idx, *w, *o)
+				}
 				break
+			} else {
+				w, o := node.weight.Load(), node.object.Load()
+				if nextNode.weight.Load() != nil && nextNode.object.Load() != nil &&
+					w != nil && o != nil {
+					fn(idx, *w, *o)
+					idx++
+				}
+				node = nextNode
 			}
-		} else {
-			fn(idx, predecessorNode.Weight(), predecessorNode.Object())
-			break
 		}
-
 	}
 }
 

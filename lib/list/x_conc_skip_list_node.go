@@ -10,16 +10,6 @@ type xConcurrentSkipListNode[W SkipListWeight, O HashObject] struct {
 	next   *atomic.Pointer[xConcurrentSkipListNode[W, O]]
 }
 
-func (node *xConcurrentSkipListNode[W, O]) Weight() W {
-	w := node.weight.Load()
-	return *w
-}
-
-func (node *xConcurrentSkipListNode[W, O]) Object() O {
-	o := node.object.Load()
-	return *o
-}
-
 func newXConcurrentSkipListNode[W SkipListWeight, O HashObject](
 	weight *W, object *O, next *xConcurrentSkipListNode[W, O],
 ) *xConcurrentSkipListNode[W, O] {
