@@ -1,7 +1,6 @@
 package list
 
 import (
-	"log/slog"
 	"sync/atomic"
 )
 
@@ -426,7 +425,6 @@ outer:
 						break outer
 					} else {
 						if (*o).Hash() != object.Hash() {
-							slog.Info("hash")
 							break outer
 						} else if objectCompareAndSet[W, O](nextNode, o, nil) {
 							ele = &xSkipListElement[W, O]{

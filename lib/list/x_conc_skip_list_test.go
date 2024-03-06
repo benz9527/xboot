@@ -36,16 +36,41 @@ func TestXConcurrentSkipList(t *testing.T) {
 	require.Equal(t, uint32(1), skl.Len())
 }
 
+func TestXConcurrentSkipList_SerialProcessing(t *testing.T) {
+	skl := &xConcurrentSkipList[uint64, *xSkipListObject]{
+		cmp: func(i, j uint64) int {
+			res := int(i - j)
+			return res
+		},
+		head:  &atomic.Pointer[xConcurrentSkipListIndex[uint64, *xSkipListObject]]{},
+		level: 0,
+		len:   0,
+	}
+	size := 5
+	// FIXME: Indexes incorrect to locate the weigh element's location.
+	for i := uint64(0); i < uint64(size); i++ {
+		for j := uint64(0); j < 10; j++ {
+			w := (i+1)*100 + j
+			skl.doPut(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
+		}
+	}
+	t.Logf("%+v\n", skl)
+	for i := uint64(0); i < uint64(size); i++ {
+		for j := uint64(0); j < 10; j++ {
+			w := (i+1)*100 + j
+			ele := skl.doRemove(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
+			t.Logf("element: %v\n", ele)
+		}
+	}
+	t.Logf("%+v\n", skl)
+}
+
+// FIXME: Concurrent insertion loses elements.
 func TestXConcurrentSkipList_DataRace(t *testing.T) {
 	skl := &xConcurrentSkipList[uint64, *xSkipListObject]{
 		cmp: func(i, j uint64) int {
-			res := i - j
-			if res == 0 {
-				return 0
-			} else if res < 0 {
-				return -1
-			}
-			return 1
+			res := int(i - j)
+			return res
 		},
 		head:  &atomic.Pointer[xConcurrentSkipListIndex[uint64, *xSkipListObject]]{},
 		level: 0,
@@ -59,7 +84,7 @@ func TestXConcurrentSkipList_DataRace(t *testing.T) {
 			defer wg.Done()
 			for j := uint64(0); j < 10; j++ {
 				w := idx*100 + j
-				skl.doPut(w, &xSkipListObject{id: fmt.Sprintf("%d", w)}, true)
+				skl.doPut(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
 			}
 		}(i + 1)
 	}
