@@ -1,13 +1,12 @@
 package list
 
 import (
+	"github.com/stretchr/testify/require"
 	"sync/atomic"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
-func TestUnsafePointerCAS(t *testing.T) {
+func TestAtomicPointerCAS(t *testing.T) {
 	a := &xConcurrentSkipListNode[uint8, *xSkipListObject]{
 		weight: &atomic.Pointer[uint8]{},
 		object: &atomic.Pointer[*xSkipListObject]{},
