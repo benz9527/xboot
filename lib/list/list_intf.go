@@ -1,5 +1,9 @@
 package list
 
+import (
+	"golang.org/x/exp/constraints"
+)
+
 // Note that the singly linked list is not thread safe.
 // And the singly linked list could be implemented by using the doubly linked list.
 // So it is a meaningless exercise to implement the singly linked list.
@@ -75,10 +79,7 @@ type emptyHashObject struct{}
 func (o *emptyHashObject) Hash() uint64 { return 0 }
 
 type SkipListWeight interface {
-	~string | ~int8 | ~int16 | ~int32 | ~int64 | ~int |
-		~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uint |
-		~float32 | ~float64 |
-		~complex64 | ~complex128
+	constraints.Ordered | ~complex64 | ~complex128
 	// ~uint8 == byte
 }
 

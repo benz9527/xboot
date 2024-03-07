@@ -12,6 +12,9 @@ type xSkipListObject struct {
 }
 
 func (o *xSkipListObject) Hash() uint64 {
+	if o == nil {
+		return 0
+	}
 	hash := fnv.New64()
 	_, _ = hash.Write([]byte(o.id))
 	val := hash.Sum64()
@@ -22,10 +25,23 @@ func TestStringHash_FNV(t *testing.T) {
 	s1, s2 := "1", "2"
 	hash := fnv.New64()
 	_, _ = hash.Write([]byte(s1))
-	assert.Equal(t, uint64(12638153115695167470), hash.Sum64())
+	v1 := hash.Sum64()
+	assert.Equal(t, uint64(12638153115695167470), v1)
 	hash = fnv.New64()
 	_, _ = hash.Write([]byte(s2))
-	assert.Equal(t, uint64(12638153115695167469), hash.Sum64())
+	v2 := hash.Sum64()
+	assert.Equal(t, uint64(12638153115695167469), v2)
+	res := int64(v2 - v1)
+	assert.Equal(t, res, int64(-1))
+
+	s1, s2 = "100", "200"
+	hash = fnv.New64()
+	_, _ = hash.Write([]byte(s1))
+	v1 = hash.Sum64()
+	hash = fnv.New64()
+	_, _ = hash.Write([]byte(s2))
+	v2 = hash.Sum64()
+	assert.Greater(t, v1, v2)
 }
 
 func TestXSkipList_SimpleCRUD(t *testing.T) {

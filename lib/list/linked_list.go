@@ -27,11 +27,11 @@ package list
 * be slow and space-intensive using AtomicMarkedReference), nodes
 * use direct CAS'able next pointers.  On deletion, instead of
 * marking a pointer, they splice in another node that can be
-* thought of as standing for a marked pointer (see method
+* thought of as standing for a removingMarked pointer (see method
 * unlinkNode).  Using plain nodes acts roughly like "boxed"
-* implementations of marked pointers, but uses new nodes only
+* implementations of removingMarked pointers, but uses new nodes only
 * when nodes are deleted, not for every link.  This requires less
-* space and supports faster traversal. Even if marked references
+* space and supports faster traversal. Even if removingMarked references
 * were better supported by JVMs, traversal using this technique
 * might still be faster because any search need only read ahead
 * one more node than otherwise required (to check for trailing
@@ -102,7 +102,7 @@ package list
 * Index levels are maintained using CAS to link and unlink
 * successors ("right" fields).  Races are allowed in index-list
 * operations that can (rarely) fail to link in a new index node.
-* (We can't do this of course for data nodes.)  However, even
+* (We can't do this of course for bits nodes.)  However, even
 * when this happens, the index lists correctly guide search.
 * This can impact performance, but since skip lists are
 * probabilistic anyway, the net result is that under contention,

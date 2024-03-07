@@ -88,7 +88,7 @@ func newSkipListLevel[W SkipListWeight, V HashObject](succ SkipListNode[W, V]) S
 //
 //	the bisection search. Used to locate an element quickly.
 //
-// The cache level array index == 0, it is the X axis, and it means that it is the data container.
+// The cache level array index == 0, it is the X axis, and it means that it is the bits container.
 type xSkipListNode[W SkipListWeight, O HashObject] struct {
 	// The cache part.
 	// When the current node works as a data node, it doesn't contain levels metadata.
