@@ -2,11 +2,9 @@ package list
 
 import (
 	"fmt"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
 func TestXConcurrentSkipList(t *testing.T) {
@@ -104,8 +102,8 @@ func TestXConcurrentSkipList_DataRace(t *testing.T) {
 			go func(idx uint64) {
 				w := idx
 				skl.doPut(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
-				runtime.Gosched()
-				time.Sleep(time.Duration(cryptoRandInt32()%5) * time.Millisecond)
+				//runtime.Gosched()
+				//time.Sleep(time.Duration(cryptoRandInt32()%5) * time.Millisecond)
 				wg.Done()
 			}((i+1)*100 + j)
 		}

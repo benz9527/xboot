@@ -1,6 +1,8 @@
 package list
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+)
 
 // Note that the singly linked list is not thread safe.
 // And the singly linked list could be implemented by using the doubly linked list.

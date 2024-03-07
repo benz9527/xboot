@@ -21,31 +21,31 @@ type xConcurrentSkipList[W SkipListWeight, O HashObject] struct {
 // Upon return, deleted node is sure to be unlinked from the predecessor node,
 // possibly via the actions of some other goroutines.
 func (skl *xConcurrentSkipList[W, O]) unlinkNode(
-	predecessorNode, deletedNode *atomic.Pointer[xConcurrentSkipListNode[W, O]],
+	predecessorNode, deletedNode *xConcurrentSkipListNode[W, O],
 ) bool {
-	if predecessorNode.Load() != nil && deletedNode.Load() != nil {
+	if predecessorNode != nil && deletedNode != nil {
 		var nextNode, splicingNode *xConcurrentSkipListNode[W, O]
 		for {
-			nextNode = deletedNode.Load().next.Load()
+			nextNode = deletedNode.next.Load()
 			// TODO How to identify the marker node instead of through the nil weight
 			if nextNode != nil && nextNode.weight.Load() == nil { // Next node is a marker node
 				splicingNode = nextNode.next.Load() // The marker node next node
 				break
-			} else if ptrCAS[xConcurrentSkipListNode[W, O]](deletedNode.Load().next, nextNode, newMarkerNode(nextNode)) {
+			} else if ptrCAS[xConcurrentSkipListNode[W, O]](deletedNode.next, nextNode, newMarkerNode(nextNode)) {
 				// Add marker, waiting for helping deletion
 				splicingNode = nextNode // Splicing the marker node
 				break
 			}
 		}
-		return ptrCAS[xConcurrentSkipListNode[W, O]](predecessorNode.Load().next, deletedNode.Load(), splicingNode)
+		return ptrCAS[xConcurrentSkipListNode[W, O]](predecessorNode.next, deletedNode, splicingNode)
 	}
 	return false
 }
 
 // Adds an element if not present, or replaces an object if present.
-func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *atomic.Pointer[O] {
+func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *O {
 	var (
-		pNode = &atomic.Pointer[xConcurrentSkipListNode[W, O]]{} // predecessor node
+		pNode *xConcurrentSkipListNode[W, O] // predecessor node
 		x     *xConcurrentSkipListNode[W, O]
 	)
 
@@ -56,21 +56,21 @@ func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *at
 		sIdx := skl.head
 		// traverse index
 	verticalIndexes:
-		for tIdx := sIdx; tIdx.Load() != nil; {
+		for tIdx := sIdx.Load(); tIdx != nil; {
 			// next right index (successor), at the same horizontal level
 		horizonIndexes:
-			for rIdx := tIdx.Load().right; rIdx.Load() != nil; rIdx = tIdx.Load().right {
+			for rIdx := tIdx.right.Load(); rIdx != nil; rIdx = tIdx.right.Load() {
 				// Quickly access node info.
-				if xNode := rIdx.Load().node; xNode.Load() == nil {
+				if xNode := rIdx.node.Load(); xNode == nil {
 					// (help deletion) Unlinks the deleted node in indexes.
-					ptrCAS[xConcurrentSkipListIndex[W, O]](tIdx.Load().right, rIdx.Load(), rIdx.Load().right.Load())
+					ptrCAS[xConcurrentSkipListIndex[W, O]](tIdx.right, rIdx, rIdx.right.Load())
 					// If CAS is failed, it will be looped again, for the reason that traverse index isn't changed.
 				} else {
-					w := xNode.Load().weight.Load()
-					o := xNode.Load().object.Load()
+					w := xNode.weight.Load()
+					o := xNode.object.Load()
 					if w == nil || o == nil {
 						// It is a marker node. (help deletion) Unlinks the deleted node.
-						ptrCAS[xConcurrentSkipListIndex[W, O]](tIdx.Load().right, rIdx.Load(), rIdx.Load().right.Load())
+						ptrCAS[xConcurrentSkipListIndex[W, O]](tIdx.right, rIdx, rIdx.right.Load())
 						// If CAS is failed, it will be looped again, for the reason that traverse index isn't changed.
 					} else {
 						if skl.cmp(weight, *w) > 0 {
@@ -85,33 +85,33 @@ func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *at
 			}
 
 			// next down index (successor), at the vertical level
-			if dIdx := tIdx.Load().down; dIdx.Load() != nil {
+			if dIdx := tIdx.down.Load(); dIdx != nil {
 				levels++
 				// Continue next right index
 				tIdx = dIdx
 			} else {
 				// Located a data node
-				pNode = tIdx.Load().node
+				pNode = tIdx.node.Load()
 				break verticalIndexes
 			}
 		}
 
 		// If here occurs ABA/Concurrency CAS issue, restart iteration to find an insert position
-		if pNode.Load() != nil {
+		if pNode != nil {
 			var (
-				n *atomic.Pointer[xConcurrentSkipListNode[W, O]] // Temporarily store for splicing
+				n *xConcurrentSkipListNode[W, O] // Temporarily store for splicing
 			)
 		findInsertPos:
 			for {
 				res := 0
-				if n = pNode.Load().next; n.Load() == nil {
+				if n = pNode.next.Load(); n == nil {
 					res = -1
 				} else {
-					nw, no := n.Load().weight, n.Load().object
-					if nw.Load() == nil {
+					nw, no := n.weight.Load(), n.object.Load()
+					if nw == nil {
 						// can't append; restart iteration
 						break findInsertPos
-					} else if no.Load() == nil {
+					} else if no == nil {
 						// (help deletion)
 						skl.unlinkNode(pNode, n)
 						res = 1
@@ -119,17 +119,17 @@ func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *at
 					}
 
 					if res == 0 {
-						res = skl.cmp(weight, *nw.Load())
+						res = skl.cmp(weight, *nw)
 						if res > 0 {
 							// Nodes has been spliced already
 							pNode = n
-						} else if res == 0 && ptrCAS[O](n.Load().object, no.Load(), &obj) {
+						} else if res == 0 && ptrCAS[O](n.object, no, &obj) {
 							// Updated old node.
 							if len(update) <= 0 {
 								update = []bool{false}
 							}
 							if update[0] {
-								n.Load().object.Store(&obj)
+								n.object.Store(&obj)
 							}
 							return no
 						}
@@ -137,7 +137,7 @@ func (skl *xConcurrentSkipList[W, O]) doPut(weight W, obj O, update ...bool) *at
 				}
 
 				newNode := newXConcurrentSkipListNode[W, O](&weight, &obj, nil)
-				if res < 0 && ptrCAS[xConcurrentSkipListNode[W, O]](pNode.Load().next, n.Load(), newNode) {
+				if res < 0 && ptrCAS[xConcurrentSkipListNode[W, O]](pNode.next, n, newNode) {
 					// Nodes should have been spliced already
 					x = newNode
 					break findInsertPos
