@@ -173,35 +173,35 @@ type xSkipList[W SkipListWeight, O HashObject] struct {
 	len   int32
 }
 
-func (xsl *xSkipList[W, O]) loadTraverse() []SkipListNode[W, O] {
-	traverse, ok := xsl.traversePool.Get().([]SkipListNode[W, O])
+func (skl *xSkipList[W, O]) loadTraverse() []SkipListNode[W, O] {
+	traverse, ok := skl.traversePool.Get().([]SkipListNode[W, O])
 	if !ok {
 		panic("load unknown traverse element from pool")
 	}
 	return traverse
 }
 
-func (xsl *xSkipList[W, O]) putTraverse(traverse []SkipListNode[W, O]) {
+func (skl *xSkipList[W, O]) putTraverse(traverse []SkipListNode[W, O]) {
 	for i := 0; i < xSkipListMaxLevel; i++ {
 		traverse[i] = nil
 	}
-	xsl.traversePool.Put(traverse)
+	skl.traversePool.Put(traverse)
 }
 
-func (xsl *xSkipList[W, O]) Level() int32 {
-	return atomic.LoadInt32(&xsl.level)
+func (skl *xSkipList[W, O]) Level() int32 {
+	return atomic.LoadInt32(&skl.level)
 }
 
-func (xsl *xSkipList[W, O]) Len() int32 {
-	return atomic.LoadInt32(&xsl.len)
+func (skl *xSkipList[W, O]) Len() int32 {
+	return atomic.LoadInt32(&skl.len)
 }
 
-func (xsl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
+func (skl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
 	var (
 		x   SkipListNode[W, O]
 		idx int64
 	)
-	x = xsl.head.levels()[0].forwardSuccessor()
+	x = skl.head.levels()[0].forwardSuccessor()
 	for x != nil {
 		next := x.levels()[0].forwardSuccessor()
 		fn(idx, x.Element().Weight(), x.Element().Object())
@@ -210,21 +210,21 @@ func (xsl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
 	}
 }
 
-func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
+func (skl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	var (
-		predecessor = xsl.head
-		traverse    = xsl.loadTraverse()
+		predecessor = skl.head
+		traverse    = skl.loadTraverse()
 	)
 	defer func() {
-		xsl.putTraverse(traverse)
+		skl.putTraverse(traverse)
 	}()
 
 	// Iteration from top to bottom.
 	// First to iterate the cache and access the data finally.
-	for i := atomic.LoadInt32(&xsl.level) - 1; i >= 0; i-- { // move down level
+	for i := atomic.LoadInt32(&skl.level) - 1; i >= 0; i-- { // move down level
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
-			res := xsl.cmp(cur.Element().Weight(), weight)
+			res := skl.cmp(cur.Element().Weight(), weight)
 			if res < 0 || (res == 0 && cur.Element().Object().Hash() < obj.Hash()) {
 				predecessor = cur // Changes the node iteration path to locate different node.
 			} else if res == 0 && cur.Element().Object().Hash() == obj.Hash() {
@@ -244,13 +244,13 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	// Each duplicated weight element may contain its cache levels.
 	// It means that duplicated weight elements query through the cache (O(logN))
 	// But duplicated elements query (linear probe) will be degraded into O(N)
-	lvl := xsl.rand(xSkipListMaxLevel, xsl.Len())
-	if lvl > xsl.Level() {
-		for i := xsl.Level(); i < lvl; i++ {
+	lvl := skl.rand(xSkipListMaxLevel, skl.Len())
+	if lvl > skl.Level() {
+		for i := skl.Level(); i < lvl; i++ {
 			// Update the whole traverse path, from top to bottom.
-			traverse[i] = xsl.head // avoid nil pointer
+			traverse[i] = skl.head // avoid nil pointer
 		}
-		atomic.StoreInt32(&xsl.level, lvl)
+		atomic.StoreInt32(&skl.level, lvl)
 	}
 
 	newNode := newXSkipListNode[W, O](lvl, weight, obj)
@@ -261,17 +261,17 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 		// May pre-append to adjust 2 elements' order
 		traverse[i].levels()[i].setForwardSuccessor(newNode)
 	}
-	if traverse[0] == xsl.head {
+	if traverse[0] == skl.head {
 		newNode.setBackwardPredecessor(nil)
 	} else {
 		newNode.setBackwardPredecessor(traverse[0])
 	}
 	if newNode.levels()[0].forwardSuccessor() == nil {
-		xsl.tail = newNode
+		skl.tail = newNode
 	} else {
 		newNode.levels()[0].forwardSuccessor().setBackwardPredecessor(newNode)
 	}
-	atomic.AddInt32(&xsl.len, 1)
+	atomic.AddInt32(&skl.len, 1)
 	return newNode, true
 }
 
@@ -279,18 +279,18 @@ func (xsl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 // Preparing for linear probing. O(N)
 // @return value 1: the predecessor node
 // @return value 2: the query traverse path (nodes)
-func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []SkipListNode[W, O]) {
+func (skl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []SkipListNode[W, O]) {
 	var (
 		predecessor SkipListNode[W, O]
-		traverse    = xsl.loadTraverse()
+		traverse    = skl.loadTraverse()
 	)
-	predecessor = xsl.head
-	for i := xsl.Level() - 1; i >= 0; i-- {
+	predecessor = skl.head
+	for i := skl.Level() - 1; i >= 0; i-- {
 		// Note: Will start probing linearly from a local position in some interval
 		// O(N)
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
-			res := xsl.cmp(cur.Element().Weight(), weight)
+			res := skl.cmp(cur.Element().Weight(), weight)
 			// find predecessor node
 			if res < 0 {
 				predecessor = cur
@@ -308,14 +308,14 @@ func (xsl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 
 	target := predecessor.levels()[0].forwardSuccessor()
 	// Check next element's weight
-	if target != nil && xsl.cmp(target.Element().Weight(), weight) == 0 {
+	if target != nil && skl.cmp(target.Element().Weight(), weight) == 0 {
 		return predecessor, traverse
 	}
 	return nil, traverse // not found
 }
 
-func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipListNode[W, O]) {
-	for i := int32(0); i < xsl.Level(); i++ {
+func (skl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipListNode[W, O]) {
+	for i := int32(0); i < skl.Level(); i++ {
 		if traverse[i].levels()[i].forwardSuccessor() == x {
 			traverse[i].levels()[i].setForwardSuccessor(x.levels()[i].forwardSuccessor())
 		}
@@ -324,43 +324,43 @@ func (xsl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipList
 		// Adjust the predecessor.
 		next.setBackwardPredecessor(x.backwardPredecessor())
 	} else {
-		xsl.tail = x.backwardPredecessor()
+		skl.tail = x.backwardPredecessor()
 	}
-	for xsl.Level() > 1 && xsl.head.levels()[xsl.Level()-1].forwardSuccessor() == nil {
-		atomic.AddInt32(&xsl.level, -1)
+	for skl.Level() > 1 && skl.head.levels()[skl.Level()-1].forwardSuccessor() == nil {
+		atomic.AddInt32(&skl.level, -1)
 	}
-	atomic.AddInt32(&xsl.len, -1)
+	atomic.AddInt32(&skl.len, -1)
 }
 
-func (xsl *xSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {
-	predecessor, traverse := xsl.findPredecessor0(weight)
+func (skl *xSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {
+	predecessor, traverse := skl.findPredecessor0(weight)
 	defer func() {
-		xsl.putTraverse(traverse)
+		skl.putTraverse(traverse)
 	}()
 	if predecessor == nil {
 		return nil // not found
 	}
 
 	target := predecessor.levels()[0].forwardSuccessor()
-	if target != nil && xsl.cmp(target.Element().Weight(), weight) == 0 {
-		xsl.removeNode(target, traverse)
+	if target != nil && skl.cmp(target.Element().Weight(), weight) == 0 {
+		skl.removeNode(target, traverse)
 		return target.Element()
 	}
 	return nil // not found
 }
 
-func (xsl *xSkipList[W, O]) RemoveAll(weight W) []SkipListElement[W, O] {
-	predecessor, traverse := xsl.findPredecessor0(weight)
+func (skl *xSkipList[W, O]) RemoveAll(weight W) []SkipListElement[W, O] {
+	predecessor, traverse := skl.findPredecessor0(weight)
 	defer func() {
-		xsl.putTraverse(traverse)
+		skl.putTraverse(traverse)
 	}()
 	if predecessor == nil {
 		return nil // not found
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && xsl.cmp(cur.Element().Weight(), weight) == 0; {
-		xsl.removeNode(cur, traverse)
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; {
+		skl.removeNode(cur, traverse)
 		elements = append(elements, cur.Element())
 		free := cur
 		cur = cur.levels()[0].forwardSuccessor()
@@ -369,19 +369,19 @@ func (xsl *xSkipList[W, O]) RemoveAll(weight W) []SkipListElement[W, O] {
 	return elements
 }
 
-func (xsl *xSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
-	predecessor, traverse := xsl.findPredecessor0(weight)
+func (skl *xSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
+	predecessor, traverse := skl.findPredecessor0(weight)
 	defer func() {
-		xsl.putTraverse(traverse)
+		skl.putTraverse(traverse)
 	}()
 	if predecessor == nil {
 		return nil // not found
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && xsl.cmp(cur.Element().Weight(), weight) == 0; {
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; {
 		if cmp(cur.Element().Object()) {
-			xsl.removeNode(cur, traverse)
+			skl.removeNode(cur, traverse)
 			elements = append(elements, cur.Element())
 			next := cur.levels()[0].forwardSuccessor()
 			cur.Free()
@@ -397,10 +397,10 @@ func (xsl *xSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]
 	return elements
 }
 
-func (xsl *xSkipList[W, O]) FindFirst(weight W) SkipListElement[W, O] {
-	e, traverse := xsl.findPredecessor0(weight)
+func (skl *xSkipList[W, O]) FindFirst(weight W) SkipListElement[W, O] {
+	e, traverse := skl.findPredecessor0(weight)
 	defer func() {
-		xsl.putTraverse(traverse)
+		skl.putTraverse(traverse)
 	}()
 	if e.levels() == nil {
 		return nil
@@ -409,33 +409,33 @@ func (xsl *xSkipList[W, O]) FindFirst(weight W) SkipListElement[W, O] {
 	return e.levels()[0].forwardSuccessor().Element()
 }
 
-func (xsl *xSkipList[W, O]) FindAll(weight W) []SkipListElement[W, O] {
-	predecessor, traverse := xsl.findPredecessor0(weight)
+func (skl *xSkipList[W, O]) FindAll(weight W) []SkipListElement[W, O] {
+	predecessor, traverse := skl.findPredecessor0(weight)
 	defer func() {
-		xsl.putTraverse(traverse)
+		skl.putTraverse(traverse)
 	}()
 	if predecessor == nil {
 		return nil // not found
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && xsl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
 		elements = append(elements, cur.Element())
 	}
 	return elements
 }
 
-func (xsl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
-	predecessor, traverse := xsl.findPredecessor0(weight)
+func (skl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
+	predecessor, traverse := skl.findPredecessor0(weight)
 	defer func() {
-		xsl.putTraverse(traverse)
+		skl.putTraverse(traverse)
 	}()
 	if predecessor == nil {
 		return nil // not found
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && xsl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
 		if cmp(cur.Element().Object()) {
 			elements = append(elements, cur.Element())
 		}
@@ -443,25 +443,25 @@ func (xsl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) 
 	return elements
 }
 
-func (xsl *xSkipList[W, O]) PopHead() (e SkipListElement[W, O]) {
-	target := xsl.head
-	if target == nil || xsl.Len() <= 0 {
+func (skl *xSkipList[W, O]) PopHead() (e SkipListElement[W, O]) {
+	target := skl.head
+	if target == nil || skl.Len() <= 0 {
 		return
 	}
 	if target = target.levels()[0].forwardSuccessor(); target == nil {
 		return
 	}
 	e = target.Element()
-	e = xsl.RemoveFirst(e.Weight())
+	e = skl.RemoveFirst(e.Weight())
 	return
 }
 
-func (xsl *xSkipList[W, O]) Free() {
+func (skl *xSkipList[W, O]) Free() {
 	var (
 		x, next SkipListNode[W, O]
 		idx     int
 	)
-	x = xsl.head.levels()[0].forwardSuccessor()
+	x = skl.head.levels()[0].forwardSuccessor()
 	for x != nil {
 		next = x.levels()[0].forwardSuccessor()
 		x.Free()
@@ -469,10 +469,10 @@ func (xsl *xSkipList[W, O]) Free() {
 		x = next
 	}
 	for idx = 0; idx < xSkipListMaxLevel; idx++ {
-		xsl.head.levels()[idx].setForwardSuccessor(nil)
+		skl.head.levels()[idx].setForwardSuccessor(nil)
 	}
-	xsl.tail = nil
-	xsl.traversePool = nil
+	skl.tail = nil
+	skl.traversePool = nil
 }
 
 func NewXSkipList[W SkipListWeight, O HashObject](cmp SkipListWeightComparator[W], rand SkipListRand) SkipList[W, O] {
