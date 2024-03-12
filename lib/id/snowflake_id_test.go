@@ -33,3 +33,13 @@ func Test_standard_snow_flake_id_gen(t *testing.T) {
 	asserter.NotEqual(id1, id2)
 	t.Logf("%d, %d", id1, id2)
 }
+
+func TestSnowFlakeID(t *testing.T) {
+	gen, err := SnowFlakeID(1, 1, func() time.Time {
+		return time.Now()
+	})
+	assert.Nil(t, err)
+	for i := 0; i < 1000; i++ {
+		t.Logf("%d, %s\n", gen.NumberUUID(), gen.StrUUID())
+	}
+}

@@ -2,6 +2,7 @@ package id
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -15,29 +16,26 @@ import (
 // 12 bits, as internal sequence number, max value is 4096 (2 ^ 12)
 
 const (
-	SF_START_TS                 = int64(946659661000) // 2001-01-01 01:01:01 UTC+8
-	SF_TS_DIFF_BITS             = uint(41)
-	SF_DATACENTER_ID_BITS       = uint(5)
-	SF_MACHINE_ID_BITS          = uint(5)
-	SF_SEQUENCE_BITS            = uint(12)
-	SF_MACHINE_ID_SHIFT_LEFT    = SF_SEQUENCE_BITS
-	SF_DATACENTER_ID_SHIFT_LEFT = SF_MACHINE_ID_SHIFT_LEFT + SF_MACHINE_ID_BITS
-	SF_TS_DIFF_SHIFT_LEFT       = SF_DATACENTER_ID_SHIFT_LEFT + SF_DATACENTER_ID_BITS // 22 bits
-
-	SF_SEQUENCE_MAX      = int64(-1 ^ (-1 << SF_SEQUENCE_BITS))
-	SF_MACHINE_ID_MAX    = int64(-1 ^ (-1 << SF_MACHINE_ID_BITS))
-	SF_DATACENTER_ID_MAX = SF_MACHINE_ID_MAX
-	SF_TS_DIFF_MAX       = int64(-1 ^ (-1 << SF_TS_DIFF_BITS))
+	classicSnowflakeStartTs         = int64(946659661000) // 2001-01-01 01:01:01 UTC+8
+	classicSnowflakeTsDiffBits      = uint(41)
+	classicSnowflakeDIDBits         = uint(5) // Datacenter ID
+	classicSnowflakeMIDBits         = uint(5) // Machine ID
+	classicSnowflakeSequenceBits    = uint(12)
+	classicSnowflakeMIDShiftLeft    = classicSnowflakeSequenceBits
+	classicSnowflakeDIDShiftLeft    = classicSnowflakeMIDShiftLeft + classicSnowflakeMIDBits
+	classicSnowflakeTsDiffShiftLeft = classicSnowflakeDIDShiftLeft + classicSnowflakeDIDBits // 22 bits
+	classicSnowflakeSequenceMax     = int64(-1 ^ (-1 << classicSnowflakeSequenceBits))
+	classicSnowflakeMIDMax          = int64(-1 ^ (-1 << classicSnowflakeMIDBits))
+	classicSnowflakeDIDMax          = classicSnowflakeMIDMax
+	classicSnowflakeTsDiffMax       = int64(-1 ^ (-1 << classicSnowflakeTsDiffBits))
 )
 
-type Gen func() uint64
-
 func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (Gen, error) {
-	if datacenterID < 0 || datacenterID > SF_DATACENTER_ID_MAX {
+	if datacenterID < 0 || datacenterID > classicSnowflakeDIDMax {
 		return nil, fmt.Errorf("datacenter id invalid")
 	}
 
-	if machineID < 0 || machineID > SF_MACHINE_ID_MAX {
+	if machineID < 0 || machineID > classicSnowflakeMIDMax {
 		return nil, fmt.Errorf("machine id invalid")
 	}
 
@@ -51,7 +49,7 @@ func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (G
 		if now != lastTs {
 			sequence = int64(0)
 		} else {
-			sequence = (sequence + 1) & SF_SEQUENCE_MAX
+			sequence = (sequence + 1) & classicSnowflakeSequenceMax
 			if sequence == 0 {
 				for now <= lastTs {
 					now = time.Now().UnixNano() / 1e6
@@ -59,15 +57,60 @@ func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (G
 			}
 		}
 
-		diff := now - SF_START_TS
-		if diff > SF_TS_DIFF_MAX {
+		diff := now - classicSnowflakeStartTs
+		if diff > classicSnowflakeTsDiffMax {
 			return 0
 		}
 		lastTs = now
-		id := ((diff) << SF_TS_DIFF_SHIFT_LEFT) |
-			(datacenterID << SF_DATACENTER_ID_SHIFT_LEFT) |
-			(machineID << SF_MACHINE_ID_SHIFT_LEFT) |
+		id := ((diff) << classicSnowflakeTsDiffShiftLeft) |
+			(datacenterID << classicSnowflakeDIDShiftLeft) |
+			(machineID << classicSnowflakeMIDShiftLeft) |
 			sequence
 		return uint64(id)
 	}, nil
+}
+
+func SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (Generator, error) {
+	if datacenterID < 0 || datacenterID > classicSnowflakeDIDMax {
+		return nil, fmt.Errorf("datacenter id invalid")
+	}
+
+	if machineID < 0 || machineID > classicSnowflakeMIDMax {
+		return nil, fmt.Errorf("machine id invalid")
+	}
+
+	var lock = sync.Mutex{}
+	lastTs, sequence := int64(0), int64(0)
+	id := new(defaultID)
+	id.number = func() uint64 {
+		lock.Lock()
+		defer lock.Unlock()
+
+		now := now().UnixNano() / 1e6
+		if now != lastTs {
+			sequence = int64(0)
+		} else {
+			sequence = (sequence + 1) & classicSnowflakeSequenceMax
+			if sequence == 0 {
+				for now <= lastTs {
+					now = time.Now().UnixNano() / 1e6
+				}
+			}
+		}
+
+		diff := now - classicSnowflakeStartTs
+		if diff > classicSnowflakeTsDiffMax {
+			return 0
+		}
+		lastTs = now
+		id := ((diff) << classicSnowflakeTsDiffShiftLeft) |
+			(datacenterID << classicSnowflakeDIDShiftLeft) |
+			(machineID << classicSnowflakeMIDShiftLeft) |
+			sequence
+		return uint64(id)
+	}
+	id.str = func() string {
+		return strconv.FormatUint(id.number(), 10)
+	}
+	return id, nil
 }
