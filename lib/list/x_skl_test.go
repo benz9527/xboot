@@ -67,9 +67,9 @@ func TestStringHash_FNV(t *testing.T) {
 //
 //	_, ok := xsl.Insert(1, &xSkipListObject{id: "2"})
 //	assert.False(t, ok)
-//	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-//		assert.Equal(t, orders[idx].w, weight)
-//		assert.Equal(t, orders[idx].id, object.id)
+//	xsl.ForEach(func(idx int64, key int, val *xSkipListObject) {
+//		assert.Equal(t, orders[idx].w, key)
+//		assert.Equal(t, orders[idx].id, val.id)
 //	})
 //	assert.Equal(t, int32(len(orders)), xsl.Len())
 //
@@ -113,9 +113,9 @@ func TestStringHash_FNV(t *testing.T) {
 //		{6, "8"}, {6, "100"},
 //		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
 //	}
-//	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-//		assert.Equal(t, orders[idx].w, weight)
-//		assert.Equal(t, orders[idx].id, object.id)
+//	xsl.ForEach(func(idx int64, key int, val *xSkipListObject) {
+//		assert.Equal(t, orders[idx].w, key)
+//		assert.Equal(t, orders[idx].id, val.id)
 //	})
 //	assert.Equal(t, int32(len(orders)), xsl.Len())
 //
@@ -155,9 +155,9 @@ func TestStringHash_FNV(t *testing.T) {
 //		{6, "8"}, {6, "100"},
 //		{7, "8"}, {7, "7"}, {7, "1"},
 //	}
-//	xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-//		assert.Equal(t, orders[idx].w, weight)
-//		assert.Equal(t, orders[idx].id, object.id)
+//	xsl.ForEach(func(idx int64, key int, val *xSkipListObject) {
+//		assert.Equal(t, orders[idx].w, key)
+//		assert.Equal(t, orders[idx].id, val.id)
 //	})
 //	assert.Equal(t, int32(len(orders)), xsl.Len())
 //
@@ -222,9 +222,9 @@ func TestStringHash_FNV(t *testing.T) {
 //		assert.Equal(t, orders[i].id, e.Val().id)
 //		restOrders := orders[i+1:]
 //		internalIndex := 0
-//		xsl.ForEach(func(idx int64, weight int, object *xSkipListObject) {
-//			assert.Equal(t, restOrders[internalIndex].w, weight)
-//			assert.Equal(t, restOrders[internalIndex].id, object.id)
+//		xsl.ForEach(func(idx int64, key int, val *xSkipListObject) {
+//			assert.Equal(t, restOrders[internalIndex].w, key)
+//			assert.Equal(t, restOrders[internalIndex].id, val.id)
 //			internalIndex++
 //		})
 //	}

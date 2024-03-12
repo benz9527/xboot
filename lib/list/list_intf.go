@@ -90,10 +90,10 @@ type SkipListElement[K infra.OrderedKey, V comparable] interface {
 	Val() V
 }
 
-type SkipListIterator[K infra.OrderedKey, V comparable] interface {
+type SkipListIterationItem[K infra.OrderedKey, V comparable] interface {
 	SkipListElement[K, V]
 	NodeLevel() uint32
-	NodeItemCount() uint32
+	NodeItemCount() int64
 }
 
 type SkipListNode[W infra.OrderedKey, O comparable] interface {

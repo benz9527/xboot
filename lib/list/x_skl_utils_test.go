@@ -1,7 +1,6 @@
 package list
 
 import (
-	"math"
 	"sync"
 	"testing"
 	"time"
@@ -38,14 +37,6 @@ func TestSpinLock(t *testing.T) {
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}()
 	wg.Wait()
-}
-
-func TestMonotonicNonZeroID(t *testing.T) {
-	maxID := &monotonicNonZeroID{
-		val: math.MaxUint64,
-	}
-	v := maxID.next()
-	require.Equal(t, uint64(1), v)
 }
 
 func TestFlagBitSetBitsAs(t *testing.T) {
