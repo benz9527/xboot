@@ -79,7 +79,7 @@ func TestXConcSkipList_SerialProcessing(t *testing.T) {
 
 func xConcSkipListDataRaceRunCore(t *testing.T, me mutexEnum) {
 	h := newXConcSkipListNode[uint64, *xSkipListObject](0, nil, xSkipListMaxLevel, me)
-	h.flags.atomicSet(nodeFullyLinked)
+	h.flags.atomicSet(nodeFullyLinkedBit)
 	skl := &xConcSkipList[uint64, *xSkipListObject]{
 		head:  h,
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
@@ -214,7 +214,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	aux := make(xConcSkipListAuxiliary[uint64, *xSkipListObject], 2*xSkipListMaxLevel)
 	foundResult := skl.rmTraverse1(1, aux)
 	assert.Less(t, int32(0), foundResult)
-	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarked))
+	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarkedBit))
 	require.Equal(t, uint64(1), aux.loadSucc(0).key)
 	require.Equal(t, "9", (*aux.loadSucc(0).val).id)
 	ele, ok := skl.remove1(1)
@@ -257,7 +257,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, me mutexEnum) {
 	h := newXConcSkipListNode[uint64, *xSkipListObject](0, nil, xSkipListMaxLevel, me)
-	h.flags.atomicSet(nodeFullyLinked)
+	h.flags.atomicSet(nodeFullyLinkedBit)
 	skl := &xConcSkipList[uint64, *xSkipListObject]{
 		head:  h,
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
