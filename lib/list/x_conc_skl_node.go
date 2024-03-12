@@ -7,16 +7,18 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
+type vNodeRbtreeColor bool
+
 const (
-	red   = 0
-	black = 1
+	red   vNodeRbtreeColor = true
+	black vNodeRbtreeColor = false
 )
 
 type vNode[V comparable] struct {
 	val   *V
 	left  *vNode[V] // Linked-list & rbtree
 	right *vNode[V] // rbtree only
-	color uint8
+	color vNodeRbtreeColor
 }
 
 const (
