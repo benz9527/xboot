@@ -2,6 +2,8 @@ package list
 
 import (
 	"golang.org/x/exp/constraints"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 // Note that the singly linked list is not thread safe.
@@ -83,12 +85,18 @@ type SkipListWeight interface {
 	// ~uint8 == byte
 }
 
-type SkipListElement[W SkipListWeight, O HashObject] interface {
-	Weight() W
-	Object() O
+type SkipListElement[K infra.OrderedKey, V comparable] interface {
+	Key() K
+	Val() V
 }
 
-type SkipListNode[W SkipListWeight, O HashObject] interface {
+type SkipListIterator[K infra.OrderedKey, V comparable] interface {
+	SkipListElement[K, V]
+	NodeLevel() uint32
+	NodeItemCount() uint32
+}
+
+type SkipListNode[W infra.OrderedKey, O comparable] interface {
 	Free()
 	Element() SkipListElement[W, O]
 	setElement(e SkipListElement[W, O])
@@ -97,12 +105,12 @@ type SkipListNode[W SkipListWeight, O HashObject] interface {
 	levels() []SkipListLevel[W, O]
 }
 
-type SkipListLevel[W SkipListWeight, O HashObject] interface {
+type SkipListLevel[W infra.OrderedKey, O comparable] interface {
 	forwardSuccessor() SkipListNode[W, O]
 	setForwardSuccessor(succ SkipListNode[W, O])
 }
 
-type SkipList[W SkipListWeight, O HashObject] interface {
+type SkipList[W infra.OrderedKey, O comparable] interface {
 	Level() int32
 	Len() int32
 	Free()
@@ -118,7 +126,7 @@ type SkipList[W SkipListWeight, O HashObject] interface {
 }
 
 // SkipListWeightComparator
-// Assume j is the weight of the new element.
+// Assume j is the key of the new element.
 //  1. i == j (i-j == 0, return 0), contains the same element.
 //     If insert a new element, we have to linear probe the next position that can be inserted.
 //  2. i > j (i-j > 0, return 1), find left part.
@@ -128,10 +136,10 @@ type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
 type SkipListValueComparator[V comparable] func(i, j V) int64
 
 // SkipListObjectMatcher
-// return true, if object is satisfied the query condition.
-// return false is used to find predecessor, for the reason that those same weight elements
+// return true, if val is satisfied the query condition.
+// return false is used to find predecessor, for the reason that those same key elements
 //
 //	need to do iteration.
-type SkipListObjectMatcher[O HashObject] func(obj O) bool
+type SkipListObjectMatcher[O comparable] func(obj O) bool
 
 type SkipListRand func(maxLevel int, currentElements int32) int32

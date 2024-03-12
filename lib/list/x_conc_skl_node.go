@@ -15,20 +15,20 @@ const (
 )
 
 type xConcSkipListNode[K infra.OrderedKey, V comparable] struct {
-	weight  K
-	object  *V
+	key     K
+	val     *V
 	indexes xConcSkipListIndices[K, V]
 	mu      segmentedMutex
 	flags   flagBits
 	level   uint32
 }
 
-func (node *xConcSkipListNode[K, V]) storeObject(obj V) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.object)), unsafe.Pointer(&obj))
+func (node *xConcSkipListNode[K, V]) storeVal(val V) {
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.val)), unsafe.Pointer(&val))
 }
 
-func (node *xConcSkipListNode[K, V]) loadObject() V {
-	return *(*V)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.object))))
+func (node *xConcSkipListNode[K, V]) loadVal() V {
+	return *(*V)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.val))))
 }
 
 func (node *xConcSkipListNode[K, V]) loadNext(i int32) *xConcSkipListNode[K, V] {
@@ -63,26 +63,26 @@ func (node *xConcSkipListNode[K, V]) atomicStorePrev(i int32, prev *xConcSkipLis
 	node.indexes.atomicStoreBackward(i, prev)
 }
 
-func newXConcSkipListNode[K infra.OrderedKey, V comparable](weight K, obj V, level int32, e mutexEnum) *xConcSkipListNode[K, V] {
+func newXConcSkipListNode[K infra.OrderedKey, V comparable](key K, val V, level int32, e mutexEnum) *xConcSkipListNode[K, V] {
 	node := &xConcSkipListNode[K, V]{
-		weight: weight,
-		level:  uint32(level),
-		object: &obj,
-		mu:     mutexFactory(e),
+		key:   key,
+		val:   &val,
+		level: uint32(level),
+		mu:    mutexFactory(e),
 	}
-	node.storeObject(obj)
+	node.storeVal(val)
 	node.indexes = newXConcSkipListIndices[K, V](level)
 	return node
 }
 
 func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexEnum) *xConcSkipListNode[K, V] {
 	head := &xConcSkipListNode[K, V]{
-		weight: *new(K),
-		level:  xSkipListMaxLevel,
-		object: nil,
-		mu:     mutexFactory(e),
+		key:   *new(K),
+		level: xSkipListMaxLevel,
+		val:   nil,
+		mu:    mutexFactory(e),
 	}
-	head.storeObject(*new(V))
+	head.storeVal(*new(V))
 	head.flags.atomicSet(nodeHeadMarked | nodeFullyLinked)
 	head.indexes = newXConcSkipListIndices[K, V](xSkipListMaxLevel)
 	return head

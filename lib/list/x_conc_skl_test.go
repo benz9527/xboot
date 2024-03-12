@@ -2,11 +2,11 @@ package list
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,9 +16,12 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexEnum) {
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
-		cmp: func(i, j uint64) int {
-			res := int(i - j)
+		kcmp: func(i, j uint64) int64 {
+			res := int64(i - j)
 			return res
+		},
+		vcmp: func(i, j *xSkipListObject) int64 {
+			return int64(i.Hash() - j.Hash())
 		},
 		rand:  randomLevelV3,
 		flags: flagBits{},
@@ -82,8 +85,8 @@ func xConcSkipListDataRaceRunCore(t *testing.T, me mutexEnum) {
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
-		cmp: func(i, j uint64) int {
-			res := int(i - j)
+		kcmp: func(i, j uint64) int64 {
+			res := int64(i - j)
 			return res
 		},
 		rand:  randomLevelV3,
@@ -168,8 +171,8 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
-		cmp: func(i, j uint64) int {
-			res := int(i - j)
+		kcmp: func(i, j uint64) int64 {
+			res := int64(i - j)
 			return res
 		},
 		rand:  randomLevelV3,
@@ -212,34 +215,34 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	foundResult := skl.rmTraverse1(1, aux)
 	assert.Less(t, int32(0), foundResult)
 	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarked))
-	require.Equal(t, uint64(1), aux.loadSucc(0).weight)
-	require.Equal(t, "9", (*aux.loadSucc(0).object).id)
+	require.Equal(t, uint64(1), aux.loadSucc(0).key)
+	require.Equal(t, "9", (*aux.loadSucc(0).val).id)
 	ele, ok := skl.remove1(1)
 	assert.True(t, ok)
 	assert.NotNil(t, ele)
-	require.Equal(t, uint64(1), ele.Weight())
-	require.Equal(t, "9", ele.Object().id)
+	require.Equal(t, uint64(1), ele.Key())
+	require.Equal(t, "9", ele.Val().id)
 
 	foundResult = skl.rmTraverse1(2, aux)
 	assert.Less(t, int32(0), foundResult)
-	require.Equal(t, uint64(1), aux.loadPred(0).weight)
-	require.Equal(t, "200", (*aux.loadPred(0).object).id)
-	require.Equal(t, uint64(2), aux.loadSucc(0).weight)
-	require.Equal(t, "9", (*aux.loadSucc(0).object).id)
+	require.Equal(t, uint64(1), aux.loadPred(0).key)
+	require.Equal(t, "200", (*aux.loadPred(0).val).id)
+	require.Equal(t, uint64(2), aux.loadSucc(0).key)
+	require.Equal(t, "9", (*aux.loadSucc(0).val).id)
 
 	foundResult = skl.rmTraverse1(3, aux)
 	assert.Less(t, int32(0), foundResult)
-	require.Equal(t, uint64(2), aux.loadPred(0).weight)
-	require.Equal(t, "1", (*aux.loadPred(0).object).id)
-	require.Equal(t, uint64(3), aux.loadSucc(0).weight)
-	require.Equal(t, "2", (*aux.loadSucc(0).object).id)
+	require.Equal(t, uint64(2), aux.loadPred(0).key)
+	require.Equal(t, "1", (*aux.loadPred(0).val).id)
+	require.Equal(t, uint64(3), aux.loadSucc(0).key)
+	require.Equal(t, "2", (*aux.loadSucc(0).val).id)
 
 	foundResult = skl.rmTraverse1(4, aux)
 	assert.Less(t, int32(0), foundResult)
-	require.Equal(t, uint64(3), aux.loadPred(0).weight)
-	require.Equal(t, "100", (*aux.loadPred(0).object).id)
-	require.Equal(t, uint64(4), aux.loadSucc(0).weight)
-	require.Equal(t, "9", (*aux.loadSucc(0).object).id)
+	require.Equal(t, uint64(3), aux.loadPred(0).key)
+	require.Equal(t, "100", (*aux.loadPred(0).val).id)
+	require.Equal(t, uint64(4), aux.loadSucc(0).key)
+	require.Equal(t, "9", (*aux.loadSucc(0).val).id)
 
 	foundResult = skl.rmTraverse1(100, aux)
 	assert.Equal(t, int32(-1), foundResult)
@@ -260,9 +263,12 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, me mutexEnum) {
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
-		cmp: func(i, j uint64) int {
-			res := int(i - j)
+		kcmp: func(i, j uint64) int64 {
+			res := int64(i - j)
 			return res
+		},
+		vcmp: func(i, j *xSkipListObject) int64 {
+			return int64(i.Hash() - j.Hash())
 		},
 		rand:  randomLevelV3,
 		id:    newMonotonicNonZeroID(),

@@ -155,23 +155,23 @@ func TestAuxIndexes(t *testing.T) {
 	aux := make(xConcSkipListAuxiliary[uint8, *xSkipListObject], 2*xSkipListMaxLevel)
 	for i := uint8(0); i < 2*xSkipListMaxLevel; i++ {
 		aux[i] = &xConcSkipListNode[uint8, *xSkipListObject]{
-			weight: i,
+			key: i,
 		}
 	}
 
 	for i := uint8(0); i < xSkipListMaxLevel; i++ {
-		require.Equal(t, i, aux.loadPred(int32(i)).weight)
-		require.Equal(t, xSkipListMaxLevel+i, aux.loadSucc(int32(i)).weight)
+		require.Equal(t, i, aux.loadPred(int32(i)).key)
+		require.Equal(t, xSkipListMaxLevel+i, aux.loadSucc(int32(i)).key)
 	}
 
 	aux.foreachPred(func(predList ...*xConcSkipListNode[uint8, *xSkipListObject]) {
 		for i := uint8(0); i < xSkipListMaxLevel; i++ {
-			require.Equal(t, i, predList[i].weight)
+			require.Equal(t, i, predList[i].key)
 		}
 	})
 	aux.foreachSucc(func(succList ...*xConcSkipListNode[uint8, *xSkipListObject]) {
 		for i := uint8(0); i < xSkipListMaxLevel; i++ {
-			require.Equal(t, xSkipListMaxLevel+i, succList[i].weight)
+			require.Equal(t, xSkipListMaxLevel+i, succList[i].key)
 		}
 	})
 }

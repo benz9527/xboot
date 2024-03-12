@@ -50,11 +50,11 @@ type xSkipListElement[W SkipListWeight, O HashObject] struct {
 	object O
 }
 
-func (e *xSkipListElement[W, O]) Weight() W {
+func (e *xSkipListElement[W, O]) Key() W {
 	return e.weight
 }
 
-func (e *xSkipListElement[W, O]) Object() O {
+func (e *xSkipListElement[W, O]) Val() O {
 	return e.object
 }
 
@@ -204,7 +204,7 @@ func (skl *xSkipList[W, O]) ForEach(fn func(idx int64, weight W, obj O)) {
 	x = skl.head.levels()[0].forwardSuccessor()
 	for x != nil {
 		next := x.levels()[0].forwardSuccessor()
-		fn(idx, x.Element().Weight(), x.Element().Object())
+		fn(idx, x.Element().Key(), x.Element().Val())
 		idx++
 		x = next
 	}
@@ -224,10 +224,10 @@ func (skl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	for i := atomic.LoadInt32(&skl.level) - 1; i >= 0; i-- { // move down level
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
-			res := skl.cmp(cur.Element().Weight(), weight)
-			if res < 0 || (res == 0 && cur.Element().Object().Hash() < obj.Hash()) {
+			res := skl.cmp(cur.Element().Key(), weight)
+			if res < 0 || (res == 0 && cur.Element().Val().Hash() < obj.Hash()) {
 				predecessor = cur // Changes the node iteration path to locate different node.
-			} else if res == 0 && cur.Element().Object().Hash() == obj.Hash() {
+			} else if res == 0 && cur.Element().Val().Hash() == obj.Hash() {
 				return nil, false
 			} else {
 				break
@@ -290,7 +290,7 @@ func (skl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 		// V(N)
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
-			res := skl.cmp(cur.Element().Weight(), weight)
+			res := skl.cmp(cur.Element().Key(), weight)
 			// find predecessor node
 			if res < 0 {
 				predecessor = cur
@@ -308,7 +308,7 @@ func (skl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 
 	target := predecessor.levels()[0].forwardSuccessor()
 	// Check next element's weight
-	if target != nil && skl.cmp(target.Element().Weight(), weight) == 0 {
+	if target != nil && skl.cmp(target.Element().Key(), weight) == 0 {
 		return predecessor, traverse
 	}
 	return nil, traverse // not found
@@ -342,7 +342,7 @@ func (skl *xSkipList[W, O]) RemoveFirst(weight W) SkipListElement[W, O] {
 	}
 
 	target := predecessor.levels()[0].forwardSuccessor()
-	if target != nil && skl.cmp(target.Element().Weight(), weight) == 0 {
+	if target != nil && skl.cmp(target.Element().Key(), weight) == 0 {
 		skl.removeNode(target, traverse)
 		return target.Element()
 	}
@@ -359,7 +359,7 @@ func (skl *xSkipList[W, O]) RemoveAll(weight W) []SkipListElement[W, O] {
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; {
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), weight) == 0; {
 		skl.removeNode(cur, traverse)
 		elements = append(elements, cur.Element())
 		free := cur
@@ -379,8 +379,8 @@ func (skl *xSkipList[W, O]) RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; {
-		if cmp(cur.Element().Object()) {
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), weight) == 0; {
+		if cmp(cur.Element().Val()) {
 			skl.removeNode(cur, traverse)
 			elements = append(elements, cur.Element())
 			next := cur.levels()[0].forwardSuccessor()
@@ -419,7 +419,7 @@ func (skl *xSkipList[W, O]) FindAll(weight W) []SkipListElement[W, O] {
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
 		elements = append(elements, cur.Element())
 	}
 	return elements
@@ -435,8 +435,8 @@ func (skl *xSkipList[W, O]) FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) 
 	}
 
 	elements := make([]SkipListElement[W, O], 0, 16)
-	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Weight(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
-		if cmp(cur.Element().Object()) {
+	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), weight) == 0; cur = cur.levels()[0].forwardSuccessor() {
+		if cmp(cur.Element().Val()) {
 			elements = append(elements, cur.Element())
 		}
 	}
@@ -452,7 +452,7 @@ func (skl *xSkipList[W, O]) PopHead() (e SkipListElement[W, O]) {
 		return
 	}
 	e = target.Element()
-	e = skl.RemoveFirst(e.Weight())
+	e = skl.RemoveFirst(e.Key())
 	return
 }
 

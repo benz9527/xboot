@@ -71,7 +71,7 @@ func (skl *xConcSkipList[K, V]) traverse0(
 	for l := level - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		// Horizontal iteration.
-		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
@@ -79,7 +79,7 @@ func (skl *xConcSkipList[K, V]) traverse0(
 		aux.storePred(l, forward)
 		aux.storeSucc(l, nIdx)
 
-		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
+		if nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
 			if !skl.isDuplicate() || skl.isRbtree() {
 				return nIdx // Found
 			}
@@ -89,7 +89,7 @@ func (skl *xConcSkipList[K, V]) traverse0(
 	return nil // Not found
 }
 
-// insert0 add the object by a weight into skip-list.
+// insert0 add the val by a key into skip-list.
 // Only works for unique element skip-list.
 func (skl *xConcSkipList[K, V]) insert0(weight K, obj V) {
 	var (
@@ -110,7 +110,7 @@ func (skl *xConcSkipList[K, V]) insert0(weight K, obj V) {
 			if node.flags.atomicIsSet(nodeRemovingMarked) {
 				continue
 			}
-			node.storeObject(obj)
+			node.storeVal(obj)
 			return
 		}
 		// Node not present. Add this node into skip list.
@@ -180,7 +180,7 @@ func (skl *xConcSkipList[K, V]) traverse1(
 	for l := level - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		// Horizontal iteration.
-		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
@@ -188,11 +188,11 @@ func (skl *xConcSkipList[K, V]) traverse1(
 		aux.storePred(l, forward)
 		aux.storeSucc(l, nIdx)
 
-		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
+		if nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
 			status := int8(2)
-			for l == 0 && nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
+			for l == 0 && nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
 				// Horizontal iteration.
-				res := int64(obj.Hash() - (*nIdx.object).Hash())
+				res := skl.vcmp(obj, *nIdx.val)
 				if res == 0 {
 					return nIdx // Found
 				} else if res < 0 {
@@ -229,7 +229,7 @@ notFound:
 	return nil // Not found
 }
 
-// insert1 add the object by a weight into skip-list.
+// insert1 add the val by a key into skip-list.
 // Duplicate elements linked by doubly linked-list in skip-list.
 func (skl *xConcSkipList[K, V]) insert1(weight K, obj V) {
 	var (
@@ -250,7 +250,7 @@ func (skl *xConcSkipList[K, V]) insert1(weight K, obj V) {
 			if node.flags.atomicIsSet(nodeRemovingMarked) {
 				continue
 			}
-			node.storeObject(obj)
+			node.storeVal(obj)
 			return
 		}
 		// Node not present. Add this node into skip list.
@@ -319,13 +319,13 @@ func (skl *xConcSkipList[K, V]) insert1(weight K, obj V) {
 	}
 }
 
-// insert2 add the object by a weight into skip-list.
+// insert2 add the val by a key into skip-list.
 // Duplicate elements linked by rbtree in skip-list.
 func (skl *xConcSkipList[K, V]) insert2(weight K, obj V) {
 	// TODO implement the rbtree
 }
 
-// Insert sets the object for a weight.
+// Insert sets the val for a key.
 func (skl *xConcSkipList[K, V]) Insert(weight K, obj V) {
 	if !skl.isDuplicate() {
 		skl.insert0(weight, obj)
@@ -346,28 +346,28 @@ func (skl *xConcSkipList[K, V]) Foreach(fn func(idx int64, weight K, object V)) 
 			forward = forward.atomicLoadNext(0)
 			continue
 		}
-		fn(idx, forward.weight, forward.loadObject())
+		fn(idx, forward.key, forward.loadVal())
 		forward = forward.atomicLoadNext(0)
 		idx++
 	}
 }
 
-// Get returns the object stored in the map for a weight, or nil if no
-// object is present.
-// The ok result indicates whether object was found in the map.
+// Get returns the val stored in the map for a key, or nil if no
+// val is present.
+// The ok result indicates whether val was found in the map.
 func (skl *xConcSkipList[K, V]) Get(weight K) (obj V, ok bool) {
 	forward := (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	for l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
-		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
 
-		// Check if the weight already in the skip list.
-		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
+		// Check if the key already in the skip list.
+		if nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeFullyLinked|nodeRemovingMarked, nodeFullyLinked) {
-				return nIdx.loadObject(), true
+				return nIdx.loadVal(), true
 			}
 			return
 		}
@@ -386,26 +386,26 @@ func (skl *xConcSkipList[K, V]) rmTraverse0(
 	foundAtLevel, forward := int32(-1), (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	for l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
-		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
 
-		// weight matched
+		// key matched
 		aux.storePred(l, forward)
 		aux.storeSucc(l, nIdx)
 
-		// Check if the weight already in the skip list.
-		if foundAtLevel == int32(-1) && nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
+		// Check if the key already in the skip list.
+		if foundAtLevel == int32(-1) && nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
 			foundAtLevel = l
 		}
 	}
 	return foundAtLevel
 }
 
-// remove0 deletes the object for a weight.
+// remove0 deletes the val for a key.
 // Only for unique element skip-list.
-// Only remove the first weight matched element.
+// Only remove the first key matched element.
 func (skl *xConcSkipList[K, V]) remove0(weight K) (SkipListElement[K, V], bool) {
 	var (
 		aux      = skl.pool.loadAux()
@@ -485,7 +485,7 @@ func (skl *xConcSkipList[K, V]) remove0(weight K) (SkipListElement[K, V], bool) 
 			atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
 			return &xSkipListElement[K, V]{
 				weight: weight,
-				object: *rmTarget.object,
+				object: *rmTarget.val,
 			}, true
 		}
 		return nil, false
@@ -493,7 +493,7 @@ func (skl *xConcSkipList[K, V]) remove0(weight K) (SkipListElement[K, V], bool) 
 }
 
 // rmTraverse1 only works for duplicate elements linked by doubly linked-list in skip-list.
-// Find the first node which weight equals to target.
+// Find the first node which key equals to target.
 func (skl *xConcSkipList[K, V]) rmTraverse1(
 	weight K,
 	aux xConcSkipListAuxiliary[K, V],
@@ -502,7 +502,7 @@ func (skl *xConcSkipList[K, V]) rmTraverse1(
 	foundAtLevel, forward := int32(-1), (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	for l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
-		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
@@ -515,9 +515,9 @@ func (skl *xConcSkipList[K, V]) rmTraverse1(
 		// it is impossible for us to backward to find from left part again.
 		// Only works for entering the next level, we're still iterating
 		// current indices.
-		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
+		if nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
 			backward := nIdx.atomicLoadPrev(l)
-			for backward != nil && skl.kcmp(weight, backward.weight) == 0 {
+			for backward != nil && skl.kcmp(weight, backward.key) == 0 {
 				nIdx = backward
 				backward = nIdx.atomicLoadPrev(l)
 			}
@@ -540,9 +540,9 @@ func (skl *xConcSkipList[K, V]) rmTraverse1(
 	return foundAtLevel
 }
 
-// remove1 deletes the object for a weight.
+// remove1 deletes the val for a key.
 // Only works for duplicate elements linked by doubly linked-list in skip-list.
-// Only remove the first weight matched element.
+// Only remove the first key matched element.
 func (skl *xConcSkipList[K, V]) remove1(weight K) (SkipListElement[K, V], bool) {
 	var (
 		aux      = skl.pool.loadAux()
@@ -622,21 +622,21 @@ func (skl *xConcSkipList[K, V]) remove1(weight K) (SkipListElement[K, V], bool) 
 			atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
 			return &xSkipListElement[K, V]{
 				weight: weight,
-				object: *rmTarget.object,
+				object: *rmTarget.val,
 			}, true
 		}
 		return nil, false
 	}
 }
 
-// remove2 deletes the object for a weight.
+// remove2 deletes the val for a key.
 // Duplicate elements linked by rbtree in skip-list.
-// Only remove the first weight matched element.
+// Only remove the first key matched element.
 func (skl *xConcSkipList[K, V]) remove2(weight K) (SkipListElement[K, V], bool) {
 	panic("not implement")
 }
 
-// RemoveFirst deletes the object for a weight.
+// RemoveFirst deletes the val for a key.
 func (skl *xConcSkipList[K, V]) RemoveFirst(weight K) (SkipListElement[K, V], bool) {
 	if !skl.isDuplicate() {
 		return skl.remove0(weight)
@@ -646,12 +646,12 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(weight K) (SkipListElement[K, V], bo
 	return skl.remove2(weight)
 }
 
-// Range calls f sequentially for each weight and object present in the skip-list.
+// Range calls f sequentially for each key and val present in the skip-list.
 // If f returns false, range stops the iteration.
 //
 // Range does not necessarily correspond to any consistent snapshot of the Map's
-// contents: each weight will not be visited more than once, but if the object for any weight
-// is stored or deleted concurrently, Range may reflect any mapping for that weight
+// contents: each key will not be visited more than once, but if the val for any key
+// is stored or deleted concurrently, Range may reflect any mapping for that key
 // from any point during the Range call.
 func (skl *xConcSkipList[K, V]) Range(fn func(weight K, obj V) bool) {
 	x := skl.head.atomicLoadNext(0)
@@ -660,14 +660,14 @@ func (skl *xConcSkipList[K, V]) Range(fn func(weight K, obj V) bool) {
 			x = x.atomicLoadNext(0)
 			continue
 		}
-		if !fn(x.weight, x.loadObject()) {
+		if !fn(x.key, x.loadVal()) {
 			break
 		}
 		x = x.atomicLoadNext(0)
 	}
 }
 
-func NewXConcSkipList[W SkipListWeight, O HashObject](cmp SkipListWeightComparator[W], rand SkipListRand) *xConcSkipList[W, O] {
+func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SkipListWeightComparator[K], rand SkipListRand) *xConcSkipList[K, V] {
 	//h := newXConcSkipListHead[K, V]()
 	//h.flags.atomicSet(nodeFullyLinked)
 	//return &xConcSkipList[K, V]{
@@ -687,26 +687,26 @@ func maxHeight(i, j int32) int32 {
 	return j
 }
 
-type xConcSkipListPool[W SkipListWeight, O HashObject] struct {
+type xConcSkipListPool[K infra.OrderedKey, V comparable] struct {
 	auxPool *sync.Pool
 }
 
-func newXConcSkipListPool[W SkipListWeight, O HashObject]() *xConcSkipListPool[W, O] {
-	p := &xConcSkipListPool[W, O]{
+func newXConcSkipListPool[K infra.OrderedKey, V comparable]() *xConcSkipListPool[K, V] {
+	p := &xConcSkipListPool[K, V]{
 		auxPool: &sync.Pool{
 			New: func() any {
-				return make(xConcSkipListAuxiliary[W, O], 2*xSkipListMaxLevel)
+				return make(xConcSkipListAuxiliary[K, V], 2*xSkipListMaxLevel)
 			},
 		},
 	}
 	return p
 }
 
-func (p *xConcSkipListPool[W, O]) loadAux() xConcSkipListAuxiliary[W, O] {
-	return p.auxPool.Get().(xConcSkipListAuxiliary[W, O])
+func (p *xConcSkipListPool[K, V]) loadAux() xConcSkipListAuxiliary[K, V] {
+	return p.auxPool.Get().(xConcSkipListAuxiliary[K, V])
 }
 
-func (p *xConcSkipListPool[W, O]) releaseAux(aux xConcSkipListAuxiliary[W, O]) {
+func (p *xConcSkipListPool[K, V]) releaseAux(aux xConcSkipListAuxiliary[K, V]) {
 	// Override only
 	p.auxPool.Put(aux)
 }
