@@ -49,54 +49,52 @@ type xConcSkipListNode[K infra.OrderedKey, V comparable] struct {
 	level   uint32
 }
 
-func (node *xConcSkipListNode[K, V]) storeVal(val V) {
+func (node *xConcSkipListNode[K, V]) storeVal(value V) {
 	typ := vNodeType(node.flags.atomicLoadBits(vNodeTypeBits))
 	switch typ {
 	case unique:
 		// Replace
-		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.val)), unsafe.Pointer(&val))
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.val)), unsafe.Pointer(&value))
 	case linkedList:
 		// predecessor
 		pred := node.root
-		for n := node.root.left; n != nil; {
-			res := node.vcmp(val, *n.val)
+		for n := node.root.left; n != nil; n = n.left {
+			res := node.vcmp(value, *n.val)
 			if res == 0 {
 				// Replace
 				pred = n
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.val)), unsafe.Pointer(&val))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.val)), unsafe.Pointer(&value))
 				return
 			} else if res > 0 {
-				next := n.left
-				if next != nil {
-					pred = n
-					n = next
+				pred = n
+				if next := n.left; next != nil {
 					continue
 				}
 				// Append
 				vn := &vNode[V]{
-					val:   &val,
-					left:  nil,
+					val:   &value,
+					left:  n.left,
 					right: nil,
 				}
-				pred = n
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.left)), unsafe.Pointer(&vn))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.left)), unsafe.Pointer(vn))
 				atomic.AddInt64(&node.count, 1)
-				return
+				break
 			} else {
 				// Prepend
 				vn := &vNode[V]{
-					val:   &val,
+					val:   &value,
 					left:  n,
 					right: nil,
 				}
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.left)), unsafe.Pointer(&vn))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.left)), unsafe.Pointer(vn))
 				atomic.AddInt64(&node.count, 1)
+				break
 			}
 		}
 	case rbtree:
 		// TODO rbtree store element
 	default:
-		panic("unknow v-node type")
+		panic("unknown v-node type")
 	}
 }
 
@@ -136,13 +134,21 @@ func (node *xConcSkipListNode[K, V]) atomicStorePrev(i int32, prev *xConcSkipLis
 	node.indexes.atomicStoreBackward(i, prev)
 }
 
-func newXConcSkipListNode[K infra.OrderedKey, V comparable](key K, val V, level int32, e mutexImpl, typ vNodeType) *xConcSkipListNode[K, V] {
+func newXConcSkipListNode[K infra.OrderedKey, V comparable](
+	key K,
+	val V,
+	lvl int32,
+	mu mutexImpl,
+	typ vNodeType,
+	cmp SkipListValueComparator[V],
+) *xConcSkipListNode[K, V] {
 	node := &xConcSkipListNode[K, V]{
 		key:   key,
-		level: uint32(level),
-		mu:    mutexFactory(e),
+		level: uint32(lvl),
+		mu:    mutexFactory(mu),
+		vcmp:  cmp,
 	}
-	node.indexes = newXConcSkipListIndices[K, V](level)
+	node.indexes = newXConcSkipListIndices[K, V](lvl)
 	node.flags.setBitsAs(vNodeTypeBits, uint32(typ))
 	switch typ {
 	case unique:
@@ -164,7 +170,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](key K, val V, level 
 	case rbtree:
 		// TODO rbtree build
 	default:
-		panic("unknown node type")
+		panic("unknown v-node type")
 	}
 	node.count = 1
 	return node

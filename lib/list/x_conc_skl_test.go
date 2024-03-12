@@ -2,6 +2,7 @@ package list
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
 	"time"
@@ -79,9 +80,9 @@ func TestXConcSkipList_SerialProcessing(t *testing.T) {
 	}
 }
 
-func xConcSkipListDataRaceRunCore(t *testing.T, me mutexImpl) {
+func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	skl := &xConcSkipList[uint64, *xSkipListObject]{
-		head:  newXConcSkipListHead[uint64, *xSkipListObject](me, unique),
+		head:  newXConcSkipListHead[uint64, *xSkipListObject](mu, unique),
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
@@ -94,7 +95,7 @@ func xConcSkipListDataRaceRunCore(t *testing.T, me mutexImpl) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
-	skl.flags.setBitsAs(sklMutexImplBits, uint32(me))
+	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
 
 	size := 5
 	size2 := 10
@@ -149,193 +150,187 @@ func xConcSkipListDataRaceRunCore(t *testing.T, me mutexImpl) {
 func TestXConcSkipList_DataRace(t *testing.T) {
 	type testcase struct {
 		name string
-		me   mutexImpl
+		mu   mutexImpl
 	}
 	testcases := []testcase{
 		{
 			name: "go native sync mutex data race",
-			me:   goNativeMutex,
+			mu:   goNativeMutex,
 		}, {
 			name: "skl lock free mutex data race",
-			me:   xSklLockFree,
+			mu:   xSklLockFree,
 		},
 	}
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSkipListDataRaceRunCore(tt, tc.me)
+			xConcSkipListDataRaceRunCore(tt, tc.mu)
 		})
 	}
 }
 
-//
-//func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
-//	skl := &xConcSkipList[uint64, *xSkipListObject]{
-//		head:  newXConcSkipListHead[uint64, *xSkipListObject](goNativeMutex),
-//		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
-//		idxHi: 1,
-//		len:   0,
-//		kcmp: func(i, j uint64) int64 {
-//			res := int64(i - j)
-//			return res
-//		},
-//		rand:  randomLevelV3,
-//		flags: flagBits{},
-//		id:    newMonotonicNonZeroID(),
-//	}
-//	skl.flags.setBitsAs(sklMutexImplBits, uint32(goNativeMutex))
-//	skl.flags.atomicSet(sklDuplicateSetBit)
-//
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 8)})
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 7)})
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 1)})
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 4)})
-//	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 6)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 8)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 7)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 1)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 4)})
-//	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 6)})
-//	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 100)})
-//	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
-//	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
-//	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
-//	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
-//	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
-//
-//	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
-//
-//	skl.Foreach(func(idx int64, w uint64, o *xSkipListObject) {
-//		t.Logf("idx: %d, w: %v, o: %v\n", idx, w, o)
-//	})
-//
-//	aux := make(xConcSkipListAuxiliary[uint64, *xSkipListObject], 2*xSkipListMaxLevel)
-//	foundResult := skl.rmTraverse1(1, aux)
-//	assert.Less(t, int32(0), foundResult)
-//	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarkedBit))
-//	require.Equal(t, uint64(1), aux.loadSucc(0).key)
-//	require.Equal(t, "9", (*aux.loadSucc(0).val).id)
-//	ele, ok := skl.remove1(1)
-//	assert.True(t, ok)
-//	assert.NotNil(t, ele)
-//	require.Equal(t, uint64(1), ele.Key())
-//	require.Equal(t, "9", ele.Val().id)
-//
-//	foundResult = skl.rmTraverse1(2, aux)
-//	assert.Less(t, int32(0), foundResult)
-//	require.Equal(t, uint64(1), aux.loadPred(0).key)
-//	require.Equal(t, "200", (*aux.loadPred(0).val).id)
-//	require.Equal(t, uint64(2), aux.loadSucc(0).key)
-//	require.Equal(t, "9", (*aux.loadSucc(0).val).id)
-//
-//	foundResult = skl.rmTraverse1(3, aux)
-//	assert.Less(t, int32(0), foundResult)
-//	require.Equal(t, uint64(2), aux.loadPred(0).key)
-//	require.Equal(t, "1", (*aux.loadPred(0).val).id)
-//	require.Equal(t, uint64(3), aux.loadSucc(0).key)
-//	require.Equal(t, "2", (*aux.loadSucc(0).val).id)
-//
-//	foundResult = skl.rmTraverse1(4, aux)
-//	assert.Less(t, int32(0), foundResult)
-//	require.Equal(t, uint64(3), aux.loadPred(0).key)
-//	require.Equal(t, "100", (*aux.loadPred(0).val).id)
-//	require.Equal(t, uint64(4), aux.loadSucc(0).key)
-//	require.Equal(t, "9", (*aux.loadSucc(0).val).id)
-//
-//	foundResult = skl.rmTraverse1(100, aux)
-//	assert.Equal(t, int32(-1), foundResult)
-//
-//	foundResult = skl.rmTraverse1(0, aux)
-//	assert.Equal(t, int32(-1), foundResult)
-//
-//	skl.Foreach(func(idx int64, w uint64, o *xSkipListObject) {
-//		t.Logf("idx: %d, w: %v, o: %v\n", idx, w, o)
-//	})
-//}
-//
-//func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, me mutexImpl) {
-//	h := newXConcSkipListNode[uint64, *xSkipListObject](0, nil, xSkipListMaxLevel, me)
-//	h.flags.atomicSet(nodeFullyLinkedBit)
-//	skl := &xConcSkipList[uint64, *xSkipListObject]{
-//		head:  h,
-//		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
-//		idxHi: 1,
-//		len:   0,
-//		kcmp: func(i, j uint64) int64 {
-//			res := int64(i - j)
-//			return res
-//		},
-//		vcmp: func(i, j *xSkipListObject) int64 {
-//			return int64(i.Hash() - j.Hash())
-//		},
-//		rand:  randomLevelV3,
-//		id:    newMonotonicNonZeroID(),
-//		flags: flagBits{},
-//	}
-//	skl.flags.setBitsAs(sklMutexImplBits, uint32(me))
-//	skl.flags.atomicSet(sklDuplicateSetBit)
-//
-//	size := 5
-//	unorderedWeights := []uint64{9, 5, 8, 7, 1, 200, 2, 4, 6, 100}
-//	size2 := len(unorderedWeights)
-//	var wg sync.WaitGroup
-//	wg.Add(size * size2)
-//
-//	type answer struct {
-//		w  uint64
-//		id string
-//	}
-//	expected := make([]*answer, 0, size*size2)
-//	orderedWeights := []uint64{9, 8, 7, 6, 5, 4, 2, 1, 200, 100}
-//
-//	for i := uint64(0); i < uint64(size); i++ {
-//		for j := uint64(0); j < uint64(size2); j++ {
-//			go func(_i, _j uint64) {
-//				w := (_i + 1) * 100
-//				time.Sleep(time.Duration(cryptoRandUint32()%5) * time.Millisecond)
-//				skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", unorderedWeights[_j])})
-//				wg.Done()
-//			}(i, j)
-//			expected = append(expected, &answer{w: (i + 1) * 100, id: fmt.Sprintf("%d", orderedWeights[j])})
-//		}
-//	}
-//	wg.Wait()
-//	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
-//
-//	skl.Foreach(func(idx int64, w uint64, o *xSkipListObject) {
-//		require.Equal(t, expected[idx].w, w)
-//		require.Equal(t, expected[idx].id, o.id)
-//	})
-//
-//	//for _, e := range expected {
-//	//	skl.FindAll()
-//	//}
-//}
-//
-//func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
-//	type testcase struct {
-//		name string
-//		me   mutexImpl
-//	}
-//	testcases := []testcase{
-//		{
-//			name: "go native sync mutex data race",
-//			me:   goNativeMutex,
-//		}, {
-//			name: "skl lock free mutex data race",
-//			me:   xSklLockFree,
-//		},
-//	}
-//	t.Parallel()
-//	for _, tc := range testcases {
-//		t.Run(tc.name, func(tt *testing.T) {
-//			xConcSkipListDuplicateDataRaceRunCore(tt, tc.me)
-//		})
-//	}
-//}
+func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
+	skl := &xConcSkipList[uint64, *xSkipListObject]{
+		head:  newXConcSkipListHead[uint64, *xSkipListObject](goNativeMutex, linkedList),
+		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
+		idxHi: 1,
+		len:   0,
+		kcmp: func(i, j uint64) int64 {
+			res := int64(i - j)
+			return res
+		},
+		vcmp: func(i, j *xSkipListObject) int64 {
+			return int64(i.Hash() - j.Hash())
+		},
+		rand:  randomLevelV3,
+		flags: flagBits{},
+	}
+	idGen, _ := id.MonotonicNonZeroID()
+	skl.idGen = idGen
+	skl.flags.setBitsAs(sklMutexImplBits, uint32(goNativeMutex))
+	skl.flags.setBitsAs(sklVNodeTypeBits, uint32(linkedList))
+
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 8)})
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 7)})
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 1)})
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 4)})
+	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 6)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 8)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 7)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 1)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 4)})
+	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 6)})
+	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 100)})
+	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
+	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
+	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
+
+	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
+
+	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
+		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
+		return true
+	})
+
+	aux := make(xConcSkipListAuxiliary[uint64, *xSkipListObject], 2*xSkipListMaxLevel)
+	foundResult := skl.rmTraverse(1, aux)
+	assert.LessOrEqual(t, int32(0), foundResult)
+	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarkedBit))
+	require.Equal(t, uint64(1), aux.loadSucc(0).key)
+	require.Equal(t, "9", (*aux.loadSucc(0).loadValNode().left.val).id)
+
+	foundResult = skl.rmTraverse(2, aux)
+	assert.LessOrEqual(t, int32(0), foundResult)
+	require.Equal(t, uint64(1), aux.loadPred(0).key)
+	require.Equal(t, "9", (*aux.loadPred(0).loadValNode().left.val).id)
+	require.Equal(t, uint64(2), aux.loadSucc(0).key)
+	require.Equal(t, "9", (*aux.loadSucc(0).loadValNode().left.val).id)
+
+	foundResult = skl.rmTraverse(3, aux)
+	assert.LessOrEqual(t, int32(0), foundResult)
+	require.Equal(t, uint64(2), aux.loadPred(0).key)
+	require.Equal(t, "9", (*aux.loadPred(0).loadValNode().left.val).id)
+	require.Equal(t, uint64(3), aux.loadSucc(0).key)
+	require.Equal(t, "2", (*aux.loadSucc(0).loadValNode().left.val).id)
+
+	foundResult = skl.rmTraverse(4, aux)
+	assert.LessOrEqual(t, int32(0), foundResult)
+	require.Equal(t, uint64(3), aux.loadPred(0).key)
+	require.Equal(t, "2", (*aux.loadPred(0).loadValNode().left.val).id)
+	require.Equal(t, uint64(4), aux.loadSucc(0).key)
+	require.Equal(t, "9", (*aux.loadSucc(0).loadValNode().left.val).id)
+
+	foundResult = skl.rmTraverse(100, aux)
+	assert.Equal(t, int32(-1), foundResult)
+
+	foundResult = skl.rmTraverse(0, aux)
+	assert.Equal(t, int32(-1), foundResult)
+}
+
+func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ vNodeType) {
+	skl := &xConcSkipList[uint64, *xSkipListObject]{
+		head:  newXConcSkipListHead[uint64, *xSkipListObject](mu, typ),
+		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
+		idxHi: 1,
+		len:   0,
+		kcmp: func(i, j uint64) int64 {
+			res := int64(i - j)
+			return res
+		},
+		vcmp: func(i, j *xSkipListObject) int64 {
+			return int64(i.Hash() - j.Hash())
+		},
+		rand:  randomLevelV3,
+		flags: flagBits{},
+	}
+	idGen, _ := id.MonotonicNonZeroID()
+	skl.idGen = idGen
+	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
+	skl.flags.setBitsAs(sklVNodeTypeBits, uint32(typ))
+
+	size := 5
+	unorderedWeights := []uint64{9, 5, 8, 7, 1, 200, 2, 4, 6, 100}
+	size2 := len(unorderedWeights)
+	var wg sync.WaitGroup
+	wg.Add(size * size2)
+
+	type answer struct {
+		w  uint64
+		id string
+	}
+	expected := make([]*answer, 0, size*size2)
+	orderedWeights := []uint64{9, 8, 7, 6, 5, 4, 2, 1, 200, 100}
+
+	for i := uint64(0); i < uint64(size); i++ {
+		for j := uint64(0); j < uint64(size2); j++ {
+			go func(_i, _j uint64) {
+				w := (_i + 1) * 100
+				time.Sleep(time.Duration(cryptoRandUint32()%5) * time.Millisecond)
+				skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", unorderedWeights[_j])})
+				wg.Done()
+			}(i, j)
+			expected = append(expected, &answer{w: (i + 1) * 100, id: fmt.Sprintf("%d", orderedWeights[j])})
+		}
+	}
+	wg.Wait()
+	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
+
+	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
+		require.Equal(t, expected[idx].w, item.Key())
+		require.Equal(t, expected[idx].id, item.Val())
+		return true
+	})
+}
+
+func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
+	type testcase struct {
+		name string
+		mu   mutexImpl
+		typ  vNodeType
+	}
+	testcases := []testcase{
+		{
+			name: "go native sync mutex data race - linkedlist",
+			mu:   goNativeMutex,
+			typ:  linkedList,
+		}, {
+			name: "skl lock free mutex data race - linkedlist",
+			mu:   xSklLockFree,
+			typ:  linkedList,
+		},
+	}
+	t.Parallel()
+	for _, tc := range testcases {
+		t.Run(tc.name, func(tt *testing.T) {
+			xConcSkipListDuplicateDataRaceRunCore(tt, tc.mu, tc.typ)
+		})
+	}
+}

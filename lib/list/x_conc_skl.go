@@ -142,7 +142,7 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 			continue
 		}
 
-		n := newXConcSkipListNode(key, val, newIdxHi, skl.loadMutexImpl(), skl.loadVNodeType())
+		n := newXConcSkipListNode(key, val, newIdxHi, skl.loadMutexImpl(), skl.loadVNodeType(), skl.vcmp)
 		for l := int32(0); l < newIdxHi; l++ {
 			// Linking
 			//      +------+       +------+      +------+
@@ -182,6 +182,12 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 				forward = forward.atomicLoadNext(0)
 				continue
 			}
+			item.nodeLevelFn = func() uint32 {
+				return atomic.LoadUint32(&forward.level)
+			}
+			item.nodeItemCountFn = func() int64 {
+				return atomic.LoadInt64(&forward.count)
+			}
 			item.keyFn = func() K {
 				return forward.key
 			}
@@ -192,12 +198,6 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 				}
 				return *vn.val
 			}
-			item.nodeLevelFn = func() uint32 {
-				return atomic.LoadUint32(&forward.level)
-			}
-			item.nodeItemCountFn = func() int64 {
-				return atomic.LoadInt64(&forward.count)
-			}
 			if res := fn(idx, item); !res {
 				break
 			}
@@ -205,9 +205,33 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 			idx++
 		}
 	case linkedList:
-
+		for forward != nil {
+			if !forward.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, nodeFullyLinkedBit) {
+				forward = forward.atomicLoadNext(0)
+				continue
+			}
+			item.nodeLevelFn = func() uint32 {
+				return atomic.LoadUint32(&forward.level)
+			}
+			item.nodeItemCountFn = func() int64 {
+				return atomic.LoadInt64(&forward.count)
+			}
+			item.keyFn = func() K {
+				return forward.key
+			}
+			for vn := forward.loadValNode().left; vn != nil; vn = vn.left {
+				item.valFn = func() V {
+					return *vn.val
+				}
+				if res := fn(idx, item); !res {
+					break
+				}
+			}
+			forward = forward.atomicLoadNext(0)
+			idx++
+		}
 	case rbtree:
-
+		// TODO
 	default:
 		panic("unknown skip-list node type")
 	}
@@ -235,11 +259,12 @@ func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
 					vn := nIdx.loadValNode()
 					return *vn.val, true
 				case linkedList:
-					// TODO
+					vn := nIdx.loadValNode()
+					return *vn.left.val, true
 				case rbtree:
 					// TODO
 				default:
-					panic("unknown skip-list node type")
+					panic("unknown v-node type")
 				}
 			}
 			return
@@ -357,7 +382,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (SkipListElement[K, V], bool)
 				}
 				atomic.AddInt64(&rmTarget.count, -1)
 			default:
-				panic("unknown skip-list node type")
+				panic("unknown v-node type")
 			}
 
 			rmTarget.mu.unlock(ver)
