@@ -125,6 +125,8 @@ type SkipList[W SkipListWeight, O HashObject] interface {
 //  3. i < j (i-j < 0, return -1), find right part.
 type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
 
+type SkipListValueComparator[V comparable] func(i, j V) int64
+
 // SkipListObjectMatcher
 // return true, if object is satisfied the query condition.
 // return false is used to find predecessor, for the reason that those same weight elements

@@ -4,14 +4,16 @@ import (
 	"strconv"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
-type xConcSkipListIndex[W SkipListWeight, O HashObject] struct {
-	forward  *xConcSkipListNode[W, O]
-	backward *xConcSkipListNode[W, O] // Doubly linked list
+type xConcSkipListIndex[K infra.OrderedKey, V comparable] struct {
+	forward  *xConcSkipListNode[K, V]
+	backward *xConcSkipListNode[K, V] // Doubly linked list
 }
 
-type xConcSkipListIndices[W SkipListWeight, O HashObject] []*xConcSkipListIndex[W, O]
+type xConcSkipListIndices[W infra.OrderedKey, O comparable] []*xConcSkipListIndex[W, O]
 
 func (indices xConcSkipListIndices[W, O]) must(i int32) {
 	l := len(indices)
@@ -62,10 +64,10 @@ func (indices xConcSkipListIndices[W, O]) atomicStoreBackward(i int32, n *xConcS
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].backward)), unsafe.Pointer(n))
 }
 
-func newXConcSkipListIndices[W SkipListWeight, O HashObject](level int32) xConcSkipListIndices[W, O] {
-	indices := make(xConcSkipListIndices[W, O], level)
+func newXConcSkipListIndices[K infra.OrderedKey, V comparable](level int32) xConcSkipListIndices[K, V] {
+	indices := make(xConcSkipListIndices[K, V], level)
 	for i := int32(0); i < level; i++ {
-		indices[i] = &xConcSkipListIndex[W, O]{
+		indices[i] = &xConcSkipListIndex[K, V]{
 			forward:  nil,
 			backward: nil,
 		}
@@ -74,30 +76,30 @@ func newXConcSkipListIndices[W SkipListWeight, O HashObject](level int32) xConcS
 }
 
 // Records the traverse predecessors and successors info.
-type xConcSkipListAuxiliary[W SkipListWeight, O HashObject] []*xConcSkipListNode[W, O]
+type xConcSkipListAuxiliary[K infra.OrderedKey, V comparable] []*xConcSkipListNode[K, V]
 
 // Left part.
-func (aux xConcSkipListAuxiliary[W, O]) loadPred(i int32) *xConcSkipListNode[W, O] {
+func (aux xConcSkipListAuxiliary[K, V]) loadPred(i int32) *xConcSkipListNode[K, V] {
 	return aux[i]
 }
 
-func (aux xConcSkipListAuxiliary[W, O]) storePred(i int32, pred *xConcSkipListNode[W, O]) {
+func (aux xConcSkipListAuxiliary[K, V]) storePred(i int32, pred *xConcSkipListNode[K, V]) {
 	aux[i] = pred
 }
 
-func (aux xConcSkipListAuxiliary[W, O]) foreachPred(fn func(list ...*xConcSkipListNode[W, O])) {
+func (aux xConcSkipListAuxiliary[K, V]) foreachPred(fn func(list ...*xConcSkipListNode[K, V])) {
 	fn(aux[0:xSkipListMaxLevel]...)
 }
 
 // Right part.
-func (aux xConcSkipListAuxiliary[W, O]) loadSucc(i int32) *xConcSkipListNode[W, O] {
+func (aux xConcSkipListAuxiliary[K, V]) loadSucc(i int32) *xConcSkipListNode[K, V] {
 	return aux[xSkipListMaxLevel+i]
 }
 
-func (aux xConcSkipListAuxiliary[W, O]) storeSucc(i int32, succ *xConcSkipListNode[W, O]) {
+func (aux xConcSkipListAuxiliary[K, V]) storeSucc(i int32, succ *xConcSkipListNode[K, V]) {
 	aux[xSkipListMaxLevel+i] = succ
 }
 
-func (aux xConcSkipListAuxiliary[W, O]) foreachSucc(fn func(list ...*xConcSkipListNode[W, O])) {
+func (aux xConcSkipListAuxiliary[K, V]) foreachSucc(fn func(list ...*xConcSkipListNode[K, V])) {
 	fn(aux[xSkipListMaxLevel:]...)
 }

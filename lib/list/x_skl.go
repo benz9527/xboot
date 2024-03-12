@@ -242,8 +242,8 @@ func (skl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 	}
 
 	// Each duplicated weight element may contain its cache levels.
-	// It means that duplicated weight elements query through the cache (O(logN))
-	// But duplicated elements query (linear probe) will be degraded into O(N)
+	// It means that duplicated weight elements query through the cache (V(logN))
+	// But duplicated elements query (linear probe) will be degraded into V(N)
 	lvl := skl.rand(xSkipListMaxLevel, skl.Len())
 	if lvl > skl.Level() {
 		for i := skl.Level(); i < lvl; i++ {
@@ -276,7 +276,7 @@ func (skl *xSkipList[W, O]) Insert(weight W, obj O) (SkipListNode[W, O], bool) {
 }
 
 // findPredecessor0 is used to find the (successor) first element whose weight equals to target value.
-// Preparing for linear probing. O(N)
+// Preparing for linear probing. V(N)
 // @return value 1: the predecessor node
 // @return value 2: the query traverse path (nodes)
 func (skl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []SkipListNode[W, O]) {
@@ -287,7 +287,7 @@ func (skl *xSkipList[W, O]) findPredecessor0(weight W) (SkipListNode[W, O], []Sk
 	predecessor = skl.head
 	for i := skl.Level() - 1; i >= 0; i-- {
 		// Note: Will start probing linearly from a local position in some interval
-		// O(N)
+		// V(N)
 		for predecessor.levels()[i].forwardSuccessor() != nil {
 			cur := predecessor.levels()[i].forwardSuccessor()
 			res := skl.cmp(cur.Element().Weight(), weight)

@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 const (
@@ -17,10 +19,11 @@ const (
 	sklRbtree    = 0x0200
 )
 
-type xConcSkipList[W SkipListWeight, O HashObject] struct {
-	head    *xConcSkipListNode[W, O]
-	pool    *xConcSkipListPool[W, O]
-	cmp     SkipListWeightComparator[W]
+type xConcSkipList[K infra.OrderedKey, V comparable] struct {
+	head    *xConcSkipListNode[K, V]
+	pool    *xConcSkipListPool[K, V]
+	kcmp    infra.OrderedKeyComparator[K]
+	vcmp    SkipListValueComparator[V]
 	rand    SkipListRand
 	id      *monotonicNonZeroID
 	flags   flagBits
@@ -29,46 +32,46 @@ type xConcSkipList[W SkipListWeight, O HashObject] struct {
 	idxHi   int32  // skip-list's indexes' height
 }
 
-func (skl *xConcSkipList[W, O]) loadMutexEnum() mutexEnum {
+func (skl *xConcSkipList[K, V]) loadMutexEnum() mutexEnum {
 	return mutexEnum(skl.flags.atomicLoadBits(sklMutexType))
 }
 
-func (skl *xConcSkipList[W, O]) isDuplicate() bool {
+func (skl *xConcSkipList[K, V]) isDuplicate() bool {
 	return skl.flags.isSet(sklDuplicate)
 }
 
 // Default duplicated elements are store as singly linked list.
-func (skl *xConcSkipList[W, O]) isRbtree() bool {
+func (skl *xConcSkipList[K, V]) isRbtree() bool {
 	return skl.flags.atomicAreEqual(sklDuplicate|sklRbtree, 0x3)
 }
 
-func (skl *xConcSkipList[W, O]) Len() int {
+func (skl *xConcSkipList[K, V]) Len() int {
 	return int(atomic.LoadInt64(&skl.len))
 }
 
-func (skl *xConcSkipList[W, O]) Indexes() uint64 {
+func (skl *xConcSkipList[K, V]) Indexes() uint64 {
 	return atomic.LoadUint64(&skl.idxSize)
 }
 
-func (skl *xConcSkipList[W, O]) Level() int32 {
+func (skl *xConcSkipList[K, V]) Level() int32 {
 	return atomic.LoadInt32(&skl.idxHi)
 }
 
 // traverse0 works for
 // 1. Unique element skip-list.
 // 2. Duplicate elements linked by rbtree in skip-list.
-func (skl *xConcSkipList[W, O]) traverse0(
+func (skl *xConcSkipList[K, V]) traverse0(
 	level int32,
-	weight W,
-	obj O,
-	aux xConcSkipListAuxiliary[W, O],
-) *xConcSkipListNode[W, O] {
-	forward := (*xConcSkipListNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
+	weight K,
+	obj V,
+	aux xConcSkipListAuxiliary[K, V],
+) *xConcSkipListNode[K, V] {
+	forward := (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	// Vertical iteration.
 	for l := level - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		// Horizontal iteration.
-		for nIdx != nil && skl.cmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
@@ -76,7 +79,7 @@ func (skl *xConcSkipList[W, O]) traverse0(
 		aux.storePred(l, forward)
 		aux.storeSucc(l, nIdx)
 
-		if nIdx != nil && skl.cmp(weight, nIdx.weight) == 0 {
+		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
 			if !skl.isDuplicate() || skl.isRbtree() {
 				return nIdx // Found
 			}
@@ -88,7 +91,7 @@ func (skl *xConcSkipList[W, O]) traverse0(
 
 // insert0 add the object by a weight into skip-list.
 // Only works for unique element skip-list.
-func (skl *xConcSkipList[W, O]) insert0(weight W, obj O) {
+func (skl *xConcSkipList[K, V]) insert0(weight K, obj V) {
 	var (
 		aux      = skl.pool.loadAux()
 		oldIdxHi = skl.Level()
@@ -112,7 +115,7 @@ func (skl *xConcSkipList[W, O]) insert0(weight W, obj O) {
 		}
 		// Node not present. Add this node into skip list.
 		var (
-			pred, succ, prevPred *xConcSkipListNode[W, O] = nil, nil, nil
+			pred, succ, prevPred *xConcSkipListNode[K, V] = nil, nil, nil
 			lockedLevels                                  = int32(-1)
 			isValidInsert                                 = true
 		)
@@ -136,7 +139,7 @@ func (skl *xConcSkipList[W, O]) insert0(weight W, obj O) {
 				pred.loadNext(l) == succ
 		}
 		if !isValidInsert {
-			aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+			aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 				unlockNodes(ver, lockedLevels, list...)
 			})
 			// Insert failed due to concurrency, restart the iteration.
@@ -156,7 +159,7 @@ func (skl *xConcSkipList[W, O]) insert0(weight W, obj O) {
 		if oldIdxHi = skl.Level(); oldIdxHi < newIdxHi {
 			atomic.StoreInt32(&skl.idxHi, newIdxHi)
 		}
-		aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+		aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 			unlockNodes(ver, lockedLevels, list...)
 		})
 		atomic.AddInt64(&skl.len, 1)
@@ -166,18 +169,18 @@ func (skl *xConcSkipList[W, O]) insert0(weight W, obj O) {
 }
 
 // traverse1 only works for duplicate elements linked by doubly linked-list in skip-list.
-func (skl *xConcSkipList[W, O]) traverse1(
+func (skl *xConcSkipList[K, V]) traverse1(
 	level int32,
-	weight W,
-	obj O,
-	aux xConcSkipListAuxiliary[W, O],
-) *xConcSkipListNode[W, O] {
-	forward := (*xConcSkipListNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
+	weight K,
+	obj V,
+	aux xConcSkipListAuxiliary[K, V],
+) *xConcSkipListNode[K, V] {
+	forward := (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	// Vertical iteration.
 	for l := level - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		// Horizontal iteration.
-		for nIdx != nil && skl.cmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
@@ -185,9 +188,9 @@ func (skl *xConcSkipList[W, O]) traverse1(
 		aux.storePred(l, forward)
 		aux.storeSucc(l, nIdx)
 
-		if nIdx != nil && skl.cmp(weight, nIdx.weight) == 0 {
+		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
 			status := int8(2)
-			for l == 0 && nIdx != nil && skl.cmp(weight, nIdx.weight) == 0 {
+			for l == 0 && nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
 				// Horizontal iteration.
 				res := int64(obj.Hash() - (*nIdx.object).Hash())
 				if res == 0 {
@@ -228,7 +231,7 @@ notFound:
 
 // insert1 add the object by a weight into skip-list.
 // Duplicate elements linked by doubly linked-list in skip-list.
-func (skl *xConcSkipList[W, O]) insert1(weight W, obj O) {
+func (skl *xConcSkipList[K, V]) insert1(weight K, obj V) {
 	var (
 		aux      = skl.pool.loadAux()
 		oldIdxHi = skl.Level()
@@ -252,7 +255,7 @@ func (skl *xConcSkipList[W, O]) insert1(weight W, obj O) {
 		}
 		// Node not present. Add this node into skip list.
 		var (
-			pred, succ, prevPred *xConcSkipListNode[W, O] = nil, nil, nil
+			pred, succ, prevPred *xConcSkipListNode[K, V] = nil, nil, nil
 			lockedLevels                                  = int32(-1)
 			isValidInsert                                 = true
 		)
@@ -276,7 +279,7 @@ func (skl *xConcSkipList[W, O]) insert1(weight W, obj O) {
 				pred.loadNext(l) == succ
 		}
 		if !isValidInsert {
-			aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+			aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 				unlockNodes(ver, lockedLevels, list...)
 			})
 			// Insert failed due to concurrency, restart the iteration.
@@ -307,7 +310,7 @@ func (skl *xConcSkipList[W, O]) insert1(weight W, obj O) {
 		if oldIdxHi = skl.Level(); oldIdxHi < newIdxHi {
 			atomic.StoreInt32(&skl.idxHi, newIdxHi)
 		}
-		aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+		aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 			unlockNodes(ver, lockedLevels, list...)
 		})
 		atomic.AddInt64(&skl.len, 1)
@@ -318,12 +321,12 @@ func (skl *xConcSkipList[W, O]) insert1(weight W, obj O) {
 
 // insert2 add the object by a weight into skip-list.
 // Duplicate elements linked by rbtree in skip-list.
-func (skl *xConcSkipList[W, O]) insert2(weight W, obj O) {
+func (skl *xConcSkipList[K, V]) insert2(weight K, obj V) {
 	// TODO implement the rbtree
 }
 
 // Insert sets the object for a weight.
-func (skl *xConcSkipList[W, O]) Insert(weight W, obj O) {
+func (skl *xConcSkipList[K, V]) Insert(weight K, obj V) {
 	if !skl.isDuplicate() {
 		skl.insert0(weight, obj)
 		return
@@ -335,8 +338,8 @@ func (skl *xConcSkipList[W, O]) Insert(weight W, obj O) {
 	}
 }
 
-func (skl *xConcSkipList[W, O]) Foreach(fn func(idx int64, weight W, object O)) {
-	forward := (*xConcSkipListNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head)))).atomicLoadNext(0)
+func (skl *xConcSkipList[K, V]) Foreach(fn func(idx int64, weight K, object V)) {
+	forward := (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head)))).atomicLoadNext(0)
 	idx := int64(0)
 	for forward != nil {
 		if !forward.flags.atomicAreEqual(nodeFullyLinked|nodeRemovingMarked, nodeFullyLinked) {
@@ -352,17 +355,17 @@ func (skl *xConcSkipList[W, O]) Foreach(fn func(idx int64, weight W, object O)) 
 // Get returns the object stored in the map for a weight, or nil if no
 // object is present.
 // The ok result indicates whether object was found in the map.
-func (skl *xConcSkipList[W, O]) Get(weight W) (obj O, ok bool) {
-	forward := (*xConcSkipListNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
+func (skl *xConcSkipList[K, V]) Get(weight K) (obj V, ok bool) {
+	forward := (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	for l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
-		for nIdx != nil && skl.cmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
 
 		// Check if the weight already in the skip list.
-		if nIdx != nil && skl.cmp(weight, nIdx.weight) == 0 {
+		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeFullyLinked|nodeRemovingMarked, nodeFullyLinked) {
 				return nIdx.loadObject(), true
 			}
@@ -375,15 +378,15 @@ func (skl *xConcSkipList[W, O]) Get(weight W) (obj O, ok bool) {
 // rmTraverse0 works for
 // 1. Unique element skip-list.
 // 2. Duplicate elements linked by rbtree in skip-list.
-func (skl *xConcSkipList[W, O]) rmTraverse0(
-	weight W,
-	aux xConcSkipListAuxiliary[W, O],
+func (skl *xConcSkipList[K, V]) rmTraverse0(
+	weight K,
+	aux xConcSkipListAuxiliary[K, V],
 ) int32 {
 	// foundAtLevel represents the index of the first layer at which it found a node.
-	foundAtLevel, forward := int32(-1), (*xConcSkipListNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
+	foundAtLevel, forward := int32(-1), (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	for l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
-		for nIdx != nil && skl.cmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
@@ -393,7 +396,7 @@ func (skl *xConcSkipList[W, O]) rmTraverse0(
 		aux.storeSucc(l, nIdx)
 
 		// Check if the weight already in the skip list.
-		if foundAtLevel == int32(-1) && nIdx != nil && skl.cmp(weight, nIdx.weight) == 0 {
+		if foundAtLevel == int32(-1) && nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
 			foundAtLevel = l
 		}
 	}
@@ -403,10 +406,10 @@ func (skl *xConcSkipList[W, O]) rmTraverse0(
 // remove0 deletes the object for a weight.
 // Only for unique element skip-list.
 // Only remove the first weight matched element.
-func (skl *xConcSkipList[W, O]) remove0(weight W) (SkipListElement[W, O], bool) {
+func (skl *xConcSkipList[K, V]) remove0(weight K) (SkipListElement[K, V], bool) {
 	var (
 		aux      = skl.pool.loadAux()
-		rmTarget *xConcSkipListNode[W, O]
+		rmTarget *xConcSkipListNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
 		ver      = skl.id.next()
@@ -448,7 +451,7 @@ func (skl *xConcSkipList[W, O]) remove0(weight W) (SkipListElement[W, O], bool) 
 			var (
 				lockedLayers         = int32(-1)
 				isValidRemove        = true
-				pred, succ, prevPred *xConcSkipListNode[W, O]
+				pred, succ, prevPred *xConcSkipListNode[K, V]
 			)
 			for l := int32(0); isValidRemove && (l <= topLevel); l++ {
 				pred, succ = aux.loadPred(l), aux.loadSucc(l)
@@ -464,7 +467,7 @@ func (skl *xConcSkipList[W, O]) remove0(weight W) (SkipListElement[W, O], bool) 
 				isValidRemove = !pred.flags.atomicIsSet(nodeRemovingMarked) && pred.atomicLoadNext(l) == succ
 			}
 			if !isValidRemove {
-				aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+				aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
 				continue
@@ -475,12 +478,12 @@ func (skl *xConcSkipList[W, O]) remove0(weight W) (SkipListElement[W, O], bool) 
 				aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
 			}
 			rmTarget.mu.unlock(ver)
-			aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+			aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 				unlockNodes(ver, lockedLayers, list...)
 			})
 			atomic.AddInt64(&skl.len, -1)
 			atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
-			return &xSkipListElement[W, O]{
+			return &xSkipListElement[K, V]{
 				weight: weight,
 				object: *rmTarget.object,
 			}, true
@@ -491,15 +494,15 @@ func (skl *xConcSkipList[W, O]) remove0(weight W) (SkipListElement[W, O], bool) 
 
 // rmTraverse1 only works for duplicate elements linked by doubly linked-list in skip-list.
 // Find the first node which weight equals to target.
-func (skl *xConcSkipList[W, O]) rmTraverse1(
-	weight W,
-	aux xConcSkipListAuxiliary[W, O],
+func (skl *xConcSkipList[K, V]) rmTraverse1(
+	weight K,
+	aux xConcSkipListAuxiliary[K, V],
 ) int32 {
 	// foundAtLevel represents the index of the first layer at which it found a node.
-	foundAtLevel, forward := int32(-1), (*xConcSkipListNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
+	foundAtLevel, forward := int32(-1), (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 	for l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
-		for nIdx != nil && skl.cmp(weight, nIdx.weight) > 0 {
+		for nIdx != nil && skl.kcmp(weight, nIdx.weight) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNext(l)
 		}
@@ -512,9 +515,9 @@ func (skl *xConcSkipList[W, O]) rmTraverse1(
 		// it is impossible for us to backward to find from left part again.
 		// Only works for entering the next level, we're still iterating
 		// current indices.
-		if nIdx != nil && skl.cmp(weight, nIdx.weight) == 0 {
+		if nIdx != nil && skl.kcmp(weight, nIdx.weight) == 0 {
 			backward := nIdx.atomicLoadPrev(l)
-			for backward != nil && skl.cmp(weight, backward.weight) == 0 {
+			for backward != nil && skl.kcmp(weight, backward.weight) == 0 {
 				nIdx = backward
 				backward = nIdx.atomicLoadPrev(l)
 			}
@@ -540,10 +543,10 @@ func (skl *xConcSkipList[W, O]) rmTraverse1(
 // remove1 deletes the object for a weight.
 // Only works for duplicate elements linked by doubly linked-list in skip-list.
 // Only remove the first weight matched element.
-func (skl *xConcSkipList[W, O]) remove1(weight W) (SkipListElement[W, O], bool) {
+func (skl *xConcSkipList[K, V]) remove1(weight K) (SkipListElement[K, V], bool) {
 	var (
 		aux      = skl.pool.loadAux()
-		rmTarget *xConcSkipListNode[W, O]
+		rmTarget *xConcSkipListNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
 		ver      = skl.id.next()
@@ -585,7 +588,7 @@ func (skl *xConcSkipList[W, O]) remove1(weight W) (SkipListElement[W, O], bool) 
 			var (
 				lockedLayers         = int32(-1)
 				isValidRemove        = true
-				pred, succ, prevPred *xConcSkipListNode[W, O]
+				pred, succ, prevPred *xConcSkipListNode[K, V]
 			)
 			for l := int32(0); isValidRemove && (l <= topLevel); l++ {
 				pred, succ = aux.loadPred(l), aux.loadSucc(l)
@@ -601,7 +604,7 @@ func (skl *xConcSkipList[W, O]) remove1(weight W) (SkipListElement[W, O], bool) 
 				isValidRemove = !pred.flags.atomicIsSet(nodeRemovingMarked) && pred.atomicLoadNext(l) == succ
 			}
 			if !isValidRemove {
-				aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+				aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
 				continue
@@ -612,12 +615,12 @@ func (skl *xConcSkipList[W, O]) remove1(weight W) (SkipListElement[W, O], bool) 
 				aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
 			}
 			rmTarget.mu.unlock(ver)
-			aux.foreachPred(func(list ...*xConcSkipListNode[W, O]) {
+			aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 				unlockNodes(ver, lockedLayers, list...)
 			})
 			atomic.AddInt64(&skl.len, -1)
 			atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
-			return &xSkipListElement[W, O]{
+			return &xSkipListElement[K, V]{
 				weight: weight,
 				object: *rmTarget.object,
 			}, true
@@ -629,12 +632,12 @@ func (skl *xConcSkipList[W, O]) remove1(weight W) (SkipListElement[W, O], bool) 
 // remove2 deletes the object for a weight.
 // Duplicate elements linked by rbtree in skip-list.
 // Only remove the first weight matched element.
-func (skl *xConcSkipList[W, O]) remove2(weight W) (SkipListElement[W, O], bool) {
+func (skl *xConcSkipList[K, V]) remove2(weight K) (SkipListElement[K, V], bool) {
 	panic("not implement")
 }
 
 // RemoveFirst deletes the object for a weight.
-func (skl *xConcSkipList[W, O]) RemoveFirst(weight W) (SkipListElement[W, O], bool) {
+func (skl *xConcSkipList[K, V]) RemoveFirst(weight K) (SkipListElement[K, V], bool) {
 	if !skl.isDuplicate() {
 		return skl.remove0(weight)
 	} else if !skl.isRbtree() {
@@ -650,7 +653,7 @@ func (skl *xConcSkipList[W, O]) RemoveFirst(weight W) (SkipListElement[W, O], bo
 // contents: each weight will not be visited more than once, but if the object for any weight
 // is stored or deleted concurrently, Range may reflect any mapping for that weight
 // from any point during the Range call.
-func (skl *xConcSkipList[W, O]) Range(fn func(weight W, obj O) bool) {
+func (skl *xConcSkipList[K, V]) Range(fn func(weight K, obj V) bool) {
 	x := skl.head.atomicLoadNext(0)
 	for x != nil {
 		if !x.flags.atomicAreEqual(nodeFullyLinked|nodeRemovingMarked, nodeFullyLinked) {
@@ -665,13 +668,13 @@ func (skl *xConcSkipList[W, O]) Range(fn func(weight W, obj O) bool) {
 }
 
 func NewXConcSkipList[W SkipListWeight, O HashObject](cmp SkipListWeightComparator[W], rand SkipListRand) *xConcSkipList[W, O] {
-	//h := newXConcSkipListHead[W, O]()
+	//h := newXConcSkipListHead[K, V]()
 	//h.flags.atomicSet(nodeFullyLinked)
-	//return &xConcSkipList[W, O]{
+	//return &xConcSkipList[K, V]{
 	//	head:  h,
 	//	idxHi: 0,
 	//	len:   0,
-	//	cmp:   cmp,
+	//	kcmp:   kcmp,
 	//	rand:  rand,
 	//}
 	return nil
