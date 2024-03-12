@@ -102,21 +102,6 @@ func TestRandomLevelV3(t *testing.T) {
 	wg.Wait()
 }
 
-func TestConcRandomLevelV3(t *testing.T) {
-	var wg sync.WaitGroup
-	wg.Add(10)
-	for i := 0; i < 10; i++ {
-		go func(id int) {
-			loop := 1000
-			for j := 0; j < loop; j++ {
-				t.Logf("conc randv3 id: %d; rand: %d\n", id, concRandomLevelV3(xSkipListMaxLevel, int32(j)))
-			}
-			wg.Done()
-		}(i)
-	}
-	wg.Wait()
-}
-
 func BenchmarkRandomLevel(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		randomLevel(xSkipListMaxLevel, int32(i))

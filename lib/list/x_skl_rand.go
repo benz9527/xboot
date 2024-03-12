@@ -103,39 +103,6 @@ func randomLevelV3(maxLevel int, currentElements int32) int32 {
 	return int32(level)
 }
 
-// concRandomLevelV3 generate the skip list indexes' height for node.
-// Dynamic level calculation.
-// Concurrency safe.
-func concRandomLevelV3(maxLevel int, currentElements int32) int32 {
-	// Call function maxLevels to get total?
-	// maxLevel => n, 2^n-1, there will be 2^n-1 elements in the skip list
-	var total uint64
-	if maxLevel == xSkipListMaxLevel {
-		total = uint64(math.MaxUint32)
-	} else {
-		total = uint64(1)<<maxLevel - 1
-	}
-	// Goland math random (math.Float64()) contains global mutex lock
-	// Ref
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
-	// 1. Avoid using global mutex lock
-	// 2. Avoid generating random number each time
-	num := cryptoRandUint64()
-	rest := num & total
-	// Bits right shift equal to manipulate a high-level bit
-	// Calculate the minimum bits of the random number
-	tmp := bits.Len64(rest) // Lookup table.
-	level := maxLevel - tmp // Zero is okay, x-conc-skip-list data nodes are full linked.
-	// Avoid the value of randomly generated level deviates
-	//   far from the number of elements within the skip-list.
-	// level should be greater than but approximate to log(currentElements)
-	for level >= 1 && uint64(1)<<(level-1) > uint64(currentElements) {
-		level--
-	}
-	return int32(level)
-}
-
 func cryptoRandUint64() uint64 {
 	randUint64 := [8]byte{}
 	if _, err := crand.Read(randUint64[:]); err != nil {
