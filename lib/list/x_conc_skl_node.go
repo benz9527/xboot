@@ -28,6 +28,8 @@ const (
 	nodeHeadMarkedBit
 	_duplicate
 	_containerType
+
+	fullyLinked   = nodeFullyLinkedBit
 	vNodeTypeBits = _duplicate | _containerType
 )
 
@@ -52,22 +54,22 @@ type xConcSkipListNode[K infra.OrderedKey, V comparable] struct {
 	level   uint32
 }
 
-func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, value V) (isAppend bool, err error) {
+func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
 	typ := vNodeType(node.flags.atomicLoadBits(vNodeTypeBits))
 	switch typ {
 	case unique:
 		// Replace
-		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.val)), unsafe.Pointer(&value))
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.val)), unsafe.Pointer(&val))
 	case linkedList:
 		// predecessor
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeFullyLinkedBit)
 		for pred, n := node.root, node.root.left; n != nil; n = n.left {
-			res := node.vcmp(value, *n.val)
+			res := node.vcmp(val, *n.val)
 			if res == 0 {
 				// Replace
 				pred = n
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.val)), unsafe.Pointer(&value))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.val)), unsafe.Pointer(&val))
 				break
 			} else if res > 0 {
 				pred = n
@@ -76,7 +78,7 @@ func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, value V) (isAppend boo
 				}
 				// Append
 				vn := &vNode[V]{
-					val:   &value,
+					val:   &val,
 					left:  n.left,
 					right: nil,
 				}
@@ -87,7 +89,7 @@ func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, value V) (isAppend boo
 			} else {
 				// Prepend
 				vn := &vNode[V]{
-					val:   &value,
+					val:   &val,
 					left:  n,
 					right: nil,
 				}

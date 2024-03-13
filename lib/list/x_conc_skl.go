@@ -6,6 +6,7 @@ package list
 // https://github.com/zhangyunhao116/skipmap
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -15,8 +16,10 @@ import (
 )
 
 const (
-	sklMutexImplBits = 0x00FF // Indicating that the skip-list exclusive lock implementation type.
-	sklVNodeTypeBits = 0x0300 // Indicating that the skip-list data node type, including unique, linkedList and rbtree.
+	// Indicating that the skip-list exclusive lock implementation type.
+	sklMutexImplBits = 0x00FF
+	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
+	sklVNodeTypeBits = 0x0300
 )
 
 type xConcSkipList[K infra.OrderedKey, V comparable] struct {
@@ -44,11 +47,11 @@ func (skl *xConcSkipList[K, V]) atomicLoadHead() *xConcSkipListNode[K, V] {
 	return (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 }
 
-func (skl *xConcSkipList[K, V]) Len() int {
-	return int(atomic.LoadInt64(&skl.len))
+func (skl *xConcSkipList[K, V]) Len() int64 {
+	return atomic.LoadInt64(&skl.len)
 }
 
-func (skl *xConcSkipList[K, V]) Indexes() uint64 {
+func (skl *xConcSkipList[K, V]) Indices() uint64 {
 	return atomic.LoadUint64(&skl.idxSize)
 }
 
@@ -61,7 +64,6 @@ func (skl *xConcSkipList[K, V]) Level() int32 {
 func (skl *xConcSkipList[K, V]) traverse(
 	lvl int32,
 	key K,
-	val V,
 	aux xConcSkipListAuxiliary[K, V],
 ) *xConcSkipListNode[K, V] {
 	forward := skl.atomicLoadHead()
@@ -101,7 +103,7 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 		skl.pool.releaseAux(aux)
 	}()
 	for {
-		if node := skl.traverse(maxHeight(oldIdxHi, newIdxHi), key, val, aux); node != nil {
+		if node := skl.traverse(maxHeight(oldIdxHi, newIdxHi), key, aux); node != nil {
 			// Check node whether is deleting by another G.
 			if node.flags.atomicIsSet(nodeRemovingMarkedBit) {
 				continue
@@ -175,14 +177,14 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 // This function doesn't guarantee correctness in the case of concurrent
 // reads and writes.
 func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
-	forward := (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head)))).atomicLoadNext(0)
+	forward := skl.atomicLoadHead().atomicLoadNext(0)
 	idx := int64(0)
 	typ := skl.loadVNodeType()
 	item := &xSkipListIterationItem[K, V]{}
 	switch typ {
 	case unique:
 		for forward != nil {
-			if !forward.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, nodeFullyLinkedBit) {
+			if !forward.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) {
 				forward = forward.atomicLoadNext(0)
 				continue
 			}
@@ -210,7 +212,7 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 		}
 	case linkedList:
 		for forward != nil {
-			if !forward.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, nodeFullyLinkedBit) {
+			if !forward.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) {
 				forward = forward.atomicLoadNext(0)
 				continue
 			}
@@ -239,7 +241,6 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 	default:
 		panic("unknown skip-list node type")
 	}
-
 }
 
 // Get returns the val stored in the map for a key, or nil if no
@@ -257,7 +258,7 @@ func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
 
 		// Check if the key already in the skip list.
 		if nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
-			if nIdx.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, nodeFullyLinkedBit) {
+			if nIdx.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) {
 				switch typ {
 				case unique:
 					vn := nIdx.loadVNode()
@@ -283,9 +284,10 @@ func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
 func (skl *xConcSkipList[K, V]) rmTraverse(
 	weight K,
 	aux xConcSkipListAuxiliary[K, V],
-) int32 {
+) (foundAtLevel int32) {
 	// foundAtLevel represents the index of the first layer at which it found a node.
-	foundAtLevel, forward := int32(-1), (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
+	foundAtLevel = -1
+	forward := skl.atomicLoadHead()
 	for l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		for nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
@@ -293,20 +295,20 @@ func (skl *xConcSkipList[K, V]) rmTraverse(
 			nIdx = forward.atomicLoadNext(l)
 		}
 
-		// key matched
+		// Ready to downward to next level.
 		aux.storePred(l, forward)
 		aux.storeSucc(l, nIdx)
 
-		// Check if the key already in the skip list.
-		if foundAtLevel == int32(-1) && nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
+		if foundAtLevel == -1 && nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
+			// key matched
 			foundAtLevel = l
 		}
 	}
-	return foundAtLevel
+	return
 }
 
 // RemoveFirst deletes the val for a key, only the first value.
-func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (SkipListElement[K, V], bool) {
+func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err error) {
 	var (
 		aux      = skl.pool.loadAux()
 		rmTarget *xConcSkipListNode[K, V]
@@ -322,7 +324,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (SkipListElement[K, V], bool)
 		foundAtLevel := skl.rmTraverse(key, aux)
 		if isMarked || /* this process mark this node, or we can find this node in the skip list */
 			foundAtLevel != -1 &&
-				aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, nodeFullyLinkedBit) &&
+				aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) &&
 				(int32(aux.loadSucc(foundAtLevel).level)-1) == foundAtLevel {
 			if !isMarked {
 				// Don't mark at once.
@@ -332,16 +334,17 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (SkipListElement[K, V], bool)
 				if !rmTarget.mu.tryLock(ver) {
 					if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
 						// Double check.
-						return nil, false
+						return nil, errors.New("remove lock acquire failed and node (v-node) has been marked as removing")
 					}
 					isMarked = false
 					continue
 				}
 
+				// Segment Locked
 				if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
 					// Double check.
 					rmTarget.mu.unlock(ver)
-					return nil, false
+					return nil, errors.New("node (v-node) has been marked as removing")
 				}
 
 				rmTarget.flags.atomicSet(nodeRemovingMarkedBit)
@@ -358,7 +361,6 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (SkipListElement[K, V], bool)
 				pred, succ = aux.loadPred(l), aux.loadSucc(l)
 				if pred != prevPred {
 					pred.mu.lock(ver)
-					// Fully unlinked.
 					lockedLayers = l
 					prevPred = pred
 				}
@@ -376,31 +378,49 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (SkipListElement[K, V], bool)
 
 			switch typ {
 			case linkedList:
-				// TODO
+				// locked
+				if n := rmTarget.root.left; n != nil {
+					ele = &xSkipListElement[K, V]{
+						key: key,
+						val: *n.val,
+					}
+					atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.left)), unsafe.Pointer(n.left))
+					atomic.AddInt64(&rmTarget.count, -1)
+					atomic.AddInt64(&skl.len, -1)
+					rmTarget.flags.atomicUnset(nodeRemovingMarkedBit)
+				} else {
+					atomic.StoreInt64(&rmTarget.count, 0)
+				}
 			case rbtree:
+				// locked
 				// TODO
 			case unique:
-				for l := topLevel; l >= 0; l-- {
-					// Here should no data race and try to reduce levels.
-					aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
+				ele = &xSkipListElement[K, V]{
+					key: key,
+					val: *rmTarget.loadVNode().val,
 				}
 				atomic.AddInt64(&rmTarget.count, -1)
+				atomic.AddInt64(&skl.len, -1)
 			default:
 				panic("unknown v-node type")
+			}
+
+			if atomic.LoadInt64(&rmTarget.count) <= 0 {
+				// Here should no data race and try to reduce levels.
+				for l := topLevel; l >= 0; l-- {
+					// Fully unlinked.
+					aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
+				}
+				atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
 			}
 
 			rmTarget.mu.unlock(ver)
 			aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
 				unlockNodes(ver, lockedLayers, list...)
 			})
-			atomic.AddInt64(&skl.len, -1)
-			atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
-			return &xSkipListElement[K, V]{
-				key: key,
-				val: *rmTarget.loadVNode().val,
-			}, true
+			return ele, nil
 		}
-		return nil, false
+		return nil, errors.New("not found or others")
 	}
 }
 

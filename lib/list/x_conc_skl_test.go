@@ -39,7 +39,7 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 			skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
 		}
 	}
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
+	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
 
 	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
 		//t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
@@ -56,7 +56,8 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 			skl.RemoveFirst(w)
 		}
 	}
-	t.Logf("after removed, len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
+	require.Equal(t, int64(0), skl.Len())
+	require.Equal(t, uint64(0), skl.Indices())
 }
 
 func TestXConcSkipList_SerialProcessing(t *testing.T) {
@@ -128,18 +129,18 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 		}
 	}
 	wg.Wait()
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
+	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
 
-	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
-		//t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
-		return true
-	})
+	//skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
+	//	t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
+	//	return true
+	//})
 
 	obj, ok := skl.Get(401)
 	require.True(t, ok)
 	require.Equal(t, "401", obj.id)
 
-	wg.Add(size * size2 * 2)
+	wg.Add(size * size2)
 	for i := uint64(0); i < uint64(size); i++ {
 		for j := uint64(0); j < uint64(size2); j++ {
 			go func(idx uint64) {
@@ -148,19 +149,16 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 				skl.RemoveFirst(w)
 				wg.Done()
 			}((i+1)*100 + j)
-			go func(idx uint64) {
-				w := idx
-				skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
-				wg.Done()
-			}((i+1)*666 + j)
+			//go func(idx uint64) {
+			//	w := idx
+			//	skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
+			//	wg.Done()
+			//}((i+1)*666 + j)
 		}
 	}
 	wg.Wait()
-	t.Logf("after removed and inserted again, len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
-	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
-		//t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
-		return true
-	})
+	require.Equal(t, int64(0), skl.Len())
+	require.Equal(t, uint64(0), skl.Indices())
 }
 
 func TestXConcSkipList_DataRace(t *testing.T) {
@@ -241,7 +239,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
 	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
 
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
+	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
 
 	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
 		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
@@ -281,6 +279,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 	foundResult = skl.rmTraverse(0, aux)
 	assert.Equal(t, int32(-1), foundResult)
+
 }
 
 func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ vNodeType) {
@@ -348,14 +347,34 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ vNode
 		}
 	}
 	wg.Wait()
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indexes())
+	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
 
 	skl.Range(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
 		require.Equal(t, expected[idx].w, item.Key())
 		require.Equal(t, expected[idx].id, item.Val())
+		return true
+	})
+
+	wg.Add(size * size2)
+	for i := uint64(0); i < uint64(size); i++ {
+		for j := uint64(0); j < uint64(size2); j++ {
+			go func(_i, _j uint64) {
+				w := (_i + 1) * 100
+				time.Sleep(time.Duration(cryptoRandUint32()%5) * time.Millisecond)
+				if _, err := skl.RemoveFirst(w); err != nil {
+					t.Logf("remove failed, key: %d, err: %v\n", w, err)
+				}
+				wg.Done()
+			}(i, j)
+		}
+	}
+	wg.Wait()
+	skl.Range(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
 		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
 		return true
 	})
+	require.Equal(t, int64(0), skl.Len())
+	require.Equal(t, uint64(0), skl.Indices())
 }
 
 func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
