@@ -420,7 +420,13 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 			})
 			return ele, nil
 		}
-		return nil, errors.New("not found or others")
+
+		if foundAtLevel == -1 {
+			return nil, errors.New("not found remove target")
+		} else if typ != unique {
+			return nil, errors.New("duplicate element concurrently removing")
+		}
+		return nil, errors.New("others")
 	}
 }
 
