@@ -400,6 +400,193 @@ func (node *xConcSkipListNode[K, V]) rbtreePostInsertBalance(nvn *vNode[V]) {
 	node.root.color = black
 }
 
+func (node *xConcSkipListNode[K, V]) rbtreeMinimum(vn *vNode[V]) *vNode[V] {
+	aux := vn
+	for aux.left != nil {
+		aux = aux.left
+	}
+	return aux
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeMaximum(vn *vNode[V]) *vNode[V] {
+	aux := vn
+	for aux.right != nil {
+		aux = aux.right
+	}
+	return aux
+}
+
+// The successor node of the current node is its next node in sorted order.
+func (node *xConcSkipListNode[K, V]) rbtreeSucc(vn *vNode[V]) *vNode[V] {
+	aux := vn
+	if aux.right != nil {
+		return node.rbtreeMinimum(aux.right)
+	}
+
+	aux = vn.parent
+	for aux != nil && vn == aux.right {
+		// If vn is father node's left subtree, father node is
+		// vn's successor.
+		vn = aux
+		aux = aux.parent
+	}
+	return aux
+}
+
+// The predecessor node of the current node is its previous node in sorted order
+func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
+	aux := vn
+	if aux.left != nil {
+		return node.rbtreeMaximum(aux.left)
+	}
+
+	aux = vn.parent
+	for aux != nil && vn == aux.left {
+		// If vn is father node's right subtree, father node is
+		// vn's predecessor.
+		vn = aux
+		aux = aux.parent
+	}
+	return aux
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeTransplant(ovn, rvn *vNode[V]) {
+	// ovn is ready to be removed.
+	// rvn is used to replace ovn.
+	if ovn.parent == nil {
+		// ovn is root node of this rbtree.
+		node.root = rvn
+	} else if ovn == ovn.parent.left {
+		ovn.parent.left = rvn
+	} else if ovn == ovn.parent.right {
+		ovn.parent.right = rvn
+	}
+	rvn.parent = ovn.parent
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeDelete(pvn *vNode[V], val V) error {
+	var vnx, vny, vnz *vNode[V] = nil, nil, nil
+	// Iteration
+	for pvn != nil {
+		res := node.vcmp(val, *pvn.val)
+		if res == 0 {
+			vnz = pvn
+		} else if res > 0 {
+			pvn = pvn.right
+		} else {
+			pvn = pvn.left
+		}
+	}
+	if vnz == nil {
+		return errors.New("not exists")
+	}
+
+	// Found then remove it from rbtree
+	vny = vnz
+	nyOldColor := vny.color
+	if vnz.left == nil {
+		vnx = vnz.right
+		node.rbtreeTransplant(vnz, vnz.right)
+	} else if vnz.right == nil {
+		vnx = vnz.left
+		node.rbtreeTransplant(vnz, vnz.left)
+	} else {
+		// find minimum value node to replace it
+		vny = node.rbtreeMinimum(vnz.right)
+		nyOldColor = vny.color
+		vnx = vny.right
+		if vny.parent == vnz {
+			vnx.parent = vny
+		} else {
+			node.rbtreeTransplant(vny, vny.right)
+			vny.right = vnz.right
+			vny.right.parent = vny
+		}
+
+		node.rbtreeTransplant(vnz, vny)
+		vny.left = vnz.left
+		vny.left.parent = vny
+		vny.color = vnz.color
+	}
+
+	if nyOldColor == black {
+		node.rbtreePostDeleteBalance(vnx)
+	}
+	return nil
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreePostDeleteBalance(vn *vNode[V]) {
+	var aux *vNode[V] = nil
+	for vn != node.root && vn.color == black {
+		if vn == vn.parent.left {
+			aux = vn.parent.right
+			if aux.color == red {
+				aux.color = black
+				vn.parent.color = red
+				node.rbtreeLeftRotate(vn.parent)
+				aux = vn.parent.right
+			}
+
+			if aux.left.color == black && aux.right.color == black {
+				aux.color = red
+				vn = vn.parent
+			} else {
+				if aux.right.color == black {
+					aux.left.color = black
+					aux.color = red
+					node.rbtreeRightRotate(aux)
+					aux = vn.parent.right
+				}
+
+				aux.color = vn.parent.color
+				vn.parent.color = black
+				aux.right.color = black
+				node.rbtreeLeftRotate(vn.parent)
+				vn = node.root
+			}
+		} else {
+			aux = vn.parent.left
+			if aux.color == red {
+				aux.color = black
+				vn.parent.color = red
+				node.rbtreeRightRotate(vn.parent)
+				aux = vn.parent.left
+			}
+
+			if aux.left.color == black && aux.right.color == black {
+				aux.color = red
+				vn = vn.parent
+			} else {
+				if aux.left.color == black {
+					aux.right.color = black
+					aux.color = red
+					node.rbtreeLeftRotate(aux)
+					aux = vn.parent.left
+				}
+
+				aux.color = vn.parent.color
+				vn.parent.color = black
+				aux.left.color = black
+				node.rbtreeRightRotate(vn.parent)
+				vn = node.root
+			}
+		}
+	}
+	vn.color = black
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V]) int64) *vNode[V] {
+	if vn == nil {
+		return nil
+	}
+	if res := fn(vn); res == 0 {
+		return vn
+	} else if res > 0 {
+		return node.rbtreeSearch(vn.right, fn)
+	}
+	return node.rbtreeSearch(vn.left, fn)
+}
+
 func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNodeType) *xConcSkipListNode[K, V] {
 	head := &xConcSkipListNode[K, V]{
 		key:   *new(K),
