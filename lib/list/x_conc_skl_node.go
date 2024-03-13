@@ -18,10 +18,11 @@ const (
 // embedded data-structure
 // singly linked-list and rbtree
 type vNode[V comparable] struct {
-	val    *V
+	// parent It is easy for us to backward to access upper level node info.
 	parent *vNode[V] // Linked-list & rbtree
 	left   *vNode[V] // rbtree only
 	right  *vNode[V] // rbtree only
+	val    *V        // Unique and comparable
 	color  vNodeRbtreeColor
 }
 
@@ -150,6 +151,81 @@ func (node *xConcSkipListNode[K, V]) atomicStorePrev(i int32, prev *xConcSkipLis
 	node.indexes.atomicStoreBackward(i, prev)
 }
 
+/* rbtree operation implementation */
+
+// References:
+// https://elixir.bootlin.com/linux/latest/source/lib/rbtree.c
+
+//	 |                         |
+//	 N                         S
+//	/ \     leftRotate(N)     / \
+//
+// L   S    ============>    N   R
+//
+//	 / \                   / \
+//	M   R                 L   M
+func (node *xConcSkipListNode[K, V]) rbtreeLeftRotate(vnx *vNode[V]) {
+	vny := vnx.right
+	vnx.right = vny.left
+
+	if vny.left != nil {
+		vny.left.parent = vnx
+	}
+
+	vny.parent = vnx.parent
+	if vnx.parent == nil {
+		// vnx is the root node of this rbtree
+		// Now, update to set vny as the root node of this rbtree.
+		node.root = vny
+	} else if vnx == vnx.parent.left {
+		// vnx is not the root node of this rbtree,
+		// it is a left node of its parent.
+		vnx.parent.left = vny
+	} else {
+		// vnx is not the root node of this rbtree,
+		// it is a right node of its parent.
+		vnx.parent.right = vny
+	}
+
+	vny.left = vnx
+	vnx.parent = vny
+}
+
+//	 |                         |
+//	 N                         S
+//	/ \     rightRotate(S)    / \
+//
+// L   S    <============    N   R
+//
+//	 / \                   / \
+//	M   R                 L   M
+func (node *xConcSkipListNode[K, V]) rbtreeRightRotate(vnx *vNode[V]) {
+	vny := vnx.left
+	vnx.left = vny.right
+
+	if vny.right != nil {
+		vny.right.parent = vnx
+	}
+
+	vny.parent = vnx.parent
+	if vnx.parent == nil {
+		// vnx is the root node of this rbtree.
+		// Now, update to set vny as the root node of this rbtree.
+		node.root = vny
+	} else if vnx == vnx.parent.left {
+		// vnx is not the root node of this rbtree,
+		// it is a left node of its parent.
+		vnx.parent.left = vny
+	} else {
+		// vnx is not the root node of this rbtree,
+		// it is a right node of its parent.
+		vnx.parent.right = vny
+	}
+
+	vny.left = vnx
+	vnx.parent = vny
+}
+
 func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	key K,
 	val V,
@@ -184,6 +260,144 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	}
 	node.count = 1
 	return node
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
+	nvn := &vNode[V]{
+		val:   &val,
+		color: red,
+	}
+
+	var (
+		vnx, vny *vNode[V] = node.root, nil
+	)
+
+	// vnx play as the next level node detector.
+	// vny store the current node found by dichotomy.
+	for vnx != nil {
+		vny = vnx
+		// Iterating to find insert position.
+		// O(logN)
+		if node.vcmp(val, *vnx.val) < 0 {
+			vnx = vnx.left
+		} else {
+			vnx = vnx.right
+		}
+	}
+
+	// vny is the new vnode's parent
+	nvn.parent = vny
+	if vny == nil {
+		// case 1: Build root node of this rbtree, first inserted element.
+		node.root = nvn
+	} else if node.vcmp(val, *vny.val) < 0 {
+		// Root node of this rbtree exists.
+		vny.left = nvn
+	} else {
+		vny.right = nvn
+	}
+
+	if nvn.parent == nil {
+		// case 1: Build root node of this rbtree, first inserted element.
+		nvn.color = black // root node's color must be black
+		return
+	} else if nvn.parent.parent == nil {
+		// case 2: Root node (black) exists and new node is a child node next to it.
+		// New node's parent's parent is nil.
+		// It means that new node's parent is the root node
+		// of this rbtree (black).
+		// New node is red by default.
+		// Nil leaf node is black by default.
+		return
+	}
+
+	node.rbtreePostInsertBalance(nvn)
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreePostInsertBalance(nvn *vNode[V]) {
+	var aux *vNode[V] = nil
+	for nvn.parent.color == red {
+		// New node color is red by default.
+		// Color adjust from the bottom-up.
+		if nvn.parent == nvn.parent.parent.left {
+			// New node parent is the left subtree
+			aux = nvn.parent.parent.right // uncle node
+			if aux.color == red {
+				// black (father) <-- <left> -- red (grandfather) -- <right> --> (uncle) black
+				aux.color = black             // uncle node
+				nvn.parent.color = black      // father node
+				nvn.parent.parent.color = red // grandfather node
+				nvn = nvn.parent.parent       // backtrack to grandfather node and repaint
+			} else {
+				// uncle node is black.
+				// Height balance
+				if nvn == nvn.parent.right {
+					// case 1: New node is the opposite direction as parent
+					// [] is black, <> is red
+					//      [G]                 [G]
+					//      / \    rotate(P)    / \
+					//    <P> [U]  ========>  <N> [U]
+					//      \                 /
+					//      <N>             <P>
+					nvn = nvn.parent
+					node.rbtreeLeftRotate(nvn)
+				}
+				// case 2: New node is the same direction as parent
+				// [] is black, <> is red
+				//        [G]                      <P>                 [P]
+				//        / \    rightRotate(G)    / \     repaint     / \
+				//      <P> [U]  ========>       <N> [G]   ======>   <N> <G>
+				//      /                              \                   \
+				//    <N>                              [U]                 [U]
+				nvn.parent.color = black      // father node
+				nvn.parent.parent.color = red // grandfather node
+				// Backtrack to adjust the grandfather node's height
+				node.rbtreeRightRotate(nvn.parent.parent)
+			}
+		} else if nvn.parent == nvn.parent.parent.right {
+			// New node parent is the right subtree
+			// Check left subtree of grandfather node.
+			aux = nvn.parent.parent.left // uncle node
+			if aux.color == red {
+				// black (uncle) <-- <left> -- red (grandfather) -- <right> --> (father) black
+				aux.color = black             // uncle node
+				nvn.parent.color = black      // father node
+				nvn.parent.parent.color = red // grandfather node
+				nvn = nvn.parent.parent       // backtrack to grandfather node and repaint
+			} else {
+				// uncle node is black.
+				// Do height balance.
+				if nvn == nvn.parent.left {
+					// case 1: New node is the opposite direction as parent
+					// [] is black, <> is red
+					//      [G]                 [G]
+					//      / \    rotate(P)    / \
+					//    [U] <P>  ========>  [U] <N>
+					//        /                     \
+					//      <N>                     <P>
+					nvn = nvn.parent
+					// Here will change the grandfather node
+					node.rbtreeRightRotate(nvn)
+				}
+				// case 2: New node is the same direction as parent
+				// [] is black, <> is red
+				//        [G]                     <P>                [P]
+				//        / \    leftRotate(G)    / \    repaint     / \
+				//      [U] <P>  ========>      [G] <N>  ======>   <G> <N>
+				//            \                 /                  /
+				//            <N>             [U]                [U]
+				nvn.parent.color = black      // father node
+				nvn.parent.parent.color = red // grandfather node
+				// Backtrack to adjust the grandfather node's height
+				node.rbtreeLeftRotate(nvn.parent.parent)
+			}
+		}
+
+		if nvn == node.root {
+			break
+		}
+	}
+	node.root.color = black
 }
 
 func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNodeType) *xConcSkipListNode[K, V] {
