@@ -1,6 +1,7 @@
 package list
 
 import (
+	"errors"
 	"sync/atomic"
 	"unsafe"
 
@@ -25,7 +26,9 @@ const (
 	nodeFullyLinkedBit = 1 << iota
 	nodeRemovingMarkedBit
 	nodeHeadMarkedBit
-	vNodeTypeBits = 0x0018
+	_duplicate
+	_containerType
+	vNodeTypeBits = _duplicate | _containerType
 )
 
 type vNodeType uint8
@@ -49,7 +52,7 @@ type xConcSkipListNode[K infra.OrderedKey, V comparable] struct {
 	level   uint32
 }
 
-func (node *xConcSkipListNode[K, V]) storeVal(value V) {
+func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, value V) (isAppend bool, err error) {
 	typ := vNodeType(node.flags.atomicLoadBits(vNodeTypeBits))
 	switch typ {
 	case unique:
@@ -57,14 +60,15 @@ func (node *xConcSkipListNode[K, V]) storeVal(value V) {
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.val)), unsafe.Pointer(&value))
 	case linkedList:
 		// predecessor
-		pred := node.root
-		for n := node.root.left; n != nil; n = n.left {
+		node.mu.lock(ver)
+		node.flags.atomicUnset(nodeFullyLinkedBit)
+		for pred, n := node.root, node.root.left; n != nil; n = n.left {
 			res := node.vcmp(value, *n.val)
 			if res == 0 {
 				// Replace
 				pred = n
 				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.val)), unsafe.Pointer(&value))
-				return
+				break
 			} else if res > 0 {
 				pred = n
 				if next := n.left; next != nil {
@@ -78,6 +82,7 @@ func (node *xConcSkipListNode[K, V]) storeVal(value V) {
 				}
 				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.left)), unsafe.Pointer(vn))
 				atomic.AddInt64(&node.count, 1)
+				isAppend = true
 				break
 			} else {
 				// Prepend
@@ -88,17 +93,21 @@ func (node *xConcSkipListNode[K, V]) storeVal(value V) {
 				}
 				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.left)), unsafe.Pointer(vn))
 				atomic.AddInt64(&node.count, 1)
+				isAppend = true
 				break
 			}
 		}
+		node.mu.unlock(ver)
+		node.flags.atomicSet(nodeFullyLinkedBit)
 	case rbtree:
 		// TODO rbtree store element
 	default:
-		panic("unknown v-node type")
+		return false, errors.New("unknown v-node type")
 	}
+	return isAppend, nil
 }
 
-func (node *xConcSkipListNode[K, V]) loadValNode() *vNode[V] {
+func (node *xConcSkipListNode[K, V]) loadVNode() *vNode[V] {
 	return (*vNode[V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.root))))
 }
 

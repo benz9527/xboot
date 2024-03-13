@@ -106,7 +106,11 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 			if node.flags.atomicIsSet(nodeRemovingMarkedBit) {
 				continue
 			}
-			node.storeVal(val)
+			if isAppend, err := node.storeVal(ver, val); err != nil {
+				panic(err)
+			} else if isAppend {
+				atomic.AddInt64(&skl.len, 1)
+			}
 			return
 		}
 		// Node not present. Add this node into skip list.
@@ -192,7 +196,7 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 				return forward.key
 			}
 			item.valFn = func() V {
-				vn := forward.loadValNode()
+				vn := forward.loadVNode()
 				if vn == nil {
 					return *new(V)
 				}
@@ -219,16 +223,16 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 			item.keyFn = func() K {
 				return forward.key
 			}
-			for vn := forward.loadValNode().left; vn != nil; vn = vn.left {
+			for vn := forward.loadVNode().left; vn != nil; vn = vn.left {
 				item.valFn = func() V {
 					return *vn.val
 				}
-				if res := fn(idx, item); !res {
+				var res bool
+				if res, idx = fn(idx, item), idx+1; !res {
 					break
 				}
 			}
 			forward = forward.atomicLoadNext(0)
-			idx++
 		}
 	case rbtree:
 		// TODO
@@ -256,10 +260,10 @@ func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
 			if nIdx.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, nodeFullyLinkedBit) {
 				switch typ {
 				case unique:
-					vn := nIdx.loadValNode()
+					vn := nIdx.loadVNode()
 					return *vn.val, true
 				case linkedList:
-					vn := nIdx.loadValNode()
+					vn := nIdx.loadVNode()
 					return *vn.left.val, true
 				case rbtree:
 					// TODO
@@ -393,7 +397,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (SkipListElement[K, V], bool)
 			atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
 			return &xSkipListElement[K, V]{
 				key: key,
-				val: *rmTarget.loadValNode().val,
+				val: *rmTarget.loadVNode().val,
 			}, true
 		}
 		return nil, false
