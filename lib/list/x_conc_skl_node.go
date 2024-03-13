@@ -15,11 +15,18 @@ const (
 	black vNodeRbtreeColor = false
 )
 
+// embedded data-structure
+// singly linked-list and rbtree
 type vNode[V comparable] struct {
-	val   *V
-	left  *vNode[V] // Linked-list & rbtree
-	right *vNode[V] // rbtree only
-	color vNodeRbtreeColor
+	val    *V
+	parent *vNode[V] // Linked-list & rbtree
+	left   *vNode[V] // rbtree only
+	right  *vNode[V] // rbtree only
+	color  vNodeRbtreeColor
+}
+
+func (vn *vNode[V]) linkedListNext() *vNode[V] {
+	return vn.parent
 }
 
 const (
@@ -64,7 +71,7 @@ func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool,
 		// predecessor
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeFullyLinkedBit)
-		for pred, n := node.root, node.root.left; n != nil; n = n.left {
+		for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
 			res := node.vcmp(val, *n.val)
 			if res == 0 {
 				// Replace
@@ -73,27 +80,25 @@ func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool,
 				break
 			} else if res > 0 {
 				pred = n
-				if next := n.left; next != nil {
+				if next := n.parent; next != nil {
 					continue
 				}
 				// Append
 				vn := &vNode[V]{
-					val:   &val,
-					left:  n.left,
-					right: nil,
+					val:    &val,
+					parent: n.parent,
 				}
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.left)), unsafe.Pointer(vn))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.parent)), unsafe.Pointer(vn))
 				atomic.AddInt64(&node.count, 1)
 				isAppend = true
 				break
 			} else {
 				// Prepend
 				vn := &vNode[V]{
-					val:   &val,
-					left:  n,
-					right: nil,
+					val:    &val,
+					parent: n,
 				}
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.left)), unsafe.Pointer(vn))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.parent)), unsafe.Pointer(vn))
 				atomic.AddInt64(&node.count, 1)
 				isAppend = true
 				break
@@ -164,19 +169,13 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	switch typ {
 	case unique:
 		node.root = &vNode[V]{
-			val:   &val,
-			left:  nil,
-			right: nil,
+			val: &val,
 		}
 	case linkedList:
 		node.root = &vNode[V]{
-			val: nil,
-			left: &vNode[V]{
-				val:   &val,
-				left:  nil,
-				right: nil,
+			parent: &vNode[V]{
+				val: &val,
 			},
-			right: nil,
 		}
 	case rbtree:
 		// TODO rbtree build
@@ -191,7 +190,6 @@ func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNo
 	head := &xConcSkipListNode[K, V]{
 		key:   *new(K),
 		level: xSkipListMaxLevel,
-		root:  nil,
 		mu:    mutexFactory(e),
 	}
 	head.flags.atomicSet(nodeHeadMarkedBit | nodeFullyLinkedBit)

@@ -225,7 +225,7 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 			item.keyFn = func() K {
 				return forward.key
 			}
-			for vn := forward.loadVNode().left; vn != nil; vn = vn.left {
+			for vn := forward.loadVNode().parent; vn != nil; vn = vn.parent {
 				item.valFn = func() V {
 					return *vn.val
 				}
@@ -265,7 +265,7 @@ func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
 					return *vn.val, true
 				case linkedList:
 					vn := nIdx.loadVNode()
-					return *vn.left.val, true
+					return *vn.parent.val, true
 				case rbtree:
 					// TODO
 				default:
@@ -460,12 +460,12 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 				switch typ {
 				case linkedList:
 					// locked
-					if n := rmTarget.root.left; n != nil {
+					if n := rmTarget.root.linkedListNext(); n != nil {
 						ele = &xSkipListElement[K, V]{
 							key: key,
 							val: *n.val,
 						}
-						atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.left)), unsafe.Pointer(n.left))
+						atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.parent)), unsafe.Pointer(n.parent))
 						atomic.AddInt64(&rmTarget.count, -1)
 						atomic.AddInt64(&skl.len, -1)
 						rmTarget.flags.atomicUnset(nodeRemovingMarkedBit)
