@@ -124,6 +124,33 @@ func (f *flagBits) setBitsAs(bits, target uint32) {
 	f.bits = f.bits | target
 }
 
+func (f *flagBits) atomicSetBitsAs(bits, target uint32) {
+	if ibits.HammingWeightBySWARV2[uint32](bits) <= 1 {
+		panic("it is not a multi-bits")
+	}
+	n := 0
+	for (bits>>n)&0x1 != 0x1 {
+		n++
+	}
+	if n > 0 {
+		target <<= n
+	}
+
+	for {
+		old := atomic.LoadUint32(&f.bits)
+		check := old & bits
+		if check != 0 {
+			n := old ^ check
+			n = n | target
+			if atomic.CompareAndSwapUint32(&f.bits, old, n) {
+				return
+			}
+			continue
+		}
+		return
+	}
+}
+
 func (f *flagBits) isSet(bit uint32) bool {
 	return (f.bits & bit) != 0
 }

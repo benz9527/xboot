@@ -131,11 +131,6 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	wg.Wait()
 	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
 
-	//skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
-	//	t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
-	//	return true
-	//})
-
 	obj, ok := skl.Get(401)
 	require.True(t, ok)
 	require.Equal(t, "401", obj.id)
@@ -146,14 +141,9 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 			go func(idx uint64) {
 				w := idx
 				time.Sleep(time.Duration(cryptoRandUint32()%5) * time.Millisecond)
-				skl.RemoveFirst(w)
+				_, _ = skl.RemoveFirst(w)
 				wg.Done()
 			}((i+1)*100 + j)
-			//go func(idx uint64) {
-			//	w := idx
-			//	skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
-			//	wg.Done()
-			//}((i+1)*666 + j)
 		}
 	}
 	wg.Wait()
@@ -168,10 +158,10 @@ func TestXConcSkipList_DataRace(t *testing.T) {
 	}
 	testcases := []testcase{
 		{
-			name: "go native sync mutex data race",
+			name: "go native sync mutex data race -- unique",
 			mu:   goNativeMutex,
 		}, {
-			name: "skl lock free mutex data race",
+			name: "skl lock free mutex data race -- unique",
 			mu:   xSklLockFree,
 		},
 	}
@@ -369,10 +359,6 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ vNode
 		}
 	}
 	wg.Wait()
-	skl.Range(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
-		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
-		return true
-	})
 	require.Equal(t, int64(0), skl.Len())
 	require.Equal(t, uint64(0), skl.Indices())
 }

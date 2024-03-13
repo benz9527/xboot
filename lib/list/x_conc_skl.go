@@ -310,124 +310,199 @@ func (skl *xConcSkipList[K, V]) rmTraverse(
 // RemoveFirst deletes the val for a key, only the first value.
 func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err error) {
 	var (
-		aux      = skl.pool.loadAux()
-		rmTarget *xConcSkipListNode[K, V]
-		isMarked bool // represents if this operation mark the node
-		topLevel = int32(-1)
-		ver      = skl.idGen.NumberUUID()
-		typ      = skl.loadVNodeType()
+		aux          = skl.pool.loadAux()
+		rmTarget     *xConcSkipListNode[K, V]
+		isMarked     bool // represents if this operation mark the node
+		topLevel     = int32(-1)
+		ver          = skl.idGen.NumberUUID()
+		typ          = skl.loadVNodeType()
+		foundAtLevel = int32(-1)
 	)
 	defer func() {
 		skl.pool.releaseAux(aux)
 	}()
-	for {
-		foundAtLevel := skl.rmTraverse(key, aux)
-		if isMarked || /* this process mark this node, or we can find this node in the skip list */
-			foundAtLevel != -1 &&
+	switch typ {
+	// FIXME: Merge these 2 deletion loops logic
+	case unique:
+		for {
+			foundAtLevel = skl.rmTraverse(key, aux)
+			if isMarked || foundAtLevel != -1 &&
 				aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) &&
 				(int32(aux.loadSucc(foundAtLevel).level)-1) == foundAtLevel {
-			if !isMarked {
-				// Don't mark at once.
-				// Suspend successors' operations
-				rmTarget = aux.loadSucc(foundAtLevel)
-				topLevel = foundAtLevel
-				if !rmTarget.mu.tryLock(ver) {
+				if !isMarked {
+					// Don't mark at once.
+					// Suspend successors' operations
+					rmTarget = aux.loadSucc(foundAtLevel)
+					topLevel = foundAtLevel
+					if !rmTarget.mu.tryLock(ver) {
+						if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
+							// Double check.
+							return nil, errors.New("remove lock acquire failed and node (v-node) has been marked as removing")
+						}
+						isMarked = false
+						continue
+					}
+
+					// Segment Locked
 					if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
 						// Double check.
-						return nil, errors.New("remove lock acquire failed and node (v-node) has been marked as removing")
+						rmTarget.mu.unlock(ver)
+						return nil, errors.New("node (v-node) has been marked as removing")
 					}
-					isMarked = false
+
+					rmTarget.flags.atomicSet(nodeRemovingMarkedBit)
+					isMarked = true
+				}
+
+				var (
+					lockedLayers         = int32(-1)
+					isValid              = true
+					pred, succ, prevPred *xConcSkipListNode[K, V]
+				)
+				// Segment lock
+				for l := int32(0); isValid && (l <= topLevel); l++ {
+					pred, succ = aux.loadPred(l), aux.loadSucc(l)
+					if pred != prevPred {
+						pred.mu.lock(ver)
+						lockedLayers = l
+						prevPred = pred
+					}
+					// Check:
+					// 1. the previous node exists.
+					// 2. no other nodes are inserted into the skip list in this layer.
+					isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) && pred.atomicLoadNext(l) == succ
+				}
+				if !isValid {
+					aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+						unlockNodes(ver, lockedLayers, list...)
+					})
 					continue
 				}
 
-				// Segment Locked
-				if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
-					// Double check.
-					rmTarget.mu.unlock(ver)
-					return nil, errors.New("node (v-node) has been marked as removing")
-				}
-
-				rmTarget.flags.atomicSet(nodeRemovingMarkedBit)
-				isMarked = true
-			}
-
-			// The physical deletion.
-			var (
-				lockedLayers         = int32(-1)
-				isValid              = true
-				pred, succ, prevPred *xConcSkipListNode[K, V]
-			)
-			for l := int32(0); isValid && (l <= topLevel); l++ {
-				pred, succ = aux.loadPred(l), aux.loadSucc(l)
-				if pred != prevPred {
-					pred.mu.lock(ver)
-					lockedLayers = l
-					prevPred = pred
-				}
-				// Check:
-				// 1. the previous node exists.
-				// 2. no other nodes are inserted into the skip list in this layer.
-				isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) && pred.atomicLoadNext(l) == succ
-			}
-			if !isValid {
-				aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
-					unlockNodes(ver, lockedLayers, list...)
-				})
-				continue
-			}
-
-			switch typ {
-			case linkedList:
-				// locked
-				if n := rmTarget.root.left; n != nil {
-					ele = &xSkipListElement[K, V]{
-						key: key,
-						val: *n.val,
-					}
-					atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.left)), unsafe.Pointer(n.left))
-					atomic.AddInt64(&rmTarget.count, -1)
-					atomic.AddInt64(&skl.len, -1)
-					rmTarget.flags.atomicUnset(nodeRemovingMarkedBit)
-				} else {
-					atomic.StoreInt64(&rmTarget.count, 0)
-				}
-			case rbtree:
-				// locked
-				// TODO
-			case unique:
 				ele = &xSkipListElement[K, V]{
 					key: key,
 					val: *rmTarget.loadVNode().val,
 				}
 				atomic.AddInt64(&rmTarget.count, -1)
 				atomic.AddInt64(&skl.len, -1)
-			default:
-				panic("unknown v-node type")
-			}
 
-			if atomic.LoadInt64(&rmTarget.count) <= 0 {
-				// Here should no data race and try to reduce levels.
-				for l := topLevel; l >= 0; l-- {
-					// Fully unlinked.
-					aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
+				if atomic.LoadInt64(&rmTarget.count) <= 0 {
+					// Here should no data race and try to reduce levels.
+					// The physical deletion.
+					for l := topLevel; l >= 0; l-- {
+						// Fully unlinked.
+						aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
+					}
+					atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
 				}
-				atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
+
+				rmTarget.mu.unlock(ver)
+				aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+					unlockNodes(ver, lockedLayers, list...)
+				})
+				return ele, nil
 			}
-
-			rmTarget.mu.unlock(ver)
-			aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
-				unlockNodes(ver, lockedLayers, list...)
-			})
-			return ele, nil
+			break
 		}
+	case linkedList, rbtree:
+		for {
+			foundAtLevel = skl.rmTraverse(key, aux)
+			if isMarked || foundAtLevel != -1 {
+				fullyLinkedButNotRemove := aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked)
+				succMatch := (int32(aux.loadSucc(foundAtLevel).level) - 1) == foundAtLevel
+				if !succMatch {
+					break
+				} else if !fullyLinkedButNotRemove {
+					continue
+				}
 
-		if foundAtLevel == -1 {
-			return nil, errors.New("not found remove target")
-		} else if typ != unique {
-			return nil, errors.New("duplicate element concurrently removing")
+				if fullyLinkedButNotRemove && !isMarked {
+					// Don't mark at once.
+					// Suspend successors' operations
+					rmTarget = aux.loadSucc(foundAtLevel)
+					topLevel = foundAtLevel
+					if !rmTarget.mu.tryLock(ver) {
+						continue
+					}
+
+					// Segment Locked
+					if !rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
+						rmTarget.flags.atomicSet(nodeRemovingMarkedBit)
+					}
+					isMarked = true
+				}
+
+				var (
+					lockedLayers         = int32(-1)
+					isValid              = true
+					pred, succ, prevPred *xConcSkipListNode[K, V]
+				)
+				// Segment deletion.
+				for l := int32(0); isValid && (l <= topLevel); l++ {
+					pred, succ = aux.loadPred(l), aux.loadSucc(l)
+					if pred != prevPred {
+						pred.mu.lock(ver)
+						lockedLayers = l
+						prevPred = pred
+					}
+					// Check:
+					// 1. the previous node exists.
+					// 2. no other nodes are inserted into the skip list in this layer.
+					isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) && pred.atomicLoadNext(l) == succ
+				}
+				if !isValid {
+					aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+						unlockNodes(ver, lockedLayers, list...)
+					})
+					continue
+				}
+
+				switch typ {
+				case linkedList:
+					// locked
+					if n := rmTarget.root.left; n != nil {
+						ele = &xSkipListElement[K, V]{
+							key: key,
+							val: *n.val,
+						}
+						atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.left)), unsafe.Pointer(n.left))
+						atomic.AddInt64(&rmTarget.count, -1)
+						atomic.AddInt64(&skl.len, -1)
+						rmTarget.flags.atomicUnset(nodeRemovingMarkedBit)
+					} else {
+						atomic.StoreInt64(&rmTarget.count, 0)
+					}
+				case rbtree:
+					// locked
+					// TODO
+				}
+
+				if atomic.LoadInt64(&rmTarget.count) <= 0 {
+					// Here should no data race and try to reduce levels.
+					// The physical deletion.
+					for l := topLevel; l >= 0; l-- {
+						// Fully unlinked.
+						aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
+					}
+					atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
+				}
+
+				rmTarget.mu.unlock(ver)
+				aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+					unlockNodes(ver, lockedLayers, list...)
+				})
+				return ele, nil
+			}
+			break
 		}
-		return nil, errors.New("others")
+	default:
+		panic("unknown v-node type")
 	}
+
+	if foundAtLevel == -1 {
+		return nil, errors.New("not found remove target")
+	}
+	return nil, errors.New("others unknown reasons")
 }
 
 func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SkipListWeightComparator[K], rand SkipListRand) *xConcSkipList[K, V] {
