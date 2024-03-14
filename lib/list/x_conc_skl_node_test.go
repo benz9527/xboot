@@ -195,5 +195,8 @@ func TestRbtree(t *testing.T) {
 	node.rbtreeInsert(1)
 	node.rbtreeInsert(2)
 	node.rbtreeInsert(3)
-	t.Log("abc")
+	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+		t.Logf("idx: %d; is-red: %v; val: %v\n", idx, color, val)
+		return true
+	})
 }

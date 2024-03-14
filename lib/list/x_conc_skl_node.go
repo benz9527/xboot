@@ -666,6 +666,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, 
 		if !fn(idx, aux.color, *aux.val) {
 			return
 		}
+		idx++
 		stack = stack[:size-1]
 		if aux.right != node.nilLeafNode {
 			aux = aux.right
@@ -674,6 +675,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, 
 				aux = aux.left
 			}
 		}
+		size = int64(len(stack))
 	}
 }
 
