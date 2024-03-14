@@ -277,6 +277,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
 	if nvn.parent == node.nilLeafNode {
 		// case 1: Build root node of this rbtree, first inserted element.
 		nvn.color = black // root node's color must be black
+		atomic.AddInt64(&node.count, 1)
 		return
 	} else if nvn.parent.parent == node.nilLeafNode {
 		// case 2: Root node (black) exists and new node is a child node next to it.
@@ -285,6 +286,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
 		// of this rbtree (black).
 		// New node is red by default.
 		// Nil leaf node is black by default.
+		atomic.AddInt64(&node.count, 1)
 		return
 	}
 
@@ -516,6 +518,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(val V) error {
 	vny.right = nil
 
 	// If it is red, directly remove is okay.
+	atomic.AddInt64(&node.count, -1)
 	return nil
 }
 
@@ -640,6 +643,46 @@ func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V
 		}
 	}
 	return node.nilLeafNode
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, color vNodeRbtreeColor, val V) bool) {
+	size := atomic.LoadInt64(&node.count)
+	aux := node.root
+	if size < 0 || aux == nil || aux == node.nilLeafNode {
+		return
+	}
+	stack := make([]*vNode[V], 0, size>>1)
+	defer func() {
+		clear[[]*vNode[V]](stack)
+	}()
+	for aux != node.nilLeafNode {
+		stack = append(stack, aux)
+		aux = aux.left
+	}
+	idx := int64(0)
+	size = int64(len(stack))
+	for size > 0 {
+		aux = stack[size-1]
+		if !fn(idx, aux.color, *aux.val) {
+			return
+		}
+		stack = stack[:size-1]
+		if aux.right != node.nilLeafNode {
+			aux = aux.right
+			for aux != nil {
+				stack = append(stack, aux)
+				aux = aux.left
+			}
+		}
+	}
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeInorderTraversal(fn func(idx int64, color vNodeRbtreeColor, val V) bool) {
+
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreePostorderTraversal(fn func(idx int64, color vNodeRbtreeColor, val V) bool) {
+
 }
 
 func newXConcSkipListNode[K infra.OrderedKey, V comparable](
