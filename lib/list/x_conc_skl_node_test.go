@@ -175,3 +175,25 @@ func TestAuxIndexes(t *testing.T) {
 		}
 	})
 }
+
+func TestRbtree(t *testing.T) {
+	node := &xConcSkipListNode[int32, int32]{
+		vcmp: func(i, j int32) int64 {
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		},
+		nilLeafNode: &vNode[int32]{
+			color: black,
+		},
+	}
+	node.root = node.nilLeafNode
+	node.rbtreeInsert(0)
+	node.rbtreeInsert(1)
+	node.rbtreeInsert(2)
+	node.rbtreeInsert(3)
+	t.Log("abc")
+}

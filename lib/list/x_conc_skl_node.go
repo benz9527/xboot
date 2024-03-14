@@ -52,14 +52,15 @@ const (
 type xConcSkipListNode[K infra.OrderedKey, V comparable] struct {
 	// If it is unique v-node type store value directly.
 	// Otherwise, it is a sentinel node.
-	root    *vNode[V]
-	key     K
-	vcmp    SkipListValueComparator[V]
-	indexes xConcSkipListIndices[K, V]
-	mu      segmentedMutex
-	flags   flagBits
-	count   int64
-	level   uint32
+	root        *vNode[V]
+	nilLeafNode *vNode[V] // Only for rbtree
+	key         K
+	vcmp        SkipListValueComparator[V]
+	indexes     xConcSkipListIndices[K, V]
+	mu          segmentedMutex
+	flags       flagBits
+	count       int64
+	level       uint32
 }
 
 func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
@@ -177,12 +178,12 @@ func (node *xConcSkipListNode[K, V]) rbtreeLeftRotate(vnx *vNode[V]) {
 	vny := vnx.right
 	vnx.right = vny.left
 
-	if vny.left != nil {
+	if vny.left != node.nilLeafNode {
 		vny.left.parent = vnx
 	}
 
 	vny.parent = vnx.parent
-	if vnx.parent == nil {
+	if vnx.parent == node.nilLeafNode {
 		// vnx is the root node of this rbtree
 		// Now, update to set vny as the root node of this rbtree.
 		node.root = vny
@@ -212,12 +213,12 @@ func (node *xConcSkipListNode[K, V]) rbtreeRightRotate(vnx *vNode[V]) {
 	vny := vnx.left
 	vnx.left = vny.right
 
-	if vny.right != nil {
+	if vny.right != node.nilLeafNode {
 		vny.right.parent = vnx
 	}
 
 	vny.parent = vnx.parent
-	if vnx.parent == nil {
+	if vnx.parent == node.nilLeafNode {
 		// vnx is the root node of this rbtree.
 		// Now, update to set vny as the root node of this rbtree.
 		node.root = vny
@@ -235,55 +236,22 @@ func (node *xConcSkipListNode[K, V]) rbtreeRightRotate(vnx *vNode[V]) {
 	vnx.parent = vny
 }
 
-func newXConcSkipListNode[K infra.OrderedKey, V comparable](
-	key K,
-	val V,
-	lvl int32,
-	mu mutexImpl,
-	typ vNodeType,
-	cmp SkipListValueComparator[V],
-) *xConcSkipListNode[K, V] {
-	node := &xConcSkipListNode[K, V]{
-		key:   key,
-		level: uint32(lvl),
-		mu:    mutexFactory(mu),
-		vcmp:  cmp,
-	}
-	node.indexes = newXConcSkipListIndices[K, V](lvl)
-	node.flags.setBitsAs(vNodeTypeBits, uint32(typ))
-	switch typ {
-	case unique:
-		node.root = &vNode[V]{
-			val: &val,
-		}
-	case linkedList:
-		node.root = &vNode[V]{
-			parent: &vNode[V]{
-				val: &val,
-			},
-		}
-	case rbtree:
-		// TODO rbtree build
-	default:
-		panic("unknown v-node type")
-	}
-	node.count = 1
-	return node
-}
-
 func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
 	nvn := &vNode[V]{
-		val:   &val,
-		color: red,
+		val:    &val,
+		color:  red,
+		parent: node.nilLeafNode,
+		left:   node.nilLeafNode,
+		right:  node.nilLeafNode,
 	}
 
 	var (
-		vnx, vny *vNode[V] = node.root, nil
+		vnx, vny = node.root, node.nilLeafNode
 	)
 
 	// vnx play as the next level node detector.
 	// vny store the current node found by dichotomy.
-	for vnx != nil {
+	for vnx != node.nilLeafNode {
 		vny = vnx
 		// Iterating to find insert position.
 		// O(logN)
@@ -296,7 +264,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
 
 	// vny is the new vnode's parent
 	nvn.parent = vny
-	if vny == nil {
+	if vny == node.nilLeafNode {
 		// case 1: Build root node of this rbtree, first inserted element.
 		node.root = nvn
 	} else if node.vcmp(val, *vny.val) < 0 {
@@ -306,11 +274,11 @@ func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
 		vny.right = nvn
 	}
 
-	if nvn.parent == nil {
+	if nvn.parent == node.nilLeafNode {
 		// case 1: Build root node of this rbtree, first inserted element.
 		nvn.color = black // root node's color must be black
 		return
-	} else if nvn.parent.parent == nil {
+	} else if nvn.parent.parent == node.nilLeafNode {
 		// case 2: Root node (black) exists and new node is a child node next to it.
 		// New node's parent's parent is nil.
 		// It means that new node's parent is the root node
@@ -411,7 +379,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePostInsertBalance(nvn *vNode[V]) {
 
 func (node *xConcSkipListNode[K, V]) rbtreeMinimum(vn *vNode[V]) *vNode[V] {
 	aux := vn
-	for aux.left != nil {
+	for aux.left != node.nilLeafNode {
 		aux = aux.left
 	}
 	return aux
@@ -419,7 +387,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeMinimum(vn *vNode[V]) *vNode[V] {
 
 func (node *xConcSkipListNode[K, V]) rbtreeMaximum(vn *vNode[V]) *vNode[V] {
 	aux := vn
-	for aux.right != nil {
+	for aux.right != node.nilLeafNode {
 		aux = aux.right
 	}
 	return aux
@@ -428,12 +396,12 @@ func (node *xConcSkipListNode[K, V]) rbtreeMaximum(vn *vNode[V]) *vNode[V] {
 // The successor node of the current node is its next node in sorted order.
 func (node *xConcSkipListNode[K, V]) rbtreeSucc(vn *vNode[V]) *vNode[V] {
 	aux := vn
-	if aux.right != nil {
+	if aux.right != node.nilLeafNode {
 		return node.rbtreeMinimum(aux.right)
 	}
 
 	aux = vn.parent
-	for aux != nil && vn == aux.right {
+	for aux != node.nilLeafNode && vn == aux.right {
 		// If vn is father node's left subtree, father node is
 		// vn's successor.
 		vn = aux
@@ -445,12 +413,12 @@ func (node *xConcSkipListNode[K, V]) rbtreeSucc(vn *vNode[V]) *vNode[V] {
 // The predecessor node of the current node is its previous node in sorted order
 func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
 	aux := vn
-	if aux.left != nil {
+	if aux.left != node.nilLeafNode {
 		return node.rbtreeMaximum(aux.left)
 	}
 
 	aux = vn.parent
-	for aux != nil && vn == aux.left {
+	for aux != node.nilLeafNode && vn == aux.left {
 		// If vn is father node's right subtree, father node is
 		// vn's predecessor.
 		vn = aux
@@ -462,7 +430,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
 func (node *xConcSkipListNode[K, V]) rbtreeTransplant(ovn, rvn *vNode[V]) {
 	// ovn (old vn)  is ready to be removed.
 	// rvn (replace vn) is used to replace ovn.
-	if ovn.parent == nil {
+	if ovn.parent == node.nilLeafNode {
 		// ovn is root node of this rbtree.
 		node.root = rvn
 	} else if ovn == ovn.parent.left {
@@ -479,22 +447,22 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(val V) error {
 	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
 		return node.vcmp(val, *vn.val)
 	})
-	if vnz == nil {
+	if vnz == node.nilLeafNode {
 		return errors.New("not exists")
 	}
-	var vnx, vny *vNode[V] = nil, nil
+	var vnx, vny = node.nilLeafNode, node.nilLeafNode
 
 	// Found then remove it from rbtree
 	vny = vnz // vnz is the remove target node
-	if vnz.left == nil && vnz.right != nil {
+	if vnz.left == node.nilLeafNode && vnz.right != node.nilLeafNode {
 		// Leaf node
 		vnx = vnz.right
 		node.rbtreeTransplant(vnz, vnz.right)
-	} else if vnz.right == nil && vnz.left != nil {
+	} else if vnz.right == node.nilLeafNode && vnz.left != node.nilLeafNode {
 		// Leaf node
 		vnx = vnz.left
 		node.rbtreeTransplant(vnz, vnz.left)
-	} else if vnz.right != nil && vnz.left != nil {
+	} else if vnz.right != node.nilLeafNode && vnz.left != node.nilLeafNode {
 		//     |                    |
 		//     N                    S
 		//    / \                  / \
@@ -511,17 +479,17 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(val V) error {
 		vnz.val = vny.val
 
 		// delete vny is used the vnx to replace it.
-		if vny.left != nil {
+		if vny.left != node.nilLeafNode {
 			vnx = vny.left
-		} else if vny.right != nil {
+		} else if vny.right != node.nilLeafNode {
 			vnx = vny.right
 		}
 
-		if vnx != nil {
+		if vnx != node.nilLeafNode {
 			vnx.parent = vny.parent
 		}
 
-		if vny.parent == nil {
+		if vny.parent == node.nilLeafNode {
 			// vny is the root node of this rbtree.
 			node.root = vnx
 		} else {
@@ -533,13 +501,13 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(val V) error {
 		}
 	} else {
 		// Leaf node
-		vnx = nil
+		vnx = node.nilLeafNode
 		// vnz is the root node of this rbtree.
-		node.rbtreeTransplant(vnz, nil)
+		node.rbtreeTransplant(vnz, node.nilLeafNode)
 	}
 
 	// The remove target node (leaf) is black, we have to rebalance the rbtree.
-	if vny.color == black && vnx != nil {
+	if vny.color == black && vnx != node.nilLeafNode {
 		node.rbtreePostDeleteBalance(vnx)
 	}
 
@@ -552,7 +520,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(val V) error {
 }
 
 func (node *xConcSkipListNode[K, V]) rbtreePostDeleteBalance(vn *vNode[V]) {
-	var aux *vNode[V] = nil
+	aux := node.nilLeafNode
 	for vn != node.root && vn.color == black {
 		if vn == vn.parent.left {
 			aux = vn.parent.right // sibling node
@@ -658,11 +626,11 @@ func (node *xConcSkipListNode[K, V]) rbtreePostDeleteBalance(vn *vNode[V]) {
 }
 
 func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V]) int64) *vNode[V] {
-	if vn == nil {
-		return nil
+	if vn == nil || vn == node.nilLeafNode {
+		return node.nilLeafNode
 	}
 	aux := vn
-	for aux != nil {
+	for aux != node.nilLeafNode {
 		if res := fn(aux); res == 0 {
 			return aux
 		} else if res > 0 {
@@ -671,7 +639,47 @@ func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V
 			aux = aux.left
 		}
 	}
-	return nil
+	return node.nilLeafNode
+}
+
+func newXConcSkipListNode[K infra.OrderedKey, V comparable](
+	key K,
+	val V,
+	lvl int32,
+	mu mutexImpl,
+	typ vNodeType,
+	cmp SkipListValueComparator[V],
+) *xConcSkipListNode[K, V] {
+	node := &xConcSkipListNode[K, V]{
+		key:   key,
+		level: uint32(lvl),
+		mu:    mutexFactory(mu),
+		vcmp:  cmp,
+	}
+	node.indexes = newXConcSkipListIndices[K, V](lvl)
+	node.flags.setBitsAs(vNodeTypeBits, uint32(typ))
+	switch typ {
+	case unique:
+		node.root = &vNode[V]{
+			val: &val,
+		}
+	case linkedList:
+		node.root = &vNode[V]{
+			parent: &vNode[V]{
+				val: &val,
+			},
+		}
+	case rbtree:
+		node.nilLeafNode = &vNode[V]{
+			color: black,
+		}
+		node.root = node.nilLeafNode
+		node.rbtreeInsert(val)
+	default:
+		panic("unknown v-node type")
+	}
+	node.count = 1
+	return node
 }
 
 func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNodeType) *xConcSkipListNode[K, V] {
