@@ -1,6 +1,7 @@
 package list
 
 import (
+	"github.com/benz9527/xboot/lib/id"
 	"runtime"
 	"strconv"
 	"sync"
@@ -206,6 +207,71 @@ func TestRbtree(t *testing.T) {
 	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+}
+
+func TestRandomInsertAndRemoveRbtree(t *testing.T) {
+	total := uint64(100)
+	insertTotal := uint64(float64(total) * 0.8)
+	removeTotal := uint64(float64(total) * 0.2)
+
+	idGen, _ := id.MonotonicNonZeroID()
+	insertElements := make([]uint64, 0, insertTotal)
+	removeElements := make([]uint64, 0, removeTotal)
+
+	ignore := uint32(0)
+	for {
+		num := idGen.NumberUUID()
+		if ignore > 0 {
+			ignore--
+			continue
+		}
+		ignore = cryptoRandUint32() % 100
+		if ignore&0x1 == 0 && uint64(len(insertElements)) < insertTotal {
+			insertElements = append(insertElements, num)
+		} else if ignore&0x1 == 1 && uint64(len(removeElements)) < removeTotal {
+			removeElements = append(removeElements, num)
+		}
+		if uint64(len(insertElements)) == insertTotal && uint64(len(removeElements)) == removeTotal {
+			break
+		}
+	}
+	t.Log("gen okay")
+	node := &xConcSkipListNode[uint64, uint64]{
+		vcmp: func(i, j uint64) int64 {
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		},
+		nilLeafNode: &vNode[uint64]{
+			color: black,
+		},
+	}
+	node.root = node.nilLeafNode
+
+	for i := uint64(0); i < insertTotal; i++ {
+		node.rbtreeInsert(insertElements[i])
+	}
+	t.Log("insert okay1")
+	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+		require.Equal(t, insertElements[idx], val)
+		return true
+	})
+	for i := uint64(0); i < removeTotal; i++ {
+		node.rbtreeInsert(removeElements[i])
+	}
+	t.Log("insert okay2")
+	for i := uint64(0); i < removeTotal; i++ {
+		_ = node.rbtreeRemove(removeElements[i])
+	}
+	t.Log("remove okay")
+	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+		t.Logf("idx: %d, expected: %d, actual: %d\n", idx, insertElements[idx], val)
+		require.Equal(t, insertElements[idx], val)
 		return true
 	})
 }

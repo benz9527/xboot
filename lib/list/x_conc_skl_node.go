@@ -445,7 +445,10 @@ func (node *xConcSkipListNode[K, V]) rbtreeTransplant(ovn, rvn *vNode[V]) {
 	}
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeDelete(val V) error {
+func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
+	if atomic.LoadInt64(&node.count) <= 0 {
+		return errors.New("empty rbtree")
+	}
 	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
 		return node.vcmp(val, *vn.val)
 	})
