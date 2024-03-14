@@ -482,20 +482,26 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(pvn *vNode[V], val V) error {
 	}
 
 	// Found then remove it from rbtree
-	vny = vnz
-	nyOldColor := vny.color
-	if vnz.left == nil {
+	vny = vnz // vnz is the remove target node
+	yOldColor := vny.color
+	if vnz.left == nil && vnz.right != nil {
+		// Leaf node
 		vnx = vnz.right
 		node.rbtreeTransplant(vnz, vnz.right)
-	} else if vnz.right == nil {
+	} else if vnz.right == nil && vnz.left != nil {
+		// Leaf node
 		vnx = vnz.left
 		node.rbtreeTransplant(vnz, vnz.left)
-	} else {
-		// find minimum value node to replace it
-		vny = node.rbtreeMinimum(vnz.right)
-		nyOldColor = vny.color
+	} else if vnz.right != nil && vnz.left != nil {
+		// None leaf node
+		// Find minimum value node to replace it
+		vny = node.rbtreeMinimum(vnz.right) // right minimum with left child
+		yOldColor = vny.color
+
 		vnx = vny.right
 		if vny.parent == vnz {
+			// The minimum value node's father node
+			// is the remove target node.
 			vnx.parent = vny
 		} else {
 			node.rbtreeTransplant(vny, vny.right)
@@ -509,9 +515,11 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(pvn *vNode[V], val V) error {
 		vny.color = vnz.color
 	}
 
-	if nyOldColor == black {
+	// The remove target node (leaf) is black, we have to rebalance the rbtree.
+	if yOldColor == black {
 		node.rbtreePostDeleteBalance(vnx)
 	}
+	// If it is red, directly remove is okay.
 	return nil
 }
 
