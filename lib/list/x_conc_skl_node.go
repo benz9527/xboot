@@ -155,6 +155,15 @@ func (node *xConcSkipListNode[K, V]) atomicStorePrev(i int32, prev *xConcSkipLis
 
 // References:
 // https://elixir.bootlin.com/linux/latest/source/lib/rbtree.c
+// rbtree properties:
+// 1. Each node is either red or black.
+// 2. The root is black.
+// 3. All leaves (and NIL) are black.
+// 4. If a red node has children, then the children are black (no two red nodes can be adjacent).
+// 5. Every path from a node to its descendant NIL nodes has the same number of black nodes.
+// So the shortest path nodes are black nodes. Otherwise,
+// the path must contain red node.
+// The longest path nodes' number is 2 * shortest path nodes' number.
 
 //	 |                         |
 //	 N                         S
@@ -451,8 +460,8 @@ func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
 }
 
 func (node *xConcSkipListNode[K, V]) rbtreeTransplant(ovn, rvn *vNode[V]) {
-	// ovn is ready to be removed.
-	// rvn is used to replace ovn.
+	// ovn (old vn)  is ready to be removed.
+	// rvn (replace vn) is used to replace ovn.
 	if ovn.parent == nil {
 		// ovn is root node of this rbtree.
 		node.root = rvn
@@ -461,29 +470,22 @@ func (node *xConcSkipListNode[K, V]) rbtreeTransplant(ovn, rvn *vNode[V]) {
 	} else if ovn == ovn.parent.right {
 		ovn.parent.right = rvn
 	}
-	rvn.parent = ovn.parent
+	if rvn != nil {
+		rvn.parent = ovn.parent
+	}
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeDelete(pvn *vNode[V], val V) error {
-	var vnx, vny, vnz *vNode[V] = nil, nil, nil
-	// Iteration
-	for pvn != nil {
-		res := node.vcmp(val, *pvn.val)
-		if res == 0 {
-			vnz = pvn
-		} else if res > 0 {
-			pvn = pvn.right
-		} else {
-			pvn = pvn.left
-		}
-	}
+func (node *xConcSkipListNode[K, V]) rbtreeDelete(val V) error {
+	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
+		return node.vcmp(val, *vn.val)
+	})
 	if vnz == nil {
 		return errors.New("not exists")
 	}
+	var vnx, vny *vNode[V] = nil, nil
 
 	// Found then remove it from rbtree
 	vny = vnz // vnz is the remove target node
-	yOldColor := vny.color
 	if vnz.left == nil && vnz.right != nil {
 		// Leaf node
 		vnx = vnz.right
@@ -493,32 +495,58 @@ func (node *xConcSkipListNode[K, V]) rbtreeDelete(pvn *vNode[V], val V) error {
 		vnx = vnz.left
 		node.rbtreeTransplant(vnz, vnz.left)
 	} else if vnz.right != nil && vnz.left != nil {
+		//     |                    |
+		//     N                    S
+		//    / \                  / \
+		//   L  ..   swap(N, S)   L  ..
+		//       |   =========>       |
+		//       P                    P
+		//      / \                  / \
+		//     S  ..                N  ..
 		// None leaf node
-		// Find minimum value node to replace it
-		vny = node.rbtreeMinimum(vnz.right) // right minimum with left child
-		yOldColor = vny.color
+		// Find successor node
+		// Now the vny is the remove target node.
+		vny = node.rbtreeSucc(vnz)
+		// vny replace vnz by value copy directly.
+		vnz.val = vny.val
 
-		vnx = vny.right
-		if vny.parent == vnz {
-			// The minimum value node's father node
-			// is the remove target node.
-			vnx.parent = vny
-		} else {
-			node.rbtreeTransplant(vny, vny.right)
-			vny.right = vnz.right
-			vny.right.parent = vny
+		// delete vny is used the vnx to replace it.
+		if vny.left != nil {
+			vnx = vny.left
+		} else if vny.right != nil {
+			vnx = vny.right
 		}
 
-		node.rbtreeTransplant(vnz, vny)
-		vny.left = vnz.left
-		vny.left.parent = vny
-		vny.color = vnz.color
+		if vnx != nil {
+			vnx.parent = vny.parent
+		}
+
+		if vny.parent == nil {
+			// vny is the root node of this rbtree.
+			node.root = vnx
+		} else {
+			if vny == vny.parent.left {
+				vny.parent.left = vnx
+			} else {
+				vny.parent.right = vnx
+			}
+		}
+	} else {
+		// Leaf node
+		vnx = nil
+		// vnz is the root node of this rbtree.
+		node.rbtreeTransplant(vnz, nil)
 	}
 
 	// The remove target node (leaf) is black, we have to rebalance the rbtree.
-	if yOldColor == black {
+	if vny.color == black && vnx != nil {
 		node.rbtreePostDeleteBalance(vnx)
 	}
+
+	vny.parent = nil
+	vny.left = nil
+	vny.right = nil
+
 	// If it is red, directly remove is okay.
 	return nil
 }
@@ -527,33 +555,78 @@ func (node *xConcSkipListNode[K, V]) rbtreePostDeleteBalance(vn *vNode[V]) {
 	var aux *vNode[V] = nil
 	for vn != node.root && vn.color == black {
 		if vn == vn.parent.left {
-			aux = vn.parent.right
+			aux = vn.parent.right // sibling node
+			// case 2: vn's sibling node is red
+			// [] is black, <> is red
+			//     |                     |
+			//    [P]                   [S]
+			//    / \                  /   \
+			// [N]  <S>               <P>  [Sr]
+			//      /  \   =======>  /  \
+			//    [Sl] [Sr]        [N]  [Sl]
 			if aux.color == red {
-				aux.color = black
-				vn.parent.color = red
-				node.rbtreeLeftRotate(vn.parent)
+				aux.color = black                // sibling node repaint to black
+				vn.parent.color = red            // father node repaint to red
+				node.rbtreeLeftRotate(vn.parent) // rotate father node
 				aux = vn.parent.right
 			}
-
+			// sibling node is black
 			if aux.left.color == black && aux.right.color == black {
+				// case 3: vn's sibling node is black
+				// and vn's sibling node's children are black
+				// father node is black
+				// [] is black, <> is red
+				//     |                     |
+				//    [P]                   [P]
+				//    / \                  /   \
+				// [N]  [S]               [N]  <S>
+				//      /  \   =======>        / \
+				//    [Sl] [Sr]             [Sl] [Sr]
+				// case 4: vn's sibling node is black
+				// and vn's sibling node's children are black
+				// father node is red
+				// [] is black, <> is red
+				//     |                     |
+				//    <P>                   [P]
+				//    / \                  /   \
+				// [N]  [S]               [N]  <S>
+				//      /  \   =======>        / \
+				//    [Sl] [Sr]             [Sl] [Sr]
 				aux.color = red
-				vn = vn.parent
+				vn = vn.parent // backtrack to father node
 			} else {
+				// case 5: vn's sibling node is black
+				// and vn's sibling node's right child is black, left child is red
+				// [] is black, <> is red
+				//     |                    |
+				//    [S]                  [Sl]
+				//    / \                    \
+				//  <Sl> [Sr]               <S>
+				//                             \
+				//                             [Sr]
 				if aux.right.color == black {
 					aux.left.color = black
 					aux.color = red
-					node.rbtreeRightRotate(aux)
+					node.rbtreeRightRotate(aux) // rotate sibling node, make it to case 6
 					aux = vn.parent.right
 				}
-
+				// case 6: vn's sibling node is black
+				// and vn's sibling node's right child is red, left child is any color
+				// [] is black, <> is red
+				//     |                    |
+				//     P                    S
+				//    / \                  / \
+				// [N]  [S]             [P]  [Sr]
+				//       \   =======>   /
+				//      <Sr>          [N]
 				aux.color = vn.parent.color
-				vn.parent.color = black
 				aux.right.color = black
+				vn.parent.color = black
 				node.rbtreeLeftRotate(vn.parent)
 				vn = node.root
 			}
-		} else {
-			aux = vn.parent.left
+		} else { // mirror case
+			aux = vn.parent.left // sibling node
 			if aux.color == red {
 				aux.color = black
 				vn.parent.color = red
@@ -580,6 +653,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePostDeleteBalance(vn *vNode[V]) {
 			}
 		}
 	}
+	// case 1: vn is the new root node of this rbtree.
 	vn.color = black
 }
 
@@ -587,12 +661,17 @@ func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V
 	if vn == nil {
 		return nil
 	}
-	if res := fn(vn); res == 0 {
-		return vn
-	} else if res > 0 {
-		return node.rbtreeSearch(vn.right, fn)
+	aux := vn
+	for aux != nil {
+		if res := fn(aux); res == 0 {
+			return aux
+		} else if res > 0 {
+			aux = aux.right
+		} else {
+			aux = aux.left
+		}
 	}
-	return node.rbtreeSearch(vn.left, fn)
+	return nil
 }
 
 func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNodeType) *xConcSkipListNode[K, V] {
