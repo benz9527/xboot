@@ -177,6 +177,10 @@ func TestAuxIndexes(t *testing.T) {
 }
 
 func TestRbtree(t *testing.T) {
+	type checkData struct {
+		color vNodeRbtreeColor
+		val   int32
+	}
 	node := &xConcSkipListNode[int32, int32]{
 		vcmp: func(i, j int32) int64 {
 			if i == j {
@@ -191,12 +195,17 @@ func TestRbtree(t *testing.T) {
 		},
 	}
 	node.root = node.nilLeafNode
-	node.rbtreeInsert(0)
-	node.rbtreeInsert(1)
-	node.rbtreeInsert(2)
-	node.rbtreeInsert(3)
+	for i := int32(0); i < 10; i++ {
+		node.rbtreeInsert(i)
+	}
+	expected := []checkData{
+		{false, 0}, {false, 1}, {false, 2}, {false, 3},
+		{false, 4}, {false, 5}, {false, 6}, {true, 7},
+		{false, 8}, {true, 9},
+	}
 	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
-		t.Logf("idx: %d; is-red: %v; val: %v\n", idx, color, val)
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 }

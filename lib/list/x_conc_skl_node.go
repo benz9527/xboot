@@ -653,7 +653,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, 
 	}
 	stack := make([]*vNode[V], 0, size>>1)
 	defer func() {
-		clear[[]*vNode[V]](stack)
+		clear(stack)
 	}()
 	for aux != node.nilLeafNode {
 		stack = append(stack, aux)
@@ -670,7 +670,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, 
 		stack = stack[:size-1]
 		if aux.right != node.nilLeafNode {
 			aux = aux.right
-			for aux != nil {
+			for aux != node.nilLeafNode {
 				stack = append(stack, aux)
 				aux = aux.left
 			}
