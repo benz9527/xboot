@@ -2,6 +2,7 @@ package list
 
 import (
 	"errors"
+	"log/slog"
 	"sync/atomic"
 	"unsafe"
 
@@ -173,32 +174,6 @@ const (
 	right
 	root
 )
-
-func (node *xConcSkipListNode[K, V]) rbtreeNodeDirection(vn *vNode[V]) vNodeDirection {
-	if vn.parent == node.nilLeafNode {
-		return root
-	}
-	if vn == vn.parent.left {
-		return left
-	}
-	/* vn == vn.parent.right */
-	return right
-}
-
-func (node *xConcSkipListNode[K, V]) rbtreeSibling(vn *vNode[V]) *vNode[V] {
-	if vn.parent == node.nilLeafNode {
-		return node.nilLeafNode
-	}
-	if vn == vn.parent.left {
-		return vn.parent.right
-	} else /* vn == vn.parent.right */ {
-		return vn.parent.left
-	}
-}
-
-func (node *xConcSkipListNode[K, V]) rbtreeHasSibling(vn *vNode[V]) bool {
-	return vn.parent != node.nilLeafNode && node.rbtreeSibling(vn) != node.nilLeafNode
-}
 
 //	 |                         |
 //	 N                         S
@@ -430,6 +405,10 @@ func (node *xConcSkipListNode[K, V]) rbtreeMaximum(vn *vNode[V]) *vNode[V] {
 	return aux
 }
 
+func (node *xConcSkipListNode[K, V]) rbtreeIsRoot(vn *vNode[V]) bool {
+	return vn.parent == node.nilLeafNode
+}
+
 // The successor node of the current node is its next node in sorted order.
 func (node *xConcSkipListNode[K, V]) rbtreeSucc(vn *vNode[V]) *vNode[V] {
 	aux := vn
@@ -462,18 +441,28 @@ func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
 	return aux
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeTransplant(ovn, rvn *vNode[V]) {
-	// ovn (old vn)  is ready to be removed.
-	// rvn (replace vn) is used to replace ovn.
-	if ovn.parent == node.nilLeafNode {
-		// ovn is root node of this rbtree.
-		node.root = rvn
-	} else if ovn == ovn.parent.left {
-		ovn.parent.left = rvn
-	} else if ovn == ovn.parent.right {
-		ovn.parent.right = rvn
+func (node *xConcSkipListNode[K, V]) rbtreeSibling(vn *vNode[V]) *vNode[V] {
+	if node.rbtreeIsRoot(vn) {
+		return node.nilLeafNode
+	} else if vn == vn.parent.left {
+		return vn.parent.right
 	}
-	rvn.parent = ovn.parent
+	/* vn == vn.parent.right */
+	return vn.parent.left
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeHasSibling(vn *vNode[V]) bool {
+	return !node.rbtreeIsRoot(vn) && node.rbtreeSibling(vn) != node.nilLeafNode
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeNodeDirection(vn *vNode[V]) vNodeDirection {
+	if node.rbtreeIsRoot(vn) {
+		return root
+	} else if vn == vn.parent.left {
+		return left
+	}
+	/* vn == vn.parent.right */
+	return right
 }
 
 func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
@@ -607,6 +596,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) (*vNode[V], error
 		//     S  ..                S  ..
 		vny = node.rbtreePred(vnz)
 		// Swap value only.
+		slog.Info("before swap", "old vnz", *vnz.val, "new vny", *vny.val)
 		vnz.val = vny.val
 	}
 
@@ -655,6 +645,13 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) (*vNode[V], error
 				node.rbtreeRemoveBalance(rvn)
 			}
 		}
+	}
+
+	// Unlink node
+	if vny == vny.parent.left {
+		vny.parent.left = node.nilLeafNode
+	} else if vny == vny.parent.right {
+		vny.parent.right = node.nilLeafNode
 	}
 
 	vny.parent = nil

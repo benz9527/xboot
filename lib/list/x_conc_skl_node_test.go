@@ -287,34 +287,32 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 		node.rbtreeInsert(i)
 	}
 	t.Log("insert okay2")
-
-	vn := node.rbtreeSearch(node.root, func(vn *vNode[uint64]) int64 {
-		v := *vn.val
-		if v == 92 {
-			return 0
-		} else if 92 > v {
-			return 1
-		}
-		return -1
+	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+		require.Equal(t, uint64(idx), val)
+		return true
 	})
-	require.Equal(t, uint64(92), *vn.val)
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
+		if i == 92 {
+			node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+				t.Logf("idx: %d, expected: %d, actual: %d\n", idx, idx, val)
+				return true
+			})
+			vn := node.rbtreeSearch(node.root, func(vn *vNode[uint64]) int64 {
+				v := *vn.val
+				if v == i {
+					return 0
+				} else if i > v {
+					return 1
+				}
+				return -1
+			})
+			require.Equal(t, uint64(92), *vn.val)
+		}
 		vn, err := node.rbtreeRemoveByPred(i)
 		t.Logf("rm target: %d, rm actual: %v, err? %v\n", i, vn, err)
 	}
 	t.Log("remove okay")
-
-	vn = node.rbtreeSearch(node.root, func(vn *vNode[uint64]) int64 {
-		v := *vn.val
-		if v == 92 {
-			return 0
-		} else if 92 > v {
-			return 1
-		}
-		return -1
-	})
-	require.Equal(t, uint64(92), *vn.val)
 
 	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
