@@ -22,7 +22,7 @@ const (
 	sklVNodeTypeBits = 0x0300
 )
 
-type xConcSkipList[K infra.OrderedKey, V comparable] struct {
+type xConcSkl[K infra.OrderedKey, V comparable] struct {
 	head    *xConcSklNode[K, V]
 	pool    *xConcSkipListPool[K, V]
 	kcmp    infra.OrderedKeyComparator[K]
@@ -35,36 +35,36 @@ type xConcSkipList[K infra.OrderedKey, V comparable] struct {
 	idxHi   int32  // skip-list's indexes' height
 }
 
-func (skl *xConcSkipList[K, V]) loadMutexImpl() mutexImpl {
+func (skl *xConcSkl[K, V]) loadMutexImpl() mutexImpl {
 	return mutexImpl(skl.flags.atomicLoadBits(sklMutexImplBits))
 }
 
-func (skl *xConcSkipList[K, V]) loadVNodeType() vNodeType {
+func (skl *xConcSkl[K, V]) loadVNodeType() vNodeType {
 	return vNodeType(skl.flags.atomicLoadBits(sklVNodeTypeBits))
 }
 
-func (skl *xConcSkipList[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
+func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
 	return (*xConcSklNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 }
 
-func (skl *xConcSkipList[K, V]) Len() int64 {
+func (skl *xConcSkl[K, V]) Len() int64 {
 	return atomic.LoadInt64(&skl.len)
 }
 
-func (skl *xConcSkipList[K, V]) Indices() uint64 {
+func (skl *xConcSkl[K, V]) Indices() uint64 {
 	return atomic.LoadUint64(&skl.idxSize)
 }
 
-func (skl *xConcSkipList[K, V]) Level() int32 {
+func (skl *xConcSkl[K, V]) Level() int32 {
 	return atomic.LoadInt32(&skl.idxHi)
 }
 
 // traverse locates the target key and store the
 // nodes encountered during the indices traversal.
-func (skl *xConcSkipList[K, V]) traverse(
+func (skl *xConcSkl[K, V]) traverse(
 	lvl int32,
 	key K,
-	aux xConcSkipListAuxiliary[K, V],
+	aux xConcSklAux[K, V],
 ) *xConcSklNode[K, V] {
 	forward := skl.atomicLoadHead()
 	// Vertical iteration.
@@ -89,7 +89,7 @@ func (skl *xConcSkipList[K, V]) traverse(
 
 // Insert add the val by a key into skip-list.
 // Only works for unique element skip-list.
-func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
+func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 	var (
 		aux      = skl.pool.loadAux()
 		oldIdxHi = skl.Level()
@@ -176,7 +176,7 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 // Once the function return false, the iteration should be stopped.
 // This function doesn't guarantee correctness in the case of concurrent
 // reads and writes.
-func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
+func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
 	forward := skl.atomicLoadHead().atomicLoadNext(0)
 	idx := int64(0)
 	typ := skl.loadVNodeType()
@@ -246,7 +246,7 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 // Get returns the val stored in the map for a key, or nil if no
 // val is present.
 // The ok result indicates whether val was found in the map.
-func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
+func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 	forward := skl.atomicLoadHead()
 	typ := skl.loadVNodeType()
 	for l := skl.Level() - 1; l >= 0; l-- {
@@ -281,9 +281,9 @@ func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
 // rmTraverse locates the target key and store the
 // nodes encountered during the indices traversal.
 // Returns with the target key found level index.
-func (skl *xConcSkipList[K, V]) rmTraverse(
+func (skl *xConcSkl[K, V]) rmTraverse(
 	weight K,
-	aux xConcSkipListAuxiliary[K, V],
+	aux xConcSklAux[K, V],
 ) (foundAtLevel int32) {
 	// foundAtLevel represents the index of the first layer at which it found a node.
 	foundAtLevel = -1
@@ -308,7 +308,7 @@ func (skl *xConcSkipList[K, V]) rmTraverse(
 }
 
 // RemoveFirst deletes the val for a key, only the first value.
-func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err error) {
+func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err error) {
 	var (
 		aux          = skl.pool.loadAux()
 		rmTarget     *xConcSklNode[K, V]
@@ -505,10 +505,10 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 	return nil, errors.New("others unknown reasons")
 }
 
-func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SkipListWeightComparator[K], rand SkipListRand) *xConcSkipList[K, V] {
+func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SkipListWeightComparator[K], rand SkipListRand) *xConcSkl[K, V] {
 	//h := newXConcSklHead[K, V]()
 	//h.flags.atomicSet(nodeFullyLinkedBit)
-	//return &xConcSkipList[K, V]{
+	//return &xConcSkl[K, V]{
 	//	head:  h,
 	//	idxHi: 0,
 	//	len:   0,
@@ -533,18 +533,18 @@ func newXConcSkipListPool[K infra.OrderedKey, V comparable]() *xConcSkipListPool
 	p := &xConcSkipListPool[K, V]{
 		auxPool: &sync.Pool{
 			New: func() any {
-				return make(xConcSkipListAuxiliary[K, V], 2*xSkipListMaxLevel)
+				return make(xConcSklAux[K, V], 2*xSkipListMaxLevel)
 			},
 		},
 	}
 	return p
 }
 
-func (p *xConcSkipListPool[K, V]) loadAux() xConcSkipListAuxiliary[K, V] {
-	return p.auxPool.Get().(xConcSkipListAuxiliary[K, V])
+func (p *xConcSkipListPool[K, V]) loadAux() xConcSklAux[K, V] {
+	return p.auxPool.Get().(xConcSklAux[K, V])
 }
 
-func (p *xConcSkipListPool[K, V]) releaseAux(aux xConcSkipListAuxiliary[K, V]) {
+func (p *xConcSkipListPool[K, V]) releaseAux(aux xConcSklAux[K, V]) {
 	// Override only
 	p.auxPool.Put(aux)
 }

@@ -13,7 +13,7 @@ import (
 )
 
 func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
-	skl := &xConcSkipList[uint64, *xSkipListObject]{
+	skl := &xConcSkl[uint64, *xSkipListObject]{
 		head:  newXConcSklHead[uint64, *xSkipListObject](me, unique),
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
@@ -83,7 +83,7 @@ func TestXConcSkipList_SerialProcessing(t *testing.T) {
 }
 
 func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
-	skl := &xConcSkipList[uint64, *xSkipListObject]{
+	skl := &xConcSkl[uint64, *xSkipListObject]{
 		head:  newXConcSklHead[uint64, *xSkipListObject](mu, unique),
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
@@ -174,7 +174,7 @@ func TestXConcSkipList_DataRace(t *testing.T) {
 }
 
 func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
-	skl := &xConcSkipList[uint64, *xSkipListObject]{
+	skl := &xConcSkl[uint64, *xSkipListObject]{
 		head:  newXConcSklHead[uint64, *xSkipListObject](goNativeMutex, linkedList),
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
@@ -236,7 +236,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 		return true
 	})
 
-	aux := make(xConcSkipListAuxiliary[uint64, *xSkipListObject], 2*xSkipListMaxLevel)
+	aux := make(xConcSklAux[uint64, *xSkipListObject], 2*xSkipListMaxLevel)
 	foundResult := skl.rmTraverse(1, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarkedBit))
@@ -273,7 +273,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 }
 
 func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ vNodeType) {
-	skl := &xConcSkipList[uint64, int64]{
+	skl := &xConcSkl[uint64, int64]{
 		head:  newXConcSklHead[uint64, int64](mu, typ),
 		pool:  newXConcSkipListPool[uint64, int64](),
 		idxHi: 1,

@@ -9,7 +9,7 @@ import (
 )
 
 func TestXConcSkipList_Indexes(t *testing.T) {
-	idx := make(xConcSkipListIndices[uint8, *xSkipListObject], 2)
+	idx := make(xConcSklIndices[uint8, *xSkipListObject], 2)
 	idx[0] = &xConcSkipListIndex[uint8, *xSkipListObject]{
 		forward:  nil,
 		backward: nil,

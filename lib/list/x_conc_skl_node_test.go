@@ -154,7 +154,7 @@ func TestUnsafePointerCAS_ConcurrentMemVisibility(t *testing.T) {
 }
 
 func TestAuxIndexes(t *testing.T) {
-	aux := make(xConcSkipListAuxiliary[uint8, *xSkipListObject], 2*xSkipListMaxLevel)
+	aux := make(xConcSklAux[uint8, *xSkipListObject], 2*xSkipListMaxLevel)
 	for i := uint8(0); i < 2*xSkipListMaxLevel; i++ {
 		aux[i] = &xConcSklNode[uint8, *xSkipListObject]{
 			key: i,
