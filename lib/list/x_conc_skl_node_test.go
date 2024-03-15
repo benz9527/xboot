@@ -14,14 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type xNode[W SkipListWeight, O HashObject] struct {
+type vNode[W SkipListWeight, O HashObject] struct {
 	weight *atomic.Pointer[W]
 	object *atomic.Pointer[O]
-	next   *atomic.Pointer[xNode[W, O]]
+	next   *atomic.Pointer[vNode[W, O]]
 }
 
 func TestAtomicPointerCAS(t *testing.T) {
-	a := &xNode[uint8, *xSkipListObject]{
+	a := &vNode[uint8, *xSkipListObject]{
 		weight: &atomic.Pointer[uint8]{},
 		object: &atomic.Pointer[*xSkipListObject]{},
 		next:   nil,
@@ -39,7 +39,7 @@ func TestAtomicPointerCAS(t *testing.T) {
 	o2 := &xSkipListObject{
 		id: "2",
 	}
-	c := &xNode[uint8, *xSkipListObject]{
+	c := &vNode[uint8, *xSkipListObject]{
 		weight: &atomic.Pointer[uint8]{},
 		object: &atomic.Pointer[*xSkipListObject]{},
 		next:   nil,
@@ -47,7 +47,7 @@ func TestAtomicPointerCAS(t *testing.T) {
 	c.weight.Store(&w2)
 	c.object.Store(&o2)
 
-	ptr := atomic.Pointer[xNode[uint8, *xSkipListObject]]{}
+	ptr := atomic.Pointer[vNode[uint8, *xSkipListObject]]{}
 	ptr.Store(a)
 	res := ptr.CompareAndSwap(b, c)
 	require.True(t, res)
@@ -192,61 +192,57 @@ func TestRbtree(t *testing.T) {
 			}
 			return -1
 		},
-		nilLeafNode: &xNode[int32]{
-			color: black,
-		},
 	}
-	node.root = node.nilLeafNode
 	for i := int32(0); i < 10; i++ {
-		node.rbtreeInsertIfNotPresent(i)
+		node.rbInsert(i)
 	}
 	expected := []checkData{
 		{false, 0}, {false, 1}, {false, 2}, {false, 3},
 		{false, 4}, {false, 5}, {false, 6}, {true, 7},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 	t.Log("delete 5")
-	_, err := node.rbtreeRemoveByPred(5)
+	_, err := node.rbRemoveByPred(5)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {false, 1}, {false, 2}, {false, 3},
 		{false, 4}, {true, 6}, {false, 7},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 
 	t.Log("delete 1")
-	_, err = node.rbtreeRemoveByPred(1)
+	_, err = node.rbRemoveByPred(1)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {true, 2}, {false, 3},
 		{false, 4}, {true, 6}, {true, 7},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 
 	t.Log("delete 7")
-	_, err = node.rbtreeRemoveByPred(7)
+	_, err = node.rbRemoveByPred(7)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {true, 2}, {false, 3},
 		{false, 4}, {true, 6},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -268,53 +264,43 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 			}
 			return -1
 		},
-		nilLeafNode: &xNode[uint64]{
-			color: black,
-		},
 	}
-	node.root = node.nilLeafNode
 
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbtreeInsertIfNotPresent(i)
+		node.rbInsert(i)
 	}
 
 	t.Log("insert okay1")
-	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
-		node.rbtreeInsertIfNotPresent(i)
+		node.rbInsert(i)
 	}
 	t.Log("insert okay2")
-	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		if i == 92 {
-			node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
+			node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 				t.Logf("idx: %d, expected: %d, actual: %d\n", idx, idx, val)
 				return true
 			})
-			vn := node.rbtreeSearch(node.root, func(vn *xNode[uint64]) int64 {
-				v := *vn.val
-				if v == i {
-					return 0
-				} else if i > v {
-					return 1
-				}
-				return -1
+			vn := node.rbSearch(node.root, func(x *xNode[uint64]) int64 {
+				return 0
 			})
 			require.Equal(t, uint64(92), *vn.vptr)
 		}
-		vn, err := node.rbtreeRemoveByPred(i)
+		vn, err := node.rbRemoveByPred(i)
 		t.Logf("rm target: %d, rm actual: %v, err? %v\n", i, vn, err)
 	}
 	t.Log("remove okay")
 
-	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
@@ -356,30 +342,26 @@ func TestRandomInsertAndRemoveRbtree(t *testing.T) {
 			}
 			return -1
 		},
-		nilLeafNode: &xNode[uint64]{
-			color: black,
-		},
 	}
-	node.root = node.nilLeafNode
 
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbtreeInsertIfNotPresent(insertElements[i])
+		node.rbInsert(insertElements[i])
 	}
 	t.Log("insert okay1")
-	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, insertElements[idx], val)
 		return true
 	})
 	for i := uint64(0); i < removeTotal; i++ {
-		node.rbtreeInsertIfNotPresent(removeElements[i])
+		node.rbInsert(removeElements[i])
 	}
 	t.Log("insert okay2")
 	for i := uint64(0); i < removeTotal; i++ {
-		vn, err := node.rbtreeRemoveByPred(removeElements[i])
+		vn, err := node.rbRemoveByPred(removeElements[i])
 		t.Logf("rm target: %d, rm actual: %v, err? %v\n", removeElements[i], vn, err)
 	}
 	t.Log("remove okay")
-	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		t.Logf("idx: %d, expected: %d, actual: %d\n", idx, insertElements[idx], val)
 		require.Equal(t, insertElements[idx], val)
 		return true

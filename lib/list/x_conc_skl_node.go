@@ -31,6 +31,8 @@ func (n *xNode[V]) linkedListNext() *xNode[V] {
 	return n.parent
 }
 
+/* rbtree helper methods */
+
 func (n *xNode[V]) isRed() bool {
 	return !n.isNilLeaf() && n.color == red
 }
@@ -40,7 +42,71 @@ func (n *xNode[V]) isBlack() bool {
 }
 
 func (n *xNode[V]) isNilLeaf() bool {
-	return n == nil || (n.parent == nil && n.left == nil && n.right == nil)
+	return n == nil || (n.vptr == nil && n.parent == nil && n.left == nil && n.right == nil)
+}
+
+func (n *xNode[V]) isRoot() bool {
+	return n != nil && n.parent == nil
+}
+
+type rbDirection int8
+
+const (
+	left rbDirection = -1 + iota
+	root
+	right
+)
+
+func (n *xNode[V]) direction() rbDirection {
+	if n.isRoot() {
+		return root
+	}
+	if n == n.parent.left {
+		return left
+	}
+	return right
+}
+
+func (n *xNode[V]) sibling() *xNode[V] {
+	dir := n.direction()
+	switch dir {
+	case left:
+		return n.parent.right
+	case right:
+		return n.parent.left
+	default:
+
+	}
+	return nil
+}
+
+func (n *xNode[V]) hasSibling() bool {
+	return !n.isRoot() && n.sibling() != nil
+}
+
+func (n *xNode[V]) uncle() *xNode[V] {
+	return n.parent.sibling()
+}
+
+func (n *xNode[V]) hasUncle() bool {
+	return !n.isRoot() && n.hasSibling()
+}
+
+func (n *xNode[V]) grandpa() *xNode[V] {
+	return n.parent.parent
+}
+
+func (n *xNode[V]) hasGrandpa() bool {
+	return !n.isRoot() && n.parent.parent != nil
+}
+
+func (n *xNode[V]) fixLink() {
+	if n.left != nil {
+		n.left.parent = n
+	}
+	if n.right != nil {
+		n.right.parent = n
+	}
 }
 
 const (
@@ -54,30 +120,29 @@ const (
 	vNodeTypeBits = _duplicate | _containerType
 )
 
-type vNodeType uint8
+type xNodeType uint8
 
 const (
-	unique     vNodeType = 0
-	linkedList vNodeType = 1
-	rbtree     vNodeType = 3
+	unique     xNodeType = 0
+	linkedList xNodeType = 1
+	rbtree     xNodeType = 3
 )
 
 type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	// If it is unique v-node type store value directly.
 	// Otherwise, it is a sentinel node.
-	root        *xNode[V]
-	nilLeafNode *xNode[V] // Only for rbtree
-	key         K
-	vcmp        SklValComparator[V]
-	indexes     xConcSklIndices[K, V]
-	mu          segmentedMutex
-	flags       flagBits
-	count       int64
-	level       uint32
+	root    *xNode[V]
+	key     K
+	vcmp    SklValComparator[V]
+	indexes xConcSklIndices[K, V]
+	mu      segmentedMutex
+	flags   flagBits
+	count   int64
+	level   uint32
 }
 
 func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
-	typ := vNodeType(node.flags.atomicLoadBits(vNodeTypeBits))
+	typ := xNodeType(node.flags.atomicLoadBits(vNodeTypeBits))
 	switch typ {
 	case unique:
 		// Replace
@@ -129,7 +194,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 	return isAppend, nil
 }
 
-func (node *xConcSklNode[K, V]) loadVNode() *xNode[V] {
+func (node *xConcSklNode[K, V]) loadXNode() *xNode[V] {
 	return (*xNode[V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.root))))
 }
 
@@ -179,325 +244,257 @@ func (node *xConcSklNode[K, V]) atomicStorePrev(i int32, prev *xConcSklNode[K, V
 // the path must contain red node.
 // The longest path nodes' number is 2 * shortest path nodes' number.
 
-type vNodeDirection uint8
-
-const (
-	left vNodeDirection = iota
-	right
-	root
-)
-
 //	 |                         |
-//	 N                         S
-//	/ \     leftRotate(N)     / \
+//	 X                         S
+//	/ \     leftRotate(X)     / \
 //
-// L   S    ============>    N   R
+// L   S    ============>    X   R
 //
 //	 / \                   / \
 //	M   R                 L   M
-func (node *xConcSklNode[K, V]) rbtreeLeftRotate(vnx *xNode[V]) {
-	vny := vnx.right
-	vnx.right = vny.left
-
-	if vny.left != node.nilLeafNode {
-		vny.left.parent = vnx
+func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
+	if x == nil || x.right == nil {
+		panic("rbtree left rotate node x is nil or x.right is nil")
 	}
 
-	vny.parent = vnx.parent
-	if vnx.parent == node.nilLeafNode {
-		// vnx is the root node of this rbtree
-		// Now, update to set vny as the root node of this rbtree.
-		node.root = vny
-	} else if vnx == vnx.parent.left {
-		// vnx is not the root node of this rbtree,
-		// it is a left node of its parent.
-		vnx.parent.left = vny
-	} else {
-		// vnx is not the root node of this rbtree,
-		// it is a right node of its parent.
-		vnx.parent.right = vny
-	}
+	p, y := x.parent, x.right
+	dir := x.direction()
+	x.right, y.left = y, x
 
-	vny.left = vnx
-	vnx.parent = vny
+	x.fixLink()
+	y.fixLink()
+
+	switch dir {
+	case root:
+		node.root = y
+	case left:
+		p.left = y
+	case right:
+		p.right = y
+	}
+	y.parent = p
 }
 
 //	 |                         |
-//	 N                         S
+//	 X                         S
 //	/ \     rightRotate(S)    / \
 //
-// L   S    <============    N   R
+// L   S    <============    X   R
 //
 //	 / \                   / \
 //	M   R                 L   M
-func (node *xConcSklNode[K, V]) rbtreeRightRotate(vnx *xNode[V]) {
-	vny := vnx.left
-	vnx.left = vny.right
-
-	if vny.right != node.nilLeafNode {
-		vny.right.parent = vnx
+func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
+	if x == nil || x.left == nil {
+		panic("rbtree right rotate node x is nil or x.right is nil")
 	}
 
-	vny.parent = vnx.parent
-	if vnx.parent == node.nilLeafNode {
-		// vnx is the root node of this rbtree.
-		// Now, update to set vny as the root node of this rbtree.
-		node.root = vny
-	} else if vnx == vnx.parent.left {
-		// vnx is not the root node of this rbtree,
-		// it is a left node of its parent.
-		vnx.parent.left = vny
-	} else {
-		// vnx is not the root node of this rbtree,
-		// it is a right node of its parent.
-		vnx.parent.right = vny
-	}
+	p, y := x.parent, x.left
+	dir := x.direction()
+	x.left, y.right = y, x
 
-	vny.left = vnx
-	vnx.parent = vny
+	x.fixLink()
+	y.fixLink()
+
+	switch dir {
+	case root:
+		node.root = y
+	case left:
+		p.left = y
+	case right:
+		p.right = y
+	}
+	y.parent = p
 }
 
-func (node *xConcSklNode[K, V]) rbtreeInsertIfNotPresent(val V) {
-	var (
-		vnx, vny = node.root, node.nilLeafNode
-	)
+func (node *xConcSklNode[K, V]) rbInsert(val V) {
 
-	// vnx play as the next level node detector.
-	// vny store the current node found by dichotomy.
-	for vnx != node.nilLeafNode {
-		vny = vnx
-		// Iterating to find insert position.
-		// O(logN)
-		res := node.vcmp(val, *vnx.vptr)
-		if res < 0 {
-			vnx = vnx.left
-		} else if res > 0 {
-			vnx = vnx.right
-		} else /* res == 0 */ {
-			// Replace by default
-			vnx.vptr = &val
-			return
+	if node.root.isNilLeaf() {
+		node.root = &xNode[V]{
+			vptr: &val,
+		}
+		atomic.AddInt64(&node.count, 1)
+		return
+	}
+
+	var x, y *xNode[V] = node.root, nil
+	for !x.isNilLeaf() {
+		y = x
+		res := node.vcmp(val, *x.vptr)
+		if /* Equal */ res == 0 {
+			break
+		} else /* Less */ if res < 0 {
+			x = x.left
+		} else /* Greater */ {
+			x = x.right
 		}
 	}
-	node.rbtreeInsert(vny, val)
-}
 
-func (node *xConcSklNode[K, V]) rbtreeInsert(vn *xNode[V], val V) {
+	// assert y != nil
+	var z *xNode[V]
+	res := node.vcmp(val, *y.vptr)
+	if /* Equal */ res == 0 {
+		y.vptr = &val
+		return
+	} else /* Less */ if res < 0 {
+		z = &xNode[V]{
+			vptr:   &val,
+			color:  red,
+			parent: y,
+		}
+		y.left = z
+	} else /* Greater */ {
+		z = &xNode[V]{
+			vptr:   &val,
+			color:  red,
+			parent: y,
+		}
+		y.right = z
+	}
 
-	//nvn := &xNode[V]{
-	//	vptr:    &val,
-	//	color:  red,
-	//	parent: vny,
-	//	left:   node.nilLeafNode,
-	//	right:  node.nilLeafNode,
-	//}
-	//
-	//if node.rbtreeIsRoot(nvn) {
-	//	node.root = nvn
-	//	nvn.color = black
-	//	atomic.AddInt64(&node.count, 1)
-	//	return
-	//} else if res := node.vcmp(val, *vny.val); res < 0 {
-	//	if vny.left == node.nilLeafNode {
-	//		vny.left = nvn
-	//	} else {
-	//
-	//	}
-	//} else /* res > 0 */ {
-	//	vny.right = nvn
-	//}
-	//
-	//node.rbtreePostInsertBalance(nvn)
-	//atomic.AddInt64(&node.count, 1)
+	atomic.AddInt64(&node.count, 1)
+	node.rbPostInsertBalance(z)
 }
 
 // New node color is red by default.
 // Color adjust from the bottom-up.
-func (node *xConcSklNode[K, V]) rbtreePostInsertBalance(nvn *xNode[V]) {
-	var aux *xNode[V] = nil
-	for nvn.parent.color == red {
-		if nvn.parent == nvn.parent.parent.left {
-			// New node parent is the left subtree
-			aux = nvn.parent.parent.right // uncle node
-			if aux.color == red {
-				// black (father) <-- <left> -- red (grandfather) -- <right> --> (uncle) black
-				aux.color = black             // uncle node
-				nvn.parent.color = black      // father node
-				nvn.parent.parent.color = red // grandfather node
-				nvn = nvn.parent.parent       // backtrack to grandfather node and repaint
-			} else {
-				// uncle node is black.
-				// Height balance
-				if nvn == nvn.parent.right {
-					// case 1: New node is the opposite direction as parent
-					// [] is black, <> is red
-					//      [G]                 [G]
-					//      / \    rotate(P)    / \
-					//    <P> [U]  ========>  <N> [U]
-					//      \                 /
-					//      <N>             <P>
-					nvn = nvn.parent
-					node.rbtreeLeftRotate(nvn)
-				}
-				// case 2: New node is the same direction as parent
-				// [] is black, <> is red
-				//        [G]                      <P>                 [P]
-				//        / \    rightRotate(G)    / \     repaint     / \
-				//      <P> [U]  ========>       <N> [G]   ======>   <N> <G>
-				//      /                              \                   \
-				//    <N>                              [U]                 [U]
-				nvn.parent.color = black      // father node
-				nvn.parent.parent.color = red // grandfather node
-				// Backtrack to adjust the grandfather node's height
-				node.rbtreeRightRotate(nvn.parent.parent)
-			}
-		} else if nvn.parent == nvn.parent.parent.right {
-			// New node parent is the right subtree
-			// Check left subtree of grandfather node.
-			aux = nvn.parent.parent.left // uncle node
-			if aux.color == red {
-				// black (uncle) <-- <left> -- red (grandfather) -- <right> --> (father) black
-				aux.color = black             // uncle node
-				nvn.parent.color = black      // father node
-				nvn.parent.parent.color = red // grandfather node
-				nvn = nvn.parent.parent       // backtrack to grandfather node and repaint
-			} else {
-				// uncle node is black.
-				// Do height balance.
-				if nvn == nvn.parent.left {
-					// case 1: New node is the opposite direction as parent
-					// [] is black, <> is red
-					//      [G]                 [G]
-					//      / \    rotate(P)    / \
-					//    [U] <P>  ========>  [U] <N>
-					//        /                     \
-					//      <N>                     <P>
-					nvn = nvn.parent
-					// Here will change the grandfather node
-					node.rbtreeRightRotate(nvn)
-				}
-				// case 2: New node is the same direction as parent
-				// [] is black, <> is red
-				//        [G]                     <P>                [P]
-				//        / \    leftRotate(G)    / \    repaint     / \
-				//      [U] <P>  ========>      [G] <N>  ======>   <G> <N>
-				//            \                 /                  /
-				//            <N>             [U]                [U]
-				nvn.parent.color = black      // father node
-				nvn.parent.parent.color = red // grandfather node
-				// Backtrack to adjust the grandfather node's height
-				node.rbtreeLeftRotate(nvn.parent.parent)
-			}
+func (node *xConcSklNode[K, V]) rbPostInsertBalance(x *xNode[V]) {
+	if x.isRoot() || x.parent.isBlack() {
+		return
+	}
+	if x.parent.isRoot() {
+		if x.parent.isRed() {
+			x.parent.color = black
 		}
+		return
+	}
 
-		if nvn == node.root {
-			break
+	//        [G]             <G>
+	//        / \             / \
+	//      <P> <U>  ====>  [P] [U]
+	//      /               /
+	//    <X>             <X>
+	if x.hasUncle() && x.uncle().isRed() {
+		x.parent.color = black
+		x.uncle().color = black
+		gp := x.grandpa()
+		gp.color = red
+		node.rbPostInsertBalance(gp) // tail recursive
+	} else {
+		if !x.hasUncle() || x.uncle().isBlack() {
+			//      [G]                 [G]
+			//      / \    rotate(P)    / \
+			//    <P> [U]  ========>  <X> [U]
+			//      \                 /
+			//      <X>             <P>
+			dir := x.direction()
+			if dir != x.parent.direction() {
+				p := x.parent
+				if dir == left {
+					node.rbRightRotate(p)
+				} else /* Right */ {
+					node.rbLeftRotate(p)
+				}
+				x = p
+			}
+			//        [G]                 <P>               [P]
+			//        / \    rotate(G)    / \    repaint    / \
+			//      <P> [U]  ========>  <X> [G]  ======>  <X> <G>
+			//      /                         \                 \
+			//    <X>                         [U]               [U]
+			dir = x.parent.direction()
+			if dir == left {
+				node.rbRightRotate(x.grandpa())
+			} else /* Right */ {
+				node.rbLeftRotate(x.grandpa())
+			}
+
+			x.parent.color = black
+			x.sibling().color = red
+			return
 		}
 	}
-	node.root.color = black
 }
 
-func (node *xConcSklNode[K, V]) rbtreeMinimum(vn *xNode[V]) *xNode[V] {
-	aux := vn
-	for aux.left != node.nilLeafNode {
+func (node *xConcSklNode[K, V]) rbtreeMinimum(x *xNode[V]) *xNode[V] {
+	aux := x
+	for aux != nil && aux.left != nil {
 		aux = aux.left
 	}
 	return aux
 }
 
-func (node *xConcSklNode[K, V]) rbtreeMaximum(vn *xNode[V]) *xNode[V] {
-	aux := vn
-	for aux.right != node.nilLeafNode {
+func (node *xConcSklNode[K, V]) rbtreeMaximum(x *xNode[V]) *xNode[V] {
+	aux := x
+	for aux != nil && aux.right != nil {
 		aux = aux.right
 	}
 	return aux
 }
 
-func (node *xConcSklNode[K, V]) rbtreeIsRoot(vn *xNode[V]) bool {
-	return vn.parent == node.nilLeafNode || vn == node.root
-}
-
 // The successor node of the current node is its next node in sorted order.
-func (node *xConcSklNode[K, V]) rbtreeSucc(vn *xNode[V]) *xNode[V] {
-	aux := vn
-	if aux.right != node.nilLeafNode {
+func (node *xConcSklNode[K, V]) rbtreeSucc(x *xNode[V]) *xNode[V] {
+	if x == nil {
+		return nil
+	}
+
+	aux := x
+	if aux.right != nil {
 		return node.rbtreeMinimum(aux.right)
 	}
 
-	aux = vn.parent
-	// Backtrack to father node that is the vn's successor.
-	for aux != node.nilLeafNode && vn == aux.right {
-		vn = aux
+	aux = x.parent
+	// Backtrack to father node that is the x's successor.
+	for aux != nil && x == aux.right {
+		x = aux
 		aux = aux.parent
 	}
 	return aux
 }
 
 // The predecessor node of the current node is its previous node in sorted order
-func (node *xConcSklNode[K, V]) rbtreePred(vn *xNode[V]) *xNode[V] {
-	aux := vn
-	if aux.left != node.nilLeafNode {
+func (node *xConcSklNode[K, V]) rbtreePred(x *xNode[V]) *xNode[V] {
+	if x == nil {
+		return nil
+	}
+	aux := x
+	if aux.left != nil {
 		return node.rbtreeMaximum(aux.left)
 	}
 
-	aux = vn.parent
-	// Backtrack to father node that is the vn's predecessor.
-	for aux != node.nilLeafNode && vn == aux.left {
-		vn = aux
+	aux = x.parent
+	// Backtrack to father node that is the x's predecessor.
+	for aux != nil && x == aux.left {
+		x = aux
 		aux = aux.parent
 	}
 	return aux
 }
 
-func (node *xConcSklNode[K, V]) rbtreeSibling(vn *xNode[V]) *xNode[V] {
-	if node.rbtreeIsRoot(vn) {
-		return node.nilLeafNode
-	} else if vn == vn.parent.left {
-		return vn.parent.right
-	}
-	/* vn == vn.parent.right */
-	return vn.parent.left
-}
-
-func (node *xConcSklNode[K, V]) rbtreeHasSibling(vn *xNode[V]) bool {
-	return !node.rbtreeIsRoot(vn) && node.rbtreeSibling(vn) != node.nilLeafNode
-}
-
-func (node *xConcSklNode[K, V]) rbtreeNodeDirection(vn *xNode[V]) vNodeDirection {
-	if node.rbtreeIsRoot(vn) {
-		return root
-	} else if vn == vn.parent.left {
-		return left
-	}
-	/* vn == vn.parent.right */
-	return right
-}
-
-func (node *xConcSklNode[K, V]) rbtreeRemove(val V) error {
+func (node *xConcSklNode[K, V]) rbRemove(val V) error {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return errors.New("empty rbtree")
 	}
-	vnz := node.rbtreeSearch(node.root, func(vn *xNode[V]) int64 {
+	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
 		return node.vcmp(val, *vn.vptr)
 	})
-	if vnz == nil || vnz == node.nilLeafNode {
+	if z == nil {
 		return errors.New("not exists")
 	}
-	var vny = node.nilLeafNode
+	var y *xNode[V] = nil
 
-	// Found vnz is the remove target node
-	// case 1: vnz is the root node of rbtree, remove directly
-	if vnz.parent == node.nilLeafNode {
-		node.root = node.nilLeafNode
-		vnz.left = nil
-		vnz.right = nil
+	// Found z is the remove target node
+	// case 1: z is the root node of rbtree, remove directly
+	if z.isRoot() {
+		node.root = nil
+		z.left = nil
+		z.right = nil
 		atomic.AddInt64(&node.count, -1)
 		return nil
 	}
 
-	vny = vnz
-	// case 2: vny contains 2 not nil leaf node
-	if vny.left != node.nilLeafNode && vny.right != node.nilLeafNode {
+	y = z
+	// case 2: y contains 2 not nil leaf node
+	if !y.left.isNilLeaf() && !y.right.isNilLeaf() {
 		// Find the successor then swap value only
 		//     |                    |
 		//     N                    S
@@ -507,92 +504,92 @@ func (node *xConcSklNode[K, V]) rbtreeRemove(val V) error {
 		//       P                    P
 		//      / \                  / \
 		//     S  ..                N  ..
-		vny = node.rbtreeSucc(vnz)
+		y = node.rbtreeSucc(z)
 		// Swap value only.
-		vnz.vptr = vny.vptr
+		z.vptr = y.vptr
 	}
 
-	// case 3: vny is a leaf node.
-	if vny.left == node.nilLeafNode && vny.right == node.nilLeafNode {
-		if vny.color == black {
-			node.rbtreeRemoveBalance(vny)
-			if vny == vny.parent.left {
-				vny.parent.left = node.nilLeafNode
-			} else /* vny == vny.parent.right */ {
-				vny.parent.right = node.nilLeafNode
+	// case 3: y is a leaf node.
+	if y.left.isNilLeaf() && y.right.isNilLeaf() {
+		if y.color == black {
+			node.rbRemoveBalance(y)
+			if y == y.parent.left {
+				y.parent.left = nil
+			} else /* y == y.parent.right */ {
+				y.parent.right = nil
 			}
-		} else if vny.color == red {
+		} else if y.color == red {
 			// Leaf red node, remove directly.
-			if vny == vny.parent.left {
-				vny.parent.left = node.nilLeafNode
-			} else if vny == vny.parent.right {
-				vny.parent.right = node.nilLeafNode
+			if y == y.parent.left {
+				y.parent.left = nil
+			} else if y == y.parent.right {
+				y.parent.right = nil
 			}
 			atomic.AddInt64(&node.count, -1)
 			return nil
 		}
-	} else /* vny.left != node.nilLeafNode || vny.right != node.nilLeafNode */ {
-		// case 4: vny is not a leaf node.
-		var rvn = node.nilLeafNode
-		if vny.left != node.nilLeafNode {
-			rvn = vny.left // Maybe a red node
-		} else /* vny.right != node.nilLeafNode */ {
-			rvn = vny.right // Maybe a red node
+	} else {
+		// case 4: y is not a leaf node.
+		var r *xNode[V] = nil
+		if !y.left.isNilLeaf() {
+			r = y.left // Maybe a red node
+		} else /* !y.right.isNilLeaf() */ {
+			r = y.right // Maybe a red node
 		}
-		if vny.parent == node.nilLeafNode {
+		if y.isRoot() {
 			// Root node of rbtree
-			node.root = rvn
-		} else if vny == vny.parent.left {
-			vny.parent.left = rvn
-			rvn.parent = vny.parent
-		} else /* vny == vny.parent.right */ {
-			vny.parent.right = rvn
-			rvn.parent = vny.parent
+			node.root = r
+		} else if y == y.parent.left {
+			y.parent.left = r
+			r.parent = y.parent
+		} else /* y == y.parent.right */ {
+			y.parent.right = r
+			r.parent = y.parent
 		}
 
-		if vny.color == black {
-			if rvn.color == red {
-				rvn.color = black
+		if y.color == black {
+			if r.color == red {
+				r.color = black
 			} else {
-				node.rbtreeRemoveBalance(rvn)
+				node.rbRemoveBalance(r)
 			}
 		}
 	}
 
-	vny.parent = nil
-	vny.left = nil
-	vny.right = nil
+	y.parent = nil
+	y.left = nil
+	y.right = nil
 
 	// If it is red, directly remove is okay.
 	atomic.AddInt64(&node.count, -1)
 	return nil
 }
 
-func (node *xConcSklNode[K, V]) rbtreeRemoveByPred(val V) (*xNode[V], error) {
+func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return nil, errors.New("empty rbtree")
 	}
-	vnz := node.rbtreeSearch(node.root, func(vn *xNode[V]) int64 {
+	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
 		return node.vcmp(val, *vn.vptr)
 	})
-	if vnz == nil || vnz == node.nilLeafNode {
+	if z == nil {
 		return nil, errors.New("not exists")
 	}
-	var vny = node.nilLeafNode
+	var y *xNode[V] = nil
 
-	// Found vnz is the remove target node
-	// case 1: vnz is the root node of rbtree, remove directly
-	if vnz.parent == node.nilLeafNode {
-		node.root = node.nilLeafNode
-		vnz.left = nil
-		vnz.right = nil
+	// Found z is the remove target node
+	// case 1: z is the root node of rbtree, remove directly
+	if z.isRoot() {
+		node.root = nil
+		z.left = nil
+		z.right = nil
 		atomic.AddInt64(&node.count, -1)
-		return vnz, nil
+		return z, nil
 	}
 
-	vny = vnz
-	// case 2: vny contains 2 not nil leaf node
-	if vny.left != node.nilLeafNode && vny.right != node.nilLeafNode {
+	y = z
+	// case 2: y contains 2 not nil leaf node
+	if !y.left.isNilLeaf() && !y.right.isNilLeaf() {
 		// Find the predecessor then swap value only
 		//     |                    |
 		//     N                    L
@@ -602,86 +599,86 @@ func (node *xConcSklNode[K, V]) rbtreeRemoveByPred(val V) (*xNode[V], error) {
 		//       P                    P
 		//      / \                  / \
 		//     S  ..                S  ..
-		vny = node.rbtreePred(vnz)
+		y = node.rbtreePred(z)
 		// Swap value only.
-		slog.Info("before swap", "old vnz", *vnz.vptr, "new vny", *vny.vptr)
-		vnz.vptr = vny.vptr
+		slog.Info("before swap", "old z", *z.vptr, "new y", *y.vptr)
+		z.vptr = y.vptr
 	}
 
-	// case 3: vny is a leaf node.
-	if vny.left == node.nilLeafNode && vny.right == node.nilLeafNode {
-		if vny.color == black {
-			node.rbtreeRemoveBalance(vny)
-			if vny == vny.parent.left {
-				vny.parent.left = node.nilLeafNode
-			} else /* vny == vny.parent.right */ {
-				vny.parent.right = node.nilLeafNode
+	// case 3: y is a leaf node.
+	if y.left.isNilLeaf() && y.right.isNilLeaf() {
+		if y.isBlack() {
+			node.rbRemoveBalance(y)
+			if y == y.parent.left {
+				y.parent.left = nil
+			} else /* y == y.parent.right */ {
+				y.parent.right = nil
 			}
-		} else if vny.color == red {
+		} else if y.isRed() {
 			// Leaf red node, remove directly.
-			if vny == vny.parent.left {
-				vny.parent.left = node.nilLeafNode
-			} else if vny == vny.parent.right {
-				vny.parent.right = node.nilLeafNode
+			if y == y.parent.left {
+				y.parent.left = nil
+			} else if y == y.parent.right {
+				y.parent.right = nil
 			}
 			atomic.AddInt64(&node.count, -1)
-			return vny, nil
+			return y, nil
 		}
-	} else /* vny.left != node.nilLeafNode || vny.right != node.nilLeafNode */ {
-		// case 4: vny is not a leaf node.
-		var rvn = node.nilLeafNode
-		if vny.right != node.nilLeafNode {
-			rvn = vny.right // Maybe a red node
-		} else /* vny.left != node.nilLeafNode */ {
-			rvn = vny.right // Maybe a red node
+	} else {
+		// case 4: y is not a leaf node.
+		var rvn *xNode[V] = nil
+		if !y.right.isNilLeaf() {
+			rvn = y.right // Maybe a red node
+		} else if !y.left.isNilLeaf() {
+			rvn = y.right // Maybe a red node
 		}
-		if vny.parent == node.nilLeafNode {
+		if y.isRoot() {
 			// Root node of rbtree
 			node.root = rvn
-		} else if vny == vny.parent.left {
-			vny.parent.left = rvn
-			rvn.parent = vny.parent
-		} else /* vny == vny.parent.right */ {
-			vny.parent.right = rvn
-			rvn.parent = vny.parent
+		} else if y == y.parent.left {
+			y.parent.left = rvn
+			rvn.parent = y.parent
+		} else /* y == y.parent.right */ {
+			y.parent.right = rvn
+			rvn.parent = y.parent
 		}
 
-		if vny.color == black {
+		if y.color == black {
 			if rvn.color == red {
 				rvn.color = black
 			} else {
-				node.rbtreeRemoveBalance(rvn)
+				node.rbRemoveBalance(rvn)
 			}
 		}
 	}
 
 	// Unlink node
-	if vny == vny.parent.left {
-		vny.parent.left = node.nilLeafNode
-	} else if vny == vny.parent.right {
-		vny.parent.right = node.nilLeafNode
+	if y == y.parent.left {
+		y.parent.left = nil
+	} else if y == y.parent.right {
+		y.parent.right = nil
 	}
 
-	vny.parent = nil
-	vny.left = nil
-	vny.right = nil
+	y.parent = nil
+	y.left = nil
+	y.right = nil
 
 	// If it is red, directly remove is okay.
 	atomic.AddInt64(&node.count, -1)
-	return vny, nil
+	return y, nil
 }
 
-func (node *xConcSklNode[K, V]) rbtreeRemoveBalance(vn *xNode[V]) {
-	if vn.parent == node.nilLeafNode {
+func (node *xConcSklNode[K, V]) rbRemoveBalance(x *xNode[V]) {
+	if x.parent == nil {
 		// Backtrack to root node
 		return
 	}
 
-	sibling := node.rbtreeSibling(vn)
-	vnDir := node.rbtreeNodeDirection(vn)
-	if sibling.color == red {
-		// case 1: vn's sibling node is red
-		if vnDir == left {
+	sibling := x.sibling()
+	dir := x.direction()
+	if sibling.isRed() {
+		// case 1: x's sibling node is red
+		if dir == left {
 			// [] is black, <> is red
 			//     |                     |
 			//    [P]                   [S]
@@ -690,35 +687,35 @@ func (node *xConcSklNode[K, V]) rbtreeRemoveBalance(vn *xNode[V]) {
 			//      /  \   =======>  /  \
 			//    [Sl] [Sr]        [N]  [Sl]
 			// rotate father node
-			node.rbtreeLeftRotate(vn.parent)
-		} else if vnDir == right {
-			node.rbtreeRightRotate(vn.parent)
+			node.rbLeftRotate(x.parent)
+		} else if dir == right {
+			node.rbRightRotate(x.parent)
 		}
 		sibling.color = black
-		vn.parent.color = red
-		sibling = node.rbtreeSibling(vn)
+		x.parent.color = red
+		sibling = x.sibling()
 	}
 
-	var slvn, srvn = node.nilLeafNode, node.nilLeafNode
-	if vnDir == left {
-		slvn = sibling.left
-		srvn = sibling.right
-	} else if vnDir == right {
-		slvn = sibling.right
-		srvn = sibling.left
+	var sc, sd *xNode[V] = nil, nil
+	if dir == left {
+		sc = sibling.left
+		sd = sibling.right
+	} else if dir == right {
+		sc = sibling.right
+		sd = sibling.left
 	}
 
 	// sibling must be black
 
-	if slvn.color == black && srvn.color == black {
-		if vn.parent.color == red {
+	if sc.color == black && sd.color == black {
+		if x.parent.color == red {
 			//      <P>             [P]
 			//      / \             / \
 			//    [N] [S]  ====>  [N] <S>
 			//        / \             / \
 			//     [Sl] [Sr]       [Sl] [Sr]
 			sibling.color = red
-			vn.parent.color = black
+			x.parent.color = black
 			return
 		}
 		//      [P]             [P]
@@ -727,11 +724,11 @@ func (node *xConcSklNode[K, V]) rbtreeRemoveBalance(vn *xNode[V]) {
 		//        / \             / \
 		//      [C] [D]         [C] [D]
 		sibling.color = red
-		node.rbtreeRemoveBalance(vn.parent)
+		node.rbRemoveBalance(x.parent)
 		return
 	} else {
-		if slvn != node.nilLeafNode && slvn.color == red {
-			if vnDir == left {
+		if !sc.isNilLeaf() && sc.isRed() {
+			if dir == left {
 				//                            {P}                {P}
 				//      {P}                   / \                / \
 				//      / \    r-rotate(S)  [N] <Sl>   repaint  [N] [Sl]
@@ -739,48 +736,49 @@ func (node *xConcSklNode[K, V]) rbtreeRemoveBalance(vn *xNode[V]) {
 				//        / \                     [S]                <S>
 				//     <Sl> [Sr]                    \                  \
 				//                                  [Sr]                [Sr]
-				node.rbtreeRightRotate(sibling)
-			} else if vnDir == right {
-				node.rbtreeLeftRotate(sibling)
+				node.rbRightRotate(sibling)
+			} else if dir == right {
+				node.rbLeftRotate(sibling)
 			}
-			slvn.color = black
+			sc.color = black
 			sibling.color = red
-			sibling = node.rbtreeSibling(vn)
+			sibling = x.sibling()
 
-			if vnDir == left {
-				slvn = sibling.left
-				srvn = sibling.right
-			} else if vnDir == right {
-				slvn = sibling.right
-				srvn = sibling.left
+			if dir == left {
+				sc = sibling.left
+				sd = sibling.right
+			} else if dir == right {
+				sc = sibling.right
+				sd = sibling.left
 			}
 		}
 
-		if vnDir == left {
+		if dir == left {
 			//      {P}                   [S]
 			//      / \    l-rotate(P)    / \
 			//    [N] [S]  ==========>  {P} <D>
 			//        / \               / \
 			//      [C] <D>           [N] [C]
-			node.rbtreeLeftRotate(vn.parent)
-		} else if vnDir == right {
-			node.rbtreeRightRotate(vn.parent)
+			node.rbLeftRotate(x.parent)
+		} else if dir == right {
+			node.rbRightRotate(x.parent)
 		}
-		sibling.color = vn.parent.color
-		vn.parent.color = black
-		if srvn != node.nilLeafNode {
-			srvn.color = black
+		sibling.color = x.parent.color
+		x.parent.color = black
+		if !sd.isNilLeaf() {
+			sd.color = black
 		}
 		return
 	}
 }
 
-func (node *xConcSklNode[K, V]) rbtreeSearch(vn *xNode[V], fn func(*xNode[V]) int64) *xNode[V] {
-	if vn == nil || vn == node.nilLeafNode {
-		return node.nilLeafNode
+func (node *xConcSklNode[K, V]) rbSearch(x *xNode[V], fn func(*xNode[V]) int64) *xNode[V] {
+	if x == nil {
+		return nil
 	}
-	aux := vn
-	for aux != node.nilLeafNode {
+
+	aux := x
+	for aux != nil {
 		res := fn(aux)
 		if res == 0 {
 			return aux
@@ -790,20 +788,20 @@ func (node *xConcSklNode[K, V]) rbtreeSearch(vn *xNode[V], fn func(*xNode[V]) in
 			aux = aux.left
 		}
 	}
-	return node.nilLeafNode
+	return nil
 }
 
-func (node *xConcSklNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, color color, val V) bool) {
+func (node *xConcSklNode[K, V]) rbPreorderTraversal(fn func(idx int64, color color, val V) bool) {
 	size := atomic.LoadInt64(&node.count)
 	aux := node.root
-	if size < 0 || aux == nil || aux == node.nilLeafNode {
+	if size < 0 || aux == nil {
 		return
 	}
 	stack := make([]*xNode[V], 0, size>>1)
 	defer func() {
 		clear(stack)
 	}()
-	for aux != node.nilLeafNode {
+	for aux != nil {
 		stack = append(stack, aux)
 		aux = aux.left
 	}
@@ -816,9 +814,9 @@ func (node *xConcSklNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, color
 		}
 		idx++
 		stack = stack[:size-1]
-		if aux.right != node.nilLeafNode {
+		if aux.right != nil {
 			aux = aux.right
-			for aux != node.nilLeafNode {
+			for aux != nil {
 				stack = append(stack, aux)
 				aux = aux.left
 			}
@@ -840,7 +838,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	val V,
 	lvl int32,
 	mu mutexImpl,
-	typ vNodeType,
+	typ xNodeType,
 	cmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node := &xConcSklNode[K, V]{
@@ -863,11 +861,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 			},
 		}
 	case rbtree:
-		node.nilLeafNode = &xNode[V]{
-			color: black,
-		}
-		node.root = node.nilLeafNode
-		node.rbtreeInsertIfNotPresent(val)
+		node.rbInsert(val)
 	default:
 		panic("unknown v-node type")
 	}
@@ -875,7 +869,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	return node
 }
 
-func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNodeType) *xConcSklNode[K, V] {
+func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ xNodeType) *xConcSklNode[K, V] {
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: xSkipListMaxLevel,

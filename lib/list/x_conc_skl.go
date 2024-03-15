@@ -39,8 +39,8 @@ func (skl *xConcSkl[K, V]) loadMutexImpl() mutexImpl {
 	return mutexImpl(skl.flags.atomicLoadBits(sklMutexImplBits))
 }
 
-func (skl *xConcSkl[K, V]) loadVNodeType() vNodeType {
-	return vNodeType(skl.flags.atomicLoadBits(sklVNodeTypeBits))
+func (skl *xConcSkl[K, V]) loadVNodeType() xNodeType {
+	return xNodeType(skl.flags.atomicLoadBits(sklVNodeTypeBits))
 }
 
 func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
@@ -198,7 +198,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 				return forward.key
 			}
 			item.valFn = func() V {
-				vn := forward.loadVNode()
+				vn := forward.loadXNode()
 				if vn == nil {
 					return *new(V)
 				}
@@ -225,7 +225,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 			item.keyFn = func() K {
 				return forward.key
 			}
-			for vn := forward.loadVNode().parent; vn != nil; vn = vn.parent {
+			for vn := forward.loadXNode().parent; vn != nil; vn = vn.parent {
 				item.valFn = func() V {
 					return *vn.vptr
 				}
@@ -261,10 +261,10 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 			if nIdx.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) {
 				switch typ {
 				case unique:
-					vn := nIdx.loadVNode()
+					vn := nIdx.loadXNode()
 					return *vn.vptr, true
 				case linkedList:
-					vn := nIdx.loadVNode()
+					vn := nIdx.loadXNode()
 					return *vn.parent.vptr, true
 				case rbtree:
 					// TODO
@@ -381,7 +381,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 
 				ele = &xSkipListElement[K, V]{
 					key: key,
-					val: *rmTarget.loadVNode().vptr,
+					val: *rmTarget.loadXNode().vptr,
 				}
 				atomic.AddInt64(&rmTarget.count, -1)
 				atomic.AddInt64(&skl.len, -1)
