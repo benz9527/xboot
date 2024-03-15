@@ -118,28 +118,28 @@ type SkipList[W infra.OrderedKey, O comparable] interface {
 	Insert(weight W, object O) (SkipListNode[W, O], bool)
 	RemoveFirst(weight W) SkipListElement[W, O]
 	RemoveAll(weight W) []SkipListElement[W, O]
-	RemoveIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O]
+	RemoveIfMatch(weight W, cmp SklObjMatcher[O]) []SkipListElement[W, O]
 	FindFirst(weight W) SkipListElement[W, O]
 	FindAll(weight W) []SkipListElement[W, O]
-	FindIfMatch(weight W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O]
+	FindIfMatch(weight W, cmp SklObjMatcher[O]) []SkipListElement[W, O]
 	PopHead() SkipListElement[W, O]
 }
 
-// SkipListWeightComparator
+// SklWeightComparator
 // Assume j is the key of the new element.
 //  1. i == j (i-j == 0, return 0), contains the same element.
 //     If insert a new element, we have to linear probe the next position that can be inserted.
 //  2. i > j (i-j > 0, return 1), find left part.
 //  3. i < j (i-j < 0, return -1), find right part.
-type SkipListWeightComparator[W SkipListWeight] func(i, j W) int
+type SklWeightComparator[W SkipListWeight] func(i, j W) int
 
-type SkipListValueComparator[V comparable] func(i, j V) int64
+type SklValComparator[V comparable] func(i, j V) int64
 
-// SkipListObjectMatcher
+// SklObjMatcher
 // return true, if val is satisfied the query condition.
 // return false is used to find predecessor, for the reason that those same key elements
 //
 //	need to do iteration.
-type SkipListObjectMatcher[O comparable] func(obj O) bool
+type SklObjMatcher[O comparable] func(obj O) bool
 
-type SkipListRand func(maxLevel int, currentElements int32) int32
+type SklRand func(maxLevel int, currentElements int32) int32

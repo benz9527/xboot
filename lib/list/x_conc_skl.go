@@ -24,10 +24,10 @@ const (
 
 type xConcSkl[K infra.OrderedKey, V comparable] struct {
 	head    *xConcSklNode[K, V]
-	pool    *xConcSkipListPool[K, V]
+	pool    *xConcSklPool[K, V]
 	kcmp    infra.OrderedKeyComparator[K]
-	vcmp    SkipListValueComparator[V]
-	rand    SkipListRand
+	vcmp    SklValComparator[V]
+	rand    SklRand
 	idGen   id.Generator
 	flags   flagBits
 	len     int64  // skip-list's node size
@@ -505,7 +505,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 	return nil, errors.New("others unknown reasons")
 }
 
-func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SkipListWeightComparator[K], rand SkipListRand) *xConcSkl[K, V] {
+func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SklWeightComparator[K], rand SklRand) *xConcSkl[K, V] {
 	//h := newXConcSklHead[K, V]()
 	//h.flags.atomicSet(nodeFullyLinkedBit)
 	//return &xConcSkl[K, V]{
@@ -525,12 +525,12 @@ func maxHeight(i, j int32) int32 {
 	return j
 }
 
-type xConcSkipListPool[K infra.OrderedKey, V comparable] struct {
+type xConcSklPool[K infra.OrderedKey, V comparable] struct {
 	auxPool *sync.Pool
 }
 
-func newXConcSkipListPool[K infra.OrderedKey, V comparable]() *xConcSkipListPool[K, V] {
-	p := &xConcSkipListPool[K, V]{
+func newXConcSklPool[K infra.OrderedKey, V comparable]() *xConcSklPool[K, V] {
+	p := &xConcSklPool[K, V]{
 		auxPool: &sync.Pool{
 			New: func() any {
 				return make(xConcSklAux[K, V], 2*xSkipListMaxLevel)
@@ -540,11 +540,11 @@ func newXConcSkipListPool[K infra.OrderedKey, V comparable]() *xConcSkipListPool
 	return p
 }
 
-func (p *xConcSkipListPool[K, V]) loadAux() xConcSklAux[K, V] {
+func (p *xConcSklPool[K, V]) loadAux() xConcSklAux[K, V] {
 	return p.auxPool.Get().(xConcSklAux[K, V])
 }
 
-func (p *xConcSkipListPool[K, V]) releaseAux(aux xConcSklAux[K, V]) {
+func (p *xConcSklPool[K, V]) releaseAux(aux xConcSklAux[K, V]) {
 	// Override only
 	p.auxPool.Put(aux)
 }

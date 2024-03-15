@@ -68,7 +68,7 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	root        *xNode[V]
 	nilLeafNode *xNode[V] // Only for rbtree
 	key         K
-	vcmp        SkipListValueComparator[V]
+	vcmp        SklValComparator[V]
 	indexes     xConcSklIndices[K, V]
 	mu          segmentedMutex
 	flags       flagBits
@@ -841,7 +841,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	lvl int32,
 	mu mutexImpl,
 	typ vNodeType,
-	cmp SkipListValueComparator[V],
+	cmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node := &xConcSklNode[K, V]{
 		key:   key,

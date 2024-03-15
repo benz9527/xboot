@@ -142,8 +142,8 @@ const (
 //
 //// This is a sentinel node and used to point to nodes in memory.
 //type xSkipList[W SkipListWeight, O HashObject] struct {
-//	cmp          SkipListWeightComparator[W]
-//	rand         SkipListRand
+//	cmp          SklWeightComparator[W]
+//	rand         SklRand
 //	traversePool *sync.Pool
 //	// The sentinel node.
 //	// The head.levels[0].successor is the first data node of skip-list.
@@ -352,7 +352,7 @@ const (
 //	return elements
 //}
 //
-//func (skl *xSkipList[W, O]) RemoveIfMatch(key W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
+//func (skl *xSkipList[W, O]) RemoveIfMatch(key W, cmp SklObjMatcher[O]) []SkipListElement[W, O] {
 //	predecessor, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -408,7 +408,7 @@ const (
 //	return elements
 //}
 //
-//func (skl *xSkipList[W, O]) FindIfMatch(key W, cmp SkipListObjectMatcher[O]) []SkipListElement[W, O] {
+//func (skl *xSkipList[W, O]) FindIfMatch(key W, cmp SklObjMatcher[O]) []SkipListElement[W, O] {
 //	predecessor, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -458,7 +458,7 @@ const (
 //	skl.traversePool = nil
 //}
 //
-//func NewXSkipList[W SkipListWeight, O HashObject](cmp SkipListWeightComparator[W], rand SkipListRand) SkipList[W, O] {
+//func NewXSkipList[W SkipListWeight, O HashObject](cmp SklWeightComparator[W], rand SklRand) SkipList[W, O] {
 //	if cmp == nil || rand == nil {
 //		panic("empty inner core function to new x-skip-list")
 //	}
