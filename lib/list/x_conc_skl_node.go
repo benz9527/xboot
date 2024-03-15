@@ -571,15 +571,15 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 	return nil
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) error {
+func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) (*vNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
-		return errors.New("empty rbtree")
+		return nil, errors.New("empty rbtree")
 	}
 	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
 		return node.vcmp(val, *vn.val)
 	})
 	if vnz == nil || vnz == node.nilLeafNode {
-		return errors.New("not exists")
+		return nil, errors.New("not exists")
 	}
 	var vny = node.nilLeafNode
 
@@ -590,7 +590,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) error {
 		vnz.left = nil
 		vnz.right = nil
 		atomic.AddInt64(&node.count, -1)
-		return nil
+		return vnz, nil
 	}
 
 	vny = vnz
@@ -627,7 +627,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) error {
 				vny.parent.right = node.nilLeafNode
 			}
 			atomic.AddInt64(&node.count, -1)
-			return nil
+			return vny, nil
 		}
 	} else /* vny.left != node.nilLeafNode || vny.right != node.nilLeafNode */ {
 		// case 4: vny is not a leaf node.
@@ -663,7 +663,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) error {
 
 	// If it is red, directly remove is okay.
 	atomic.AddInt64(&node.count, -1)
-	return nil
+	return vny, nil
 }
 
 func (node *xConcSkipListNode[K, V]) rbtreeRemoveBalance(vn *vNode[V]) {

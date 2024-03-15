@@ -211,7 +211,7 @@ func TestRbtree(t *testing.T) {
 		return true
 	})
 	t.Log("delete 5")
-	err := node.rbtreeRemoveByPred(5)
+	_, err := node.rbtreeRemoveByPred(5)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {false, 1}, {false, 2}, {false, 3},
@@ -225,7 +225,7 @@ func TestRbtree(t *testing.T) {
 	})
 
 	t.Log("delete 1")
-	err = node.rbtreeRemoveByPred(1)
+	_, err = node.rbtreeRemoveByPred(1)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {true, 2}, {false, 3},
@@ -239,7 +239,7 @@ func TestRbtree(t *testing.T) {
 	})
 
 	t.Log("delete 7")
-	err = node.rbtreeRemoveByPred(7)
+	_, err = node.rbtreeRemoveByPred(7)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {true, 2}, {false, 3},
@@ -309,7 +309,8 @@ func TestRandomInsertAndRemoveRbtree(t *testing.T) {
 	}
 	t.Log("insert okay2")
 	for i := uint64(0); i < removeTotal; i++ {
-		_ = node.rbtreeRemoveByPred(removeElements[i])
+		vn, err := node.rbtreeRemoveByPred(removeElements[i])
+		t.Logf("rm target: %d, rm actual: %v, err? %v\n", removeElements[i], vn, err)
 	}
 	t.Log("remove okay")
 	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
