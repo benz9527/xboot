@@ -91,7 +91,7 @@ func TestUnsafePointerCAS_ConcurrentMemVisibility(t *testing.T) {
 	go func() {
 		for i := 0; i < 200; i++ {
 			val := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&a)))
-			log := "cas load a val, obj: " + (*obj)(val).id + ", id: 1"
+			log := "cas load a vptr, obj: " + (*obj)(val).id + ", id: 1"
 			runtime.Gosched()
 			logC <- log
 		}
@@ -100,7 +100,7 @@ func TestUnsafePointerCAS_ConcurrentMemVisibility(t *testing.T) {
 	go func() {
 		for i := 0; i < 200; i++ {
 			val := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&a)))
-			log := "cas load a val, obj: " + (*obj)(val).id + ", id: 2"
+			log := "cas load a vptr, obj: " + (*obj)(val).id + ", id: 2"
 			runtime.Gosched()
 			logC <- log
 		}
@@ -156,7 +156,7 @@ func TestUnsafePointerCAS_ConcurrentMemVisibility(t *testing.T) {
 func TestAuxIndexes(t *testing.T) {
 	aux := make(xConcSkipListAuxiliary[uint8, *xSkipListObject], 2*xSkipListMaxLevel)
 	for i := uint8(0); i < 2*xSkipListMaxLevel; i++ {
-		aux[i] = &xConcSkipListNode[uint8, *xSkipListObject]{
+		aux[i] = &xConcSklNode[uint8, *xSkipListObject]{
 			key: i,
 		}
 	}
@@ -166,12 +166,12 @@ func TestAuxIndexes(t *testing.T) {
 		require.Equal(t, xSkipListMaxLevel+i, aux.loadSucc(int32(i)).key)
 	}
 
-	aux.foreachPred(func(predList ...*xConcSkipListNode[uint8, *xSkipListObject]) {
+	aux.foreachPred(func(predList ...*xConcSklNode[uint8, *xSkipListObject]) {
 		for i := uint8(0); i < xSkipListMaxLevel; i++ {
 			require.Equal(t, i, predList[i].key)
 		}
 	})
-	aux.foreachSucc(func(succList ...*xConcSkipListNode[uint8, *xSkipListObject]) {
+	aux.foreachSucc(func(succList ...*xConcSklNode[uint8, *xSkipListObject]) {
 		for i := uint8(0); i < xSkipListMaxLevel; i++ {
 			require.Equal(t, xSkipListMaxLevel+i, succList[i].key)
 		}
@@ -180,10 +180,10 @@ func TestAuxIndexes(t *testing.T) {
 
 func TestRbtree(t *testing.T) {
 	type checkData struct {
-		color vNodeRbtreeColor
+		color color
 		val   int32
 	}
-	node := &xConcSkipListNode[int32, int32]{
+	node := &xConcSklNode[int32, int32]{
 		vcmp: func(i, j int32) int64 {
 			if i == j {
 				return 0
@@ -192,20 +192,20 @@ func TestRbtree(t *testing.T) {
 			}
 			return -1
 		},
-		nilLeafNode: &vNode[int32]{
+		nilLeafNode: &xNode[int32]{
 			color: black,
 		},
 	}
 	node.root = node.nilLeafNode
 	for i := int32(0); i < 10; i++ {
-		node.rbtreeInsert(i)
+		node.rbtreeInsertIfNotPresent(i)
 	}
 	expected := []checkData{
 		{false, 0}, {false, 1}, {false, 2}, {false, 3},
 		{false, 4}, {false, 5}, {false, 6}, {true, 7},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -218,7 +218,7 @@ func TestRbtree(t *testing.T) {
 		{false, 4}, {true, 6}, {false, 7},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -232,7 +232,7 @@ func TestRbtree(t *testing.T) {
 		{false, 4}, {true, 6}, {true, 7},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -246,7 +246,7 @@ func TestRbtree(t *testing.T) {
 		{false, 4}, {true, 6},
 		{false, 8}, {true, 9},
 	}
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val int32) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -259,7 +259,7 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
-	node := &xConcSkipListNode[uint64, uint64]{
+	node := &xConcSklNode[uint64, uint64]{
 		vcmp: func(i, j uint64) int64 {
 			if i == j {
 				return 0
@@ -268,37 +268,37 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 			}
 			return -1
 		},
-		nilLeafNode: &vNode[uint64]{
+		nilLeafNode: &xNode[uint64]{
 			color: black,
 		},
 	}
 	node.root = node.nilLeafNode
 
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbtreeInsert(i)
+		node.rbtreeInsertIfNotPresent(i)
 	}
 
 	t.Log("insert okay1")
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
-		node.rbtreeInsert(i)
+		node.rbtreeInsertIfNotPresent(i)
 	}
 	t.Log("insert okay2")
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		if i == 92 {
-			node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+			node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
 				t.Logf("idx: %d, expected: %d, actual: %d\n", idx, idx, val)
 				return true
 			})
-			vn := node.rbtreeSearch(node.root, func(vn *vNode[uint64]) int64 {
+			vn := node.rbtreeSearch(node.root, func(vn *xNode[uint64]) int64 {
 				v := *vn.val
 				if v == i {
 					return 0
@@ -307,14 +307,14 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 				}
 				return -1
 			})
-			require.Equal(t, uint64(92), *vn.val)
+			require.Equal(t, uint64(92), *vn.vptr)
 		}
 		vn, err := node.rbtreeRemoveByPred(i)
 		t.Logf("rm target: %d, rm actual: %v, err? %v\n", i, vn, err)
 	}
 	t.Log("remove okay")
 
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
@@ -347,7 +347,7 @@ func TestRandomInsertAndRemoveRbtree(t *testing.T) {
 		}
 	}
 	t.Log("gen okay")
-	node := &xConcSkipListNode[uint64, uint64]{
+	node := &xConcSklNode[uint64, uint64]{
 		vcmp: func(i, j uint64) int64 {
 			if i == j {
 				return 0
@@ -356,22 +356,22 @@ func TestRandomInsertAndRemoveRbtree(t *testing.T) {
 			}
 			return -1
 		},
-		nilLeafNode: &vNode[uint64]{
+		nilLeafNode: &xNode[uint64]{
 			color: black,
 		},
 	}
 	node.root = node.nilLeafNode
 
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbtreeInsert(insertElements[i])
+		node.rbtreeInsertIfNotPresent(insertElements[i])
 	}
 	t.Log("insert okay1")
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, insertElements[idx], val)
 		return true
 	})
 	for i := uint64(0); i < removeTotal; i++ {
-		node.rbtreeInsert(removeElements[i])
+		node.rbtreeInsertIfNotPresent(removeElements[i])
 	}
 	t.Log("insert okay2")
 	for i := uint64(0); i < removeTotal; i++ {
@@ -379,7 +379,7 @@ func TestRandomInsertAndRemoveRbtree(t *testing.T) {
 		t.Logf("rm target: %d, rm actual: %v, err? %v\n", removeElements[i], vn, err)
 	}
 	t.Log("remove okay")
-	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
+	node.rbtreePreorderTraversal(func(idx int64, color color, val uint64) bool {
 		t.Logf("idx: %d, expected: %d, actual: %d\n", idx, insertElements[idx], val)
 		require.Equal(t, insertElements[idx], val)
 		return true

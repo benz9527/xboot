@@ -14,7 +14,7 @@ func TestXConcSkipList_Indexes(t *testing.T) {
 		forward:  nil,
 		backward: nil,
 	}
-	idx[0].forward = &xConcSkipListNode[uint8, *xSkipListObject]{}
+	idx[0].forward = &xConcSklNode[uint8, *xSkipListObject]{}
 	idx[0] = &xConcSkipListIndex[uint8, *xSkipListObject]{
 		forward:  nil,
 		backward: nil,

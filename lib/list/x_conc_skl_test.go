@@ -14,7 +14,7 @@ import (
 
 func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 	skl := &xConcSkipList[uint64, *xSkipListObject]{
-		head:  newXConcSkipListHead[uint64, *xSkipListObject](me, unique),
+		head:  newXConcSklHead[uint64, *xSkipListObject](me, unique),
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
@@ -84,7 +84,7 @@ func TestXConcSkipList_SerialProcessing(t *testing.T) {
 
 func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	skl := &xConcSkipList[uint64, *xSkipListObject]{
-		head:  newXConcSkipListHead[uint64, *xSkipListObject](mu, unique),
+		head:  newXConcSklHead[uint64, *xSkipListObject](mu, unique),
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
@@ -175,7 +175,7 @@ func TestXConcSkipList_DataRace(t *testing.T) {
 
 func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkipList[uint64, *xSkipListObject]{
-		head:  newXConcSkipListHead[uint64, *xSkipListObject](goNativeMutex, linkedList),
+		head:  newXConcSklHead[uint64, *xSkipListObject](goNativeMutex, linkedList),
 		pool:  newXConcSkipListPool[uint64, *xSkipListObject](),
 		idxHi: 1,
 		len:   0,
@@ -241,28 +241,28 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarkedBit))
 	require.Equal(t, uint64(1), aux.loadSucc(0).key)
-	require.Equal(t, "9", (*aux.loadSucc(0).loadVNode().linkedListNext().val).id)
+	require.Equal(t, "9", (*aux.loadSucc(0).loadVNode().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(2, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.Equal(t, uint64(1), aux.loadPred(0).key)
-	require.Equal(t, "9", (*aux.loadPred(0).loadVNode().linkedListNext().val).id)
+	require.Equal(t, "9", (*aux.loadPred(0).loadVNode().linkedListNext().vptr).id)
 	require.Equal(t, uint64(2), aux.loadSucc(0).key)
-	require.Equal(t, "9", (*aux.loadSucc(0).loadVNode().linkedListNext().val).id)
+	require.Equal(t, "9", (*aux.loadSucc(0).loadVNode().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(3, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.Equal(t, uint64(2), aux.loadPred(0).key)
-	require.Equal(t, "9", (*aux.loadPred(0).loadVNode().linkedListNext().val).id)
+	require.Equal(t, "9", (*aux.loadPred(0).loadVNode().linkedListNext().vptr).id)
 	require.Equal(t, uint64(3), aux.loadSucc(0).key)
-	require.Equal(t, "2", (*aux.loadSucc(0).loadVNode().linkedListNext().val).id)
+	require.Equal(t, "2", (*aux.loadSucc(0).loadVNode().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(4, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.Equal(t, uint64(3), aux.loadPred(0).key)
-	require.Equal(t, "2", (*aux.loadPred(0).loadVNode().linkedListNext().val).id)
+	require.Equal(t, "2", (*aux.loadPred(0).loadVNode().linkedListNext().vptr).id)
 	require.Equal(t, uint64(4), aux.loadSucc(0).key)
-	require.Equal(t, "9", (*aux.loadSucc(0).loadVNode().linkedListNext().val).id)
+	require.Equal(t, "9", (*aux.loadSucc(0).loadVNode().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(100, aux)
 	assert.Equal(t, int32(-1), foundResult)
@@ -274,7 +274,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ vNodeType) {
 	skl := &xConcSkipList[uint64, int64]{
-		head:  newXConcSkipListHead[uint64, int64](mu, typ),
+		head:  newXConcSklHead[uint64, int64](mu, typ),
 		pool:  newXConcSkipListPool[uint64, int64](),
 		idxHi: 1,
 		len:   0,

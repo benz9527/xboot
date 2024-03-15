@@ -23,7 +23,7 @@ const (
 )
 
 type xConcSkipList[K infra.OrderedKey, V comparable] struct {
-	head    *xConcSkipListNode[K, V]
+	head    *xConcSklNode[K, V]
 	pool    *xConcSkipListPool[K, V]
 	kcmp    infra.OrderedKeyComparator[K]
 	vcmp    SkipListValueComparator[V]
@@ -43,8 +43,8 @@ func (skl *xConcSkipList[K, V]) loadVNodeType() vNodeType {
 	return vNodeType(skl.flags.atomicLoadBits(sklVNodeTypeBits))
 }
 
-func (skl *xConcSkipList[K, V]) atomicLoadHead() *xConcSkipListNode[K, V] {
-	return (*xConcSkipListNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
+func (skl *xConcSkipList[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
+	return (*xConcSklNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 }
 
 func (skl *xConcSkipList[K, V]) Len() int64 {
@@ -65,7 +65,7 @@ func (skl *xConcSkipList[K, V]) traverse(
 	lvl int32,
 	key K,
 	aux xConcSkipListAuxiliary[K, V],
-) *xConcSkipListNode[K, V] {
+) *xConcSklNode[K, V] {
 	forward := skl.atomicLoadHead()
 	// Vertical iteration.
 	for l := lvl - 1; l >= 0; l-- {
@@ -117,7 +117,7 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 		}
 		// Node not present. Add this node into skip list.
 		var (
-			pred, succ, prevPred *xConcSkipListNode[K, V] = nil, nil, nil
+			pred, succ, prevPred *xConcSklNode[K, V] = nil, nil, nil
 			// Whether it is valid insertion.
 			isValid      = true
 			lockedLevels = int32(-1)
@@ -142,7 +142,7 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 		}
 		if !isValid {
 			// Insert failed due to concurrency, restart the iteration.
-			aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+			aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
 				unlockNodes(ver, lockedLevels, list...)
 			})
 			continue
@@ -163,7 +163,7 @@ func (skl *xConcSkipList[K, V]) Insert(key K, val V) {
 		}
 
 		// Unlock
-		aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+		aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
 			unlockNodes(ver, lockedLevels, list...)
 		})
 		atomic.AddInt64(&skl.len, 1)
@@ -202,7 +202,7 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 				if vn == nil {
 					return *new(V)
 				}
-				return *vn.val
+				return *vn.vptr
 			}
 			if res := fn(idx, item); !res {
 				break
@@ -227,7 +227,7 @@ func (skl *xConcSkipList[K, V]) Range(fn func(idx int64, metadata SkipListIterat
 			}
 			for vn := forward.loadVNode().parent; vn != nil; vn = vn.parent {
 				item.valFn = func() V {
-					return *vn.val
+					return *vn.vptr
 				}
 				var res bool
 				if res, idx = fn(idx, item), idx+1; !res {
@@ -262,10 +262,10 @@ func (skl *xConcSkipList[K, V]) Get(key K) (val V, ok bool) {
 				switch typ {
 				case unique:
 					vn := nIdx.loadVNode()
-					return *vn.val, true
+					return *vn.vptr, true
 				case linkedList:
 					vn := nIdx.loadVNode()
-					return *vn.parent.val, true
+					return *vn.parent.vptr, true
 				case rbtree:
 					// TODO
 				default:
@@ -311,7 +311,7 @@ func (skl *xConcSkipList[K, V]) rmTraverse(
 func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err error) {
 	var (
 		aux          = skl.pool.loadAux()
-		rmTarget     *xConcSkipListNode[K, V]
+		rmTarget     *xConcSklNode[K, V]
 		isMarked     bool // represents if this operation mark the node
 		topLevel     = int32(-1)
 		ver          = skl.idGen.NumberUUID()
@@ -357,7 +357,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 				var (
 					lockedLayers         = int32(-1)
 					isValid              = true
-					pred, succ, prevPred *xConcSkipListNode[K, V]
+					pred, succ, prevPred *xConcSklNode[K, V]
 				)
 				// Segment lock
 				for l := int32(0); isValid && (l <= topLevel); l++ {
@@ -373,7 +373,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 					isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) && pred.atomicLoadNext(l) == succ
 				}
 				if !isValid {
-					aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+					aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
 						unlockNodes(ver, lockedLayers, list...)
 					})
 					continue
@@ -381,7 +381,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 
 				ele = &xSkipListElement[K, V]{
 					key: key,
-					val: *rmTarget.loadVNode().val,
+					val: *rmTarget.loadVNode().vptr,
 				}
 				atomic.AddInt64(&rmTarget.count, -1)
 				atomic.AddInt64(&skl.len, -1)
@@ -397,7 +397,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 				}
 
 				rmTarget.mu.unlock(ver)
-				aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+				aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
 				return ele, nil
@@ -435,7 +435,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 				var (
 					lockedLayers         = int32(-1)
 					isValid              = true
-					pred, succ, prevPred *xConcSkipListNode[K, V]
+					pred, succ, prevPred *xConcSklNode[K, V]
 				)
 				// Segment deletion.
 				for l := int32(0); isValid && (l <= topLevel); l++ {
@@ -451,7 +451,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 					isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) && pred.atomicLoadNext(l) == succ
 				}
 				if !isValid {
-					aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+					aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
 						unlockNodes(ver, lockedLayers, list...)
 					})
 					continue
@@ -463,7 +463,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 					if n := rmTarget.root.linkedListNext(); n != nil {
 						ele = &xSkipListElement[K, V]{
 							key: key,
-							val: *n.val,
+							val: *n.vptr,
 						}
 						atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.parent)), unsafe.Pointer(n.parent))
 						atomic.AddInt64(&rmTarget.count, -1)
@@ -488,7 +488,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 				}
 
 				rmTarget.mu.unlock(ver)
-				aux.foreachPred(func(list ...*xConcSkipListNode[K, V]) {
+				aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
 				return ele, nil
@@ -506,7 +506,7 @@ func (skl *xConcSkipList[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], e
 }
 
 func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SkipListWeightComparator[K], rand SkipListRand) *xConcSkipList[K, V] {
-	//h := newXConcSkipListHead[K, V]()
+	//h := newXConcSklHead[K, V]()
 	//h.flags.atomicSet(nodeFullyLinkedBit)
 	//return &xConcSkipList[K, V]{
 	//	head:  h,

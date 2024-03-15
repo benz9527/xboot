@@ -9,26 +9,38 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-type vNodeRbtreeColor bool
+type color bool
 
 const (
-	red   vNodeRbtreeColor = true
-	black vNodeRbtreeColor = false
+	red   color = true
+	black color = false
 )
 
 // embedded data-structure
 // singly linked-list and rbtree
-type vNode[V comparable] struct {
+type xNode[V comparable] struct {
 	// parent It is easy for us to backward to access upper level node info.
-	parent *vNode[V] // Linked-list & rbtree
-	left   *vNode[V] // rbtree only
-	right  *vNode[V] // rbtree only
-	val    *V        // Unique and comparable
-	color  vNodeRbtreeColor
+	parent *xNode[V] // Linked-list & rbtree
+	left   *xNode[V] // rbtree only
+	right  *xNode[V] // rbtree only
+	vptr   *V        // value pointer
+	color  color
 }
 
-func (vn *vNode[V]) linkedListNext() *vNode[V] {
-	return vn.parent
+func (n *xNode[V]) linkedListNext() *xNode[V] {
+	return n.parent
+}
+
+func (n *xNode[V]) isRed() bool {
+	return !n.isNilLeaf() && n.color == red
+}
+
+func (n *xNode[V]) isBlack() bool {
+	return n.isNilLeaf() || n.color == black
+}
+
+func (n *xNode[V]) isNilLeaf() bool {
+	return n == nil || (n.parent == nil && n.left == nil && n.right == nil)
 }
 
 const (
@@ -50,11 +62,11 @@ const (
 	rbtree     vNodeType = 3
 )
 
-type xConcSkipListNode[K infra.OrderedKey, V comparable] struct {
+type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	// If it is unique v-node type store value directly.
 	// Otherwise, it is a sentinel node.
-	root        *vNode[V]
-	nilLeafNode *vNode[V] // Only for rbtree
+	root        *xNode[V]
+	nilLeafNode *xNode[V] // Only for rbtree
 	key         K
 	vcmp        SkipListValueComparator[V]
 	indexes     xConcSkipListIndices[K, V]
@@ -64,22 +76,22 @@ type xConcSkipListNode[K infra.OrderedKey, V comparable] struct {
 	level       uint32
 }
 
-func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
 	typ := vNodeType(node.flags.atomicLoadBits(vNodeTypeBits))
 	switch typ {
 	case unique:
 		// Replace
-		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.val)), unsafe.Pointer(&val))
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
 	case linkedList:
 		// predecessor
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeFullyLinkedBit)
 		for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
-			res := node.vcmp(val, *n.val)
+			res := node.vcmp(val, *n.vptr)
 			if res == 0 {
 				// Replace
 				pred = n
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.val)), unsafe.Pointer(&val))
+				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.vptr)), unsafe.Pointer(&val))
 				break
 			} else if res > 0 {
 				pred = n
@@ -87,8 +99,8 @@ func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool,
 					continue
 				}
 				// Append
-				vn := &vNode[V]{
-					val:    &val,
+				vn := &xNode[V]{
+					vptr:   &val,
 					parent: n.parent,
 				}
 				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.parent)), unsafe.Pointer(vn))
@@ -97,8 +109,8 @@ func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool,
 				break
 			} else {
 				// Prepend
-				vn := &vNode[V]{
-					val:    &val,
+				vn := &xNode[V]{
+					vptr:   &val,
 					parent: n,
 				}
 				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.parent)), unsafe.Pointer(vn))
@@ -117,39 +129,39 @@ func (node *xConcSkipListNode[K, V]) storeVal(ver uint64, val V) (isAppend bool,
 	return isAppend, nil
 }
 
-func (node *xConcSkipListNode[K, V]) loadVNode() *vNode[V] {
-	return (*vNode[V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.root))))
+func (node *xConcSklNode[K, V]) loadVNode() *xNode[V] {
+	return (*xNode[V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.root))))
 }
 
-func (node *xConcSkipListNode[K, V]) loadNext(i int32) *xConcSkipListNode[K, V] {
+func (node *xConcSklNode[K, V]) loadNext(i int32) *xConcSklNode[K, V] {
 	return node.indexes.loadForward(i)
 }
 
-func (node *xConcSkipListNode[K, V]) storeNext(i int32, next *xConcSkipListNode[K, V]) {
+func (node *xConcSklNode[K, V]) storeNext(i int32, next *xConcSklNode[K, V]) {
 	node.indexes.storeForward(i, next)
 }
 
-func (node *xConcSkipListNode[K, V]) atomicLoadNext(i int32) *xConcSkipListNode[K, V] {
+func (node *xConcSklNode[K, V]) atomicLoadNext(i int32) *xConcSklNode[K, V] {
 	return node.indexes.atomicLoadForward(i)
 }
 
-func (node *xConcSkipListNode[K, V]) atomicStoreNext(i int32, next *xConcSkipListNode[K, V]) {
+func (node *xConcSklNode[K, V]) atomicStoreNext(i int32, next *xConcSklNode[K, V]) {
 	node.indexes.atomicStoreForward(i, next)
 }
 
-func (node *xConcSkipListNode[K, V]) loadPrev(i int32) *xConcSkipListNode[K, V] {
+func (node *xConcSklNode[K, V]) loadPrev(i int32) *xConcSklNode[K, V] {
 	return node.indexes.loadBackward(i)
 }
 
-func (node *xConcSkipListNode[K, V]) storePrev(i int32, prev *xConcSkipListNode[K, V]) {
+func (node *xConcSklNode[K, V]) storePrev(i int32, prev *xConcSklNode[K, V]) {
 	node.indexes.storeBackward(i, prev)
 }
 
-func (node *xConcSkipListNode[K, V]) atomicLoadPrev(i int32) *xConcSkipListNode[K, V] {
+func (node *xConcSklNode[K, V]) atomicLoadPrev(i int32) *xConcSklNode[K, V] {
 	return node.indexes.atomicLoadBackward(i)
 }
 
-func (node *xConcSkipListNode[K, V]) atomicStorePrev(i int32, prev *xConcSkipListNode[K, V]) {
+func (node *xConcSklNode[K, V]) atomicStorePrev(i int32, prev *xConcSklNode[K, V]) {
 	node.indexes.atomicStoreBackward(i, prev)
 }
 
@@ -183,7 +195,7 @@ const (
 //
 //	 / \                   / \
 //	M   R                 L   M
-func (node *xConcSkipListNode[K, V]) rbtreeLeftRotate(vnx *vNode[V]) {
+func (node *xConcSklNode[K, V]) rbtreeLeftRotate(vnx *xNode[V]) {
 	vny := vnx.right
 	vnx.right = vny.left
 
@@ -218,7 +230,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeLeftRotate(vnx *vNode[V]) {
 //
 //	 / \                   / \
 //	M   R                 L   M
-func (node *xConcSkipListNode[K, V]) rbtreeRightRotate(vnx *vNode[V]) {
+func (node *xConcSklNode[K, V]) rbtreeRightRotate(vnx *xNode[V]) {
 	vny := vnx.left
 	vnx.left = vny.right
 
@@ -245,15 +257,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRightRotate(vnx *vNode[V]) {
 	vnx.parent = vny
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
-	nvn := &vNode[V]{
-		val:    &val,
-		color:  red,
-		parent: node.nilLeafNode,
-		left:   node.nilLeafNode,
-		right:  node.nilLeafNode,
-	}
-
+func (node *xConcSklNode[K, V]) rbtreeInsertIfNotPresent(val V) {
 	var (
 		vnx, vny = node.root, node.nilLeafNode
 	)
@@ -264,50 +268,54 @@ func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
 		vny = vnx
 		// Iterating to find insert position.
 		// O(logN)
-		if node.vcmp(val, *vnx.val) < 0 {
+		res := node.vcmp(val, *vnx.vptr)
+		if res < 0 {
 			vnx = vnx.left
-		} else {
+		} else if res > 0 {
 			vnx = vnx.right
+		} else /* res == 0 */ {
+			// Replace by default
+			vnx.vptr = &val
+			return
 		}
 	}
-
-	// vny is the new vnode's parent
-	nvn.parent = vny
-	if vny == node.nilLeafNode {
-		// case 1: Build root node of this rbtree, first inserted element.
-		node.root = nvn
-	} else if node.vcmp(val, *vny.val) < 0 {
-		// Root node of this rbtree exists.
-		vny.left = nvn
-	} else {
-		vny.right = nvn
-	}
-
-	if nvn.parent == node.nilLeafNode {
-		// case 1: Build root node of this rbtree, first inserted element.
-		nvn.color = black // root node's color must be black
-		atomic.AddInt64(&node.count, 1)
-		return
-	} else if nvn.parent.parent == node.nilLeafNode {
-		// case 2: Root node (black) exists and new node is a child node next to it.
-		// New node's parent's parent is nil.
-		// It means that new node's parent is the root node
-		// of this rbtree (black).
-		// New node is red by default.
-		// Nil leaf node is black by default.
-		atomic.AddInt64(&node.count, 1)
-		return
-	}
-
-	atomic.AddInt64(&node.count, 1)
-	node.rbtreePostInsertBalance(nvn)
+	node.rbtreeInsert(vny, val)
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreePostInsertBalance(nvn *vNode[V]) {
-	var aux *vNode[V] = nil
+func (node *xConcSklNode[K, V]) rbtreeInsert(vn *xNode[V], val V) {
+
+	//nvn := &xNode[V]{
+	//	vptr:    &val,
+	//	color:  red,
+	//	parent: vny,
+	//	left:   node.nilLeafNode,
+	//	right:  node.nilLeafNode,
+	//}
+	//
+	//if node.rbtreeIsRoot(nvn) {
+	//	node.root = nvn
+	//	nvn.color = black
+	//	atomic.AddInt64(&node.count, 1)
+	//	return
+	//} else if res := node.vcmp(val, *vny.val); res < 0 {
+	//	if vny.left == node.nilLeafNode {
+	//		vny.left = nvn
+	//	} else {
+	//
+	//	}
+	//} else /* res > 0 */ {
+	//	vny.right = nvn
+	//}
+	//
+	//node.rbtreePostInsertBalance(nvn)
+	//atomic.AddInt64(&node.count, 1)
+}
+
+// New node color is red by default.
+// Color adjust from the bottom-up.
+func (node *xConcSklNode[K, V]) rbtreePostInsertBalance(nvn *xNode[V]) {
+	var aux *xNode[V] = nil
 	for nvn.parent.color == red {
-		// New node color is red by default.
-		// Color adjust from the bottom-up.
 		if nvn.parent == nvn.parent.parent.left {
 			// New node parent is the left subtree
 			aux = nvn.parent.parent.right // uncle node
@@ -389,7 +397,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePostInsertBalance(nvn *vNode[V]) {
 	node.root.color = black
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeMinimum(vn *vNode[V]) *vNode[V] {
+func (node *xConcSklNode[K, V]) rbtreeMinimum(vn *xNode[V]) *xNode[V] {
 	aux := vn
 	for aux.left != node.nilLeafNode {
 		aux = aux.left
@@ -397,7 +405,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeMinimum(vn *vNode[V]) *vNode[V] {
 	return aux
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeMaximum(vn *vNode[V]) *vNode[V] {
+func (node *xConcSklNode[K, V]) rbtreeMaximum(vn *xNode[V]) *xNode[V] {
 	aux := vn
 	for aux.right != node.nilLeafNode {
 		aux = aux.right
@@ -405,12 +413,12 @@ func (node *xConcSkipListNode[K, V]) rbtreeMaximum(vn *vNode[V]) *vNode[V] {
 	return aux
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeIsRoot(vn *vNode[V]) bool {
-	return vn.parent == node.nilLeafNode
+func (node *xConcSklNode[K, V]) rbtreeIsRoot(vn *xNode[V]) bool {
+	return vn.parent == node.nilLeafNode || vn == node.root
 }
 
 // The successor node of the current node is its next node in sorted order.
-func (node *xConcSkipListNode[K, V]) rbtreeSucc(vn *vNode[V]) *vNode[V] {
+func (node *xConcSklNode[K, V]) rbtreeSucc(vn *xNode[V]) *xNode[V] {
 	aux := vn
 	if aux.right != node.nilLeafNode {
 		return node.rbtreeMinimum(aux.right)
@@ -426,7 +434,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeSucc(vn *vNode[V]) *vNode[V] {
 }
 
 // The predecessor node of the current node is its previous node in sorted order
-func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
+func (node *xConcSklNode[K, V]) rbtreePred(vn *xNode[V]) *xNode[V] {
 	aux := vn
 	if aux.left != node.nilLeafNode {
 		return node.rbtreeMaximum(aux.left)
@@ -441,7 +449,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
 	return aux
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeSibling(vn *vNode[V]) *vNode[V] {
+func (node *xConcSklNode[K, V]) rbtreeSibling(vn *xNode[V]) *xNode[V] {
 	if node.rbtreeIsRoot(vn) {
 		return node.nilLeafNode
 	} else if vn == vn.parent.left {
@@ -451,11 +459,11 @@ func (node *xConcSkipListNode[K, V]) rbtreeSibling(vn *vNode[V]) *vNode[V] {
 	return vn.parent.left
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeHasSibling(vn *vNode[V]) bool {
+func (node *xConcSklNode[K, V]) rbtreeHasSibling(vn *xNode[V]) bool {
 	return !node.rbtreeIsRoot(vn) && node.rbtreeSibling(vn) != node.nilLeafNode
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeNodeDirection(vn *vNode[V]) vNodeDirection {
+func (node *xConcSklNode[K, V]) rbtreeNodeDirection(vn *xNode[V]) vNodeDirection {
 	if node.rbtreeIsRoot(vn) {
 		return root
 	} else if vn == vn.parent.left {
@@ -465,12 +473,12 @@ func (node *xConcSkipListNode[K, V]) rbtreeNodeDirection(vn *vNode[V]) vNodeDire
 	return right
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
+func (node *xConcSklNode[K, V]) rbtreeRemove(val V) error {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return errors.New("empty rbtree")
 	}
-	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
-		return node.vcmp(val, *vn.val)
+	vnz := node.rbtreeSearch(node.root, func(vn *xNode[V]) int64 {
+		return node.vcmp(val, *vn.vptr)
 	})
 	if vnz == nil || vnz == node.nilLeafNode {
 		return errors.New("not exists")
@@ -501,7 +509,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 		//     S  ..                N  ..
 		vny = node.rbtreeSucc(vnz)
 		// Swap value only.
-		vnz.val = vny.val
+		vnz.vptr = vny.vptr
 	}
 
 	// case 3: vny is a leaf node.
@@ -560,12 +568,12 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 	return nil
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) (*vNode[V], error) {
+func (node *xConcSklNode[K, V]) rbtreeRemoveByPred(val V) (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return nil, errors.New("empty rbtree")
 	}
-	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
-		return node.vcmp(val, *vn.val)
+	vnz := node.rbtreeSearch(node.root, func(vn *xNode[V]) int64 {
+		return node.vcmp(val, *vn.vptr)
 	})
 	if vnz == nil || vnz == node.nilLeafNode {
 		return nil, errors.New("not exists")
@@ -596,8 +604,8 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) (*vNode[V], error
 		//     S  ..                S  ..
 		vny = node.rbtreePred(vnz)
 		// Swap value only.
-		slog.Info("before swap", "old vnz", *vnz.val, "new vny", *vny.val)
-		vnz.val = vny.val
+		slog.Info("before swap", "old vnz", *vnz.vptr, "new vny", *vny.vptr)
+		vnz.vptr = vny.vptr
 	}
 
 	// case 3: vny is a leaf node.
@@ -663,7 +671,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) (*vNode[V], error
 	return vny, nil
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeRemoveBalance(vn *vNode[V]) {
+func (node *xConcSklNode[K, V]) rbtreeRemoveBalance(vn *xNode[V]) {
 	if vn.parent == node.nilLeafNode {
 		// Backtrack to root node
 		return
@@ -767,7 +775,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveBalance(vn *vNode[V]) {
 	}
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V]) int64) *vNode[V] {
+func (node *xConcSklNode[K, V]) rbtreeSearch(vn *xNode[V], fn func(*xNode[V]) int64) *xNode[V] {
 	if vn == nil || vn == node.nilLeafNode {
 		return node.nilLeafNode
 	}
@@ -785,13 +793,13 @@ func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V
 	return node.nilLeafNode
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, color vNodeRbtreeColor, val V) bool) {
+func (node *xConcSklNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, color color, val V) bool) {
 	size := atomic.LoadInt64(&node.count)
 	aux := node.root
 	if size < 0 || aux == nil || aux == node.nilLeafNode {
 		return
 	}
-	stack := make([]*vNode[V], 0, size>>1)
+	stack := make([]*xNode[V], 0, size>>1)
 	defer func() {
 		clear(stack)
 	}()
@@ -803,7 +811,7 @@ func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, 
 	size = int64(len(stack))
 	for size > 0 {
 		aux = stack[size-1]
-		if !fn(idx, aux.color, *aux.val) {
+		if !fn(idx, aux.color, *aux.vptr) {
 			return
 		}
 		idx++
@@ -819,11 +827,11 @@ func (node *xConcSkipListNode[K, V]) rbtreePreorderTraversal(fn func(idx int64, 
 	}
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreeInorderTraversal(fn func(idx int64, color vNodeRbtreeColor, val V) bool) {
+func (node *xConcSklNode[K, V]) rbtreeInorderTraversal(fn func(idx int64, color color, val V) bool) {
 
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreePostorderTraversal(fn func(idx int64, color vNodeRbtreeColor, val V) bool) {
+func (node *xConcSklNode[K, V]) rbtreePostorderTraversal(fn func(idx int64, color color, val V) bool) {
 
 }
 
@@ -834,8 +842,8 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	mu mutexImpl,
 	typ vNodeType,
 	cmp SkipListValueComparator[V],
-) *xConcSkipListNode[K, V] {
-	node := &xConcSkipListNode[K, V]{
+) *xConcSklNode[K, V] {
+	node := &xConcSklNode[K, V]{
 		key:   key,
 		level: uint32(lvl),
 		mu:    mutexFactory(mu),
@@ -845,21 +853,21 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	node.flags.setBitsAs(vNodeTypeBits, uint32(typ))
 	switch typ {
 	case unique:
-		node.root = &vNode[V]{
-			val: &val,
+		node.root = &xNode[V]{
+			vptr: &val,
 		}
 	case linkedList:
-		node.root = &vNode[V]{
-			parent: &vNode[V]{
-				val: &val,
+		node.root = &xNode[V]{
+			parent: &xNode[V]{
+				vptr: &val,
 			},
 		}
 	case rbtree:
-		node.nilLeafNode = &vNode[V]{
+		node.nilLeafNode = &xNode[V]{
 			color: black,
 		}
 		node.root = node.nilLeafNode
-		node.rbtreeInsert(val)
+		node.rbtreeInsertIfNotPresent(val)
 	default:
 		panic("unknown v-node type")
 	}
@@ -867,8 +875,8 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	return node
 }
 
-func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNodeType) *xConcSkipListNode[K, V] {
-	head := &xConcSkipListNode[K, V]{
+func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNodeType) *xConcSklNode[K, V] {
+	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: xSkipListMaxLevel,
 		mu:    mutexFactory(e),
@@ -879,8 +887,8 @@ func newXConcSkipListHead[K infra.OrderedKey, V comparable](e mutexImpl, typ vNo
 	return head
 }
 
-func unlockNodes[K infra.OrderedKey, V comparable](version uint64, num int32, nodes ...*xConcSkipListNode[K, V]) {
-	var prev *xConcSkipListNode[K, V]
+func unlockNodes[K infra.OrderedKey, V comparable](version uint64, num int32, nodes ...*xConcSklNode[K, V]) {
+	var prev *xConcSklNode[K, V]
 	for i := num; i >= 0; i-- {
 		if nodes[i] != prev { // the node could be unlocked by previous loop
 			nodes[i].mu.unlock(version)
