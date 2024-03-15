@@ -403,9 +403,8 @@ func (node *xConcSkipListNode[K, V]) rbtreeSucc(vn *vNode[V]) *vNode[V] {
 	}
 
 	aux = vn.parent
+	// Backtrack to father node that is the vn's successor.
 	for aux != node.nilLeafNode && vn == aux.right {
-		// If vn is father node's left subtree, father node is
-		// vn's successor.
 		vn = aux
 		aux = aux.parent
 	}
@@ -420,9 +419,8 @@ func (node *xConcSkipListNode[K, V]) rbtreePred(vn *vNode[V]) *vNode[V] {
 	}
 
 	aux = vn.parent
+	// Backtrack to father node that is the vn's predecessor.
 	for aux != node.nilLeafNode && vn == aux.left {
-		// If vn is father node's right subtree, father node is
-		// vn's predecessor.
 		vn = aux
 		aux = aux.parent
 	}
@@ -440,9 +438,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeTransplant(ovn, rvn *vNode[V]) {
 	} else if ovn == ovn.parent.right {
 		ovn.parent.right = rvn
 	}
-	if rvn != nil {
-		rvn.parent = ovn.parent
-	}
+	rvn.parent = ovn.parent
 }
 
 func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
@@ -452,22 +448,25 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
 		return node.vcmp(val, *vn.val)
 	})
-	if vnz == node.nilLeafNode {
+	if vnz == nil || vnz == node.nilLeafNode {
 		return errors.New("not exists")
 	}
-	var vnx, vny = node.nilLeafNode, node.nilLeafNode
+	var vny = node.nilLeafNode
 
-	// Found then remove it from rbtree
-	vny = vnz // vnz is the remove target node
-	if vnz.left == node.nilLeafNode && vnz.right != node.nilLeafNode {
-		// Leaf node
-		vnx = vnz.right
-		node.rbtreeTransplant(vnz, vnz.right)
-	} else if vnz.right == node.nilLeafNode && vnz.left != node.nilLeafNode {
-		// Leaf node
-		vnx = vnz.left
-		node.rbtreeTransplant(vnz, vnz.left)
-	} else if vnz.right != node.nilLeafNode && vnz.left != node.nilLeafNode {
+	// Found vnz is the remove target node
+	// case 1: vnz is the root node of rbtree, remove directly
+	if vnz.parent == node.nilLeafNode {
+		node.root = node.nilLeafNode
+		vnz.left = nil
+		vnz.right = nil
+		atomic.AddInt64(&node.count, -1)
+		return nil
+	}
+
+	vny = vnz
+	// case 2: vny contains 2 not nil leaf node
+	if vny.left != node.nilLeafNode && vny.right != node.nilLeafNode {
+		// Find the successor then swap value only
 		//     |                    |
 		//     N                    S
 		//    / \                  / \
@@ -476,44 +475,56 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 		//       P                    P
 		//      / \                  / \
 		//     S  ..                N  ..
-		// None leaf node
-		// Find successor node
-		// Now the vny is the remove target node.
 		vny = node.rbtreeSucc(vnz)
-		// vny replace vnz by value copy directly.
+		// Swap value only.
 		vnz.val = vny.val
-
-		// delete vny is used the vnx to replace it.
-		if vny.left != node.nilLeafNode {
-			vnx = vny.left
-		} else if vny.right != node.nilLeafNode {
-			vnx = vny.right
-		}
-
-		if vnx != node.nilLeafNode {
-			vnx.parent = vny.parent
-		}
-
-		if vny.parent == node.nilLeafNode {
-			// vny is the root node of this rbtree.
-			node.root = vnx
-		} else {
-			if vny == vny.parent.left {
-				vny.parent.left = vnx
-			} else {
-				vny.parent.right = vnx
-			}
-		}
-	} else {
-		// Leaf node
-		vnx = node.nilLeafNode
-		// vnz is the root node of this rbtree.
-		node.rbtreeTransplant(vnz, node.nilLeafNode)
 	}
 
-	// The remove target node (leaf) is black, we have to rebalance the rbtree.
-	if vny.color == black && vnx != node.nilLeafNode {
-		node.rbtreePostDeleteBalance(vnx)
+	// case 3: vny is a leaf node.
+	if vny.left == node.nilLeafNode && vny.right == node.nilLeafNode {
+		if vny.color == black {
+			node.rbtreePostDeleteBalance(vny)
+			if vny == vny.parent.left {
+				vny.parent.left = node.nilLeafNode
+			} else /* vny == vny.parent.right */ {
+				vny.parent.right = node.nilLeafNode
+			}
+		} else if vny.color == red {
+			// Leaf red node, remove directly.
+			if vny == vny.parent.left {
+				vny.parent.left = node.nilLeafNode
+			} else if vny == vny.parent.right {
+				vny.parent.right = node.nilLeafNode
+			}
+			atomic.AddInt64(&node.count, -1)
+			return nil
+		}
+	} else /* vny.left != node.nilLeafNode || vny.right != node.nilLeafNode */ {
+		// case 4: vny is not a leaf node.
+		var rvn = node.nilLeafNode
+		if vny.left != node.nilLeafNode {
+			rvn = vny.left // Maybe a red node
+		} else /* vny.right != node.nilLeafNode */ {
+			rvn = vny.right // Maybe a red node
+		}
+		if vny.parent == node.nilLeafNode {
+			// Root node of rbtree
+			node.root = rvn
+		} else if vny == vny.parent.left {
+			vny.parent.left = rvn
+			rvn.parent = vny.parent
+		} else /* vny == vny.parent.right */ {
+			vny.parent.right = rvn
+			rvn.parent = vny.parent
+		}
+
+		if vny.color == black {
+			if rvn.color == red {
+				rvn.color = black
+			} else {
+				node.rbtreePostDeleteBalance(rvn)
+			}
+		}
 	}
 
 	vny.parent = nil
@@ -637,7 +648,8 @@ func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V
 	}
 	aux := vn
 	for aux != node.nilLeafNode {
-		if res := fn(aux); res == 0 {
+		res := fn(aux)
+		if res == 0 {
 			return aux
 		} else if res > 0 {
 			aux = aux.right

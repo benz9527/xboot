@@ -2,6 +2,7 @@ package list
 
 import (
 	"github.com/benz9527/xboot/lib/id"
+	"github.com/stretchr/testify/assert"
 	"runtime"
 	"strconv"
 	"sync"
@@ -209,6 +210,35 @@ func TestRbtree(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	t.Log("delete 5")
+	err := node.rbtreeRemove(5)
+	assert.NoError(t, err)
+	expected = []checkData{
+		{false, 0}, {false, 1}, {false, 2}, {false, 3},
+		{false, 4}, {true, 6}, {false, 7},
+		{false, 8}, {true, 9},
+	}
+	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+		//require.Equal(t, expected[idx].color, color)
+		//require.Equal(t, expected[idx].val, val)
+		t.Logf("idx: %d; is-red: %v; val: %v\n", idx, color, val)
+		return true
+	})
+	t.Log("delete 1")
+	err = node.rbtreeRemove(1)
+	assert.NoError(t, err)
+	expected = []checkData{
+		{false, 0}, {true, 2}, {false, 3},
+		{false, 4}, {true, 6}, {true, 7},
+		{false, 8}, {true, 9},
+	}
+	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+		//require.Equal(t, expected[idx].color, color)
+		//require.Equal(t, expected[idx].val, val)
+		t.Logf("idx: %d; is-red: %v; val: %v\n", idx, color, val)
+		return true
+	})
+
 }
 
 func TestRandomInsertAndRemoveRbtree(t *testing.T) {
