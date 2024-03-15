@@ -324,6 +324,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeInsert(val V) {
 		return
 	}
 
+	atomic.AddInt64(&node.count, 1)
 	node.rbtreePostInsertBalance(nvn)
 }
 
@@ -671,10 +672,6 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveBalance(vn *vNode[V]) {
 		return
 	}
 
-	if vn.color == red || !node.rbtreeHasSibling(vn) /* vn without sibling */ {
-		panic("assert vn color is black and has sibling failed")
-	}
-
 	sibling := node.rbtreeSibling(vn)
 	vnDir := node.rbtreeNodeDirection(vn)
 	if sibling.color == red {
@@ -707,9 +704,6 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveBalance(vn *vNode[V]) {
 	}
 
 	// sibling must be black
-	if sibling.color == red {
-		panic("assert sibling must be black failed")
-	}
 
 	if slvn.color == black && srvn.color == black {
 		if vn.parent.color == red {
@@ -757,12 +751,6 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemoveBalance(vn *vNode[V]) {
 			}
 		}
 
-		if slvn != node.nilLeafNode && slvn.color == red {
-			panic("")
-		}
-		if srvn.color == black {
-			panic("")
-		}
 		if vnDir == left {
 			//      {P}                   [S]
 			//      / \    l-rotate(P)    / \

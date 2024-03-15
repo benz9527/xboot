@@ -219,11 +219,11 @@ func TestRbtree(t *testing.T) {
 		{false, 8}, {true, 9},
 	}
 	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
-		//require.Equal(t, expected[idx].color, color)
-		//require.Equal(t, expected[idx].val, val)
-		t.Logf("idx: %d; is-red: %v; val: %v\n", idx, color, val)
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+
 	t.Log("delete 1")
 	err = node.rbtreeRemoveByPred(1)
 	assert.NoError(t, err)
@@ -233,9 +233,22 @@ func TestRbtree(t *testing.T) {
 		{false, 8}, {true, 9},
 	}
 	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
-		//require.Equal(t, expected[idx].color, color)
-		//require.Equal(t, expected[idx].val, val)
-		t.Logf("idx: %d; is-red: %v; val: %v\n", idx, color, val)
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	t.Log("delete 7")
+	err = node.rbtreeRemoveByPred(7)
+	assert.NoError(t, err)
+	expected = []checkData{
+		{false, 0}, {true, 2}, {false, 3},
+		{false, 4}, {true, 6},
+		{false, 8}, {true, 9},
+	}
+	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val int32) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 
@@ -296,7 +309,7 @@ func TestRandomInsertAndRemoveRbtree(t *testing.T) {
 	}
 	t.Log("insert okay2")
 	for i := uint64(0); i < removeTotal; i++ {
-		_ = node.rbtreeRemove(removeElements[i])
+		_ = node.rbtreeRemoveByPred(removeElements[i])
 	}
 	t.Log("remove okay")
 	node.rbtreePreorderTraversal(func(idx int64, color vNodeRbtreeColor, val uint64) bool {
