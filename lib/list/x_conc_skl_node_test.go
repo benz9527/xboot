@@ -211,7 +211,7 @@ func TestRbtree(t *testing.T) {
 		return true
 	})
 	t.Log("delete 5")
-	err := node.rbtreeRemove(5)
+	err := node.rbtreeRemoveByPred(5)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {false, 1}, {false, 2}, {false, 3},
@@ -225,7 +225,7 @@ func TestRbtree(t *testing.T) {
 		return true
 	})
 	t.Log("delete 1")
-	err = node.rbtreeRemove(1)
+	err = node.rbtreeRemoveByPred(1)
 	assert.NoError(t, err)
 	expected = []checkData{
 		{false, 0}, {true, 2}, {false, 3},

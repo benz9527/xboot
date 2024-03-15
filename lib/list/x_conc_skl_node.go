@@ -166,6 +166,40 @@ func (node *xConcSkipListNode[K, V]) atomicStorePrev(i int32, prev *xConcSkipLis
 // the path must contain red node.
 // The longest path nodes' number is 2 * shortest path nodes' number.
 
+type vNodeDirection uint8
+
+const (
+	left vNodeDirection = iota
+	right
+	root
+)
+
+func (node *xConcSkipListNode[K, V]) rbtreeNodeDirection(vn *vNode[V]) vNodeDirection {
+	if vn.parent == node.nilLeafNode {
+		return root
+	}
+	if vn == vn.parent.left {
+		return left
+	}
+	/* vn == vn.parent.right */
+	return right
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeSibling(vn *vNode[V]) *vNode[V] {
+	if vn.parent == node.nilLeafNode {
+		return node.nilLeafNode
+	}
+	if vn == vn.parent.left {
+		return vn.parent.right
+	} else /* vn == vn.parent.right */ {
+		return vn.parent.left
+	}
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeHasSibling(vn *vNode[V]) bool {
+	return vn.parent != node.nilLeafNode && node.rbtreeSibling(vn) != node.nilLeafNode
+}
+
 //	 |                         |
 //	 N                         S
 //	/ \     leftRotate(N)     / \
@@ -483,7 +517,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 	// case 3: vny is a leaf node.
 	if vny.left == node.nilLeafNode && vny.right == node.nilLeafNode {
 		if vny.color == black {
-			node.rbtreePostDeleteBalance(vny)
+			node.rbtreeRemoveBalance(vny)
 			if vny == vny.parent.left {
 				vny.parent.left = node.nilLeafNode
 			} else /* vny == vny.parent.right */ {
@@ -522,7 +556,7 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 			if rvn.color == red {
 				rvn.color = black
 			} else {
-				node.rbtreePostDeleteBalance(rvn)
+				node.rbtreeRemoveBalance(rvn)
 			}
 		}
 	}
@@ -536,12 +570,116 @@ func (node *xConcSkipListNode[K, V]) rbtreeRemove(val V) error {
 	return nil
 }
 
-func (node *xConcSkipListNode[K, V]) rbtreePostDeleteBalance(vn *vNode[V]) {
-	aux := node.nilLeafNode
-	for vn != node.root && vn.color == black {
-		if vn == vn.parent.left {
-			aux = vn.parent.right // sibling node
-			// case 2: vn's sibling node is red
+func (node *xConcSkipListNode[K, V]) rbtreeRemoveByPred(val V) error {
+	if atomic.LoadInt64(&node.count) <= 0 {
+		return errors.New("empty rbtree")
+	}
+	vnz := node.rbtreeSearch(node.root, func(vn *vNode[V]) int64 {
+		return node.vcmp(val, *vn.val)
+	})
+	if vnz == nil || vnz == node.nilLeafNode {
+		return errors.New("not exists")
+	}
+	var vny = node.nilLeafNode
+
+	// Found vnz is the remove target node
+	// case 1: vnz is the root node of rbtree, remove directly
+	if vnz.parent == node.nilLeafNode {
+		node.root = node.nilLeafNode
+		vnz.left = nil
+		vnz.right = nil
+		atomic.AddInt64(&node.count, -1)
+		return nil
+	}
+
+	vny = vnz
+	// case 2: vny contains 2 not nil leaf node
+	if vny.left != node.nilLeafNode && vny.right != node.nilLeafNode {
+		// Find the predecessor then swap value only
+		//     |                    |
+		//     N                    L
+		//    / \                  / \
+		//   L  ..   swap(N, L)   N  ..
+		//       |   =========>       |
+		//       P                    P
+		//      / \                  / \
+		//     S  ..                S  ..
+		vny = node.rbtreePred(vnz)
+		// Swap value only.
+		vnz.val = vny.val
+	}
+
+	// case 3: vny is a leaf node.
+	if vny.left == node.nilLeafNode && vny.right == node.nilLeafNode {
+		if vny.color == black {
+			node.rbtreeRemoveBalance(vny)
+			if vny == vny.parent.left {
+				vny.parent.left = node.nilLeafNode
+			} else /* vny == vny.parent.right */ {
+				vny.parent.right = node.nilLeafNode
+			}
+		} else if vny.color == red {
+			// Leaf red node, remove directly.
+			if vny == vny.parent.left {
+				vny.parent.left = node.nilLeafNode
+			} else if vny == vny.parent.right {
+				vny.parent.right = node.nilLeafNode
+			}
+			atomic.AddInt64(&node.count, -1)
+			return nil
+		}
+	} else /* vny.left != node.nilLeafNode || vny.right != node.nilLeafNode */ {
+		// case 4: vny is not a leaf node.
+		var rvn = node.nilLeafNode
+		if vny.right != node.nilLeafNode {
+			rvn = vny.right // Maybe a red node
+		} else /* vny.left != node.nilLeafNode */ {
+			rvn = vny.right // Maybe a red node
+		}
+		if vny.parent == node.nilLeafNode {
+			// Root node of rbtree
+			node.root = rvn
+		} else if vny == vny.parent.left {
+			vny.parent.left = rvn
+			rvn.parent = vny.parent
+		} else /* vny == vny.parent.right */ {
+			vny.parent.right = rvn
+			rvn.parent = vny.parent
+		}
+
+		if vny.color == black {
+			if rvn.color == red {
+				rvn.color = black
+			} else {
+				node.rbtreeRemoveBalance(rvn)
+			}
+		}
+	}
+
+	vny.parent = nil
+	vny.left = nil
+	vny.right = nil
+
+	// If it is red, directly remove is okay.
+	atomic.AddInt64(&node.count, -1)
+	return nil
+}
+
+func (node *xConcSkipListNode[K, V]) rbtreeRemoveBalance(vn *vNode[V]) {
+	if vn.parent == node.nilLeafNode {
+		// Backtrack to root node
+		return
+	}
+
+	if vn.color == red || !node.rbtreeHasSibling(vn) /* vn without sibling */ {
+		panic("assert vn color is black and has sibling failed")
+	}
+
+	sibling := node.rbtreeSibling(vn)
+	vnDir := node.rbtreeNodeDirection(vn)
+	if sibling.color == red {
+		// case 1: vn's sibling node is red
+		if vnDir == left {
 			// [] is black, <> is red
 			//     |                     |
 			//    [P]                   [S]
@@ -549,97 +687,99 @@ func (node *xConcSkipListNode[K, V]) rbtreePostDeleteBalance(vn *vNode[V]) {
 			// [N]  <S>               <P>  [Sr]
 			//      /  \   =======>  /  \
 			//    [Sl] [Sr]        [N]  [Sl]
-			if aux.color == red {
-				aux.color = black                // sibling node repaint to black
-				vn.parent.color = red            // father node repaint to red
-				node.rbtreeLeftRotate(vn.parent) // rotate father node
-				aux = vn.parent.right
-			}
-			// sibling node is black
-			if aux.left.color == black && aux.right.color == black {
-				// case 3: vn's sibling node is black
-				// and vn's sibling node's children are black
-				// father node is black
-				// [] is black, <> is red
-				//     |                     |
-				//    [P]                   [P]
-				//    / \                  /   \
-				// [N]  [S]               [N]  <S>
-				//      /  \   =======>        / \
-				//    [Sl] [Sr]             [Sl] [Sr]
-				// case 4: vn's sibling node is black
-				// and vn's sibling node's children are black
-				// father node is red
-				// [] is black, <> is red
-				//     |                     |
-				//    <P>                   [P]
-				//    / \                  /   \
-				// [N]  [S]               [N]  <S>
-				//      /  \   =======>        / \
-				//    [Sl] [Sr]             [Sl] [Sr]
-				aux.color = red
-				vn = vn.parent // backtrack to father node
-			} else {
-				// case 5: vn's sibling node is black
-				// and vn's sibling node's right child is black, left child is red
-				// [] is black, <> is red
-				//     |                    |
-				//    [S]                  [Sl]
-				//    / \                    \
-				//  <Sl> [Sr]               <S>
-				//                             \
-				//                             [Sr]
-				if aux.right.color == black {
-					aux.left.color = black
-					aux.color = red
-					node.rbtreeRightRotate(aux) // rotate sibling node, make it to case 6
-					aux = vn.parent.right
-				}
-				// case 6: vn's sibling node is black
-				// and vn's sibling node's right child is red, left child is any color
-				// [] is black, <> is red
-				//     |                    |
-				//     P                    S
-				//    / \                  / \
-				// [N]  [S]             [P]  [Sr]
-				//       \   =======>   /
-				//      <Sr>          [N]
-				aux.color = vn.parent.color
-				aux.right.color = black
-				vn.parent.color = black
-				node.rbtreeLeftRotate(vn.parent)
-				vn = node.root
-			}
-		} else { // mirror case
-			aux = vn.parent.left // sibling node
-			if aux.color == red {
-				aux.color = black
-				vn.parent.color = red
-				node.rbtreeRightRotate(vn.parent)
-				aux = vn.parent.left
-			}
+			// rotate father node
+			node.rbtreeLeftRotate(vn.parent)
+		} else if vnDir == right {
+			node.rbtreeRightRotate(vn.parent)
+		}
+		sibling.color = black
+		vn.parent.color = red
+		sibling = node.rbtreeSibling(vn)
+	}
 
-			if aux.left.color == black && aux.right.color == black {
-				aux.color = red
-				vn = vn.parent
-			} else {
-				if aux.left.color == black {
-					aux.right.color = black
-					aux.color = red
-					node.rbtreeLeftRotate(aux)
-					aux = vn.parent.left
-				}
+	var slvn, srvn = node.nilLeafNode, node.nilLeafNode
+	if vnDir == left {
+		slvn = sibling.left
+		srvn = sibling.right
+	} else if vnDir == right {
+		slvn = sibling.right
+		srvn = sibling.left
+	}
 
-				aux.color = vn.parent.color
-				vn.parent.color = black
-				aux.left.color = black
-				node.rbtreeRightRotate(vn.parent)
-				vn = node.root
+	// sibling must be black
+	if sibling.color == red {
+		panic("assert sibling must be black failed")
+	}
+
+	if slvn.color == black && srvn.color == black {
+		if vn.parent.color == red {
+			//      <P>             [P]
+			//      / \             / \
+			//    [N] [S]  ====>  [N] <S>
+			//        / \             / \
+			//     [Sl] [Sr]       [Sl] [Sr]
+			sibling.color = red
+			vn.parent.color = black
+			return
+		}
+		//      [P]             [P]
+		//      / \             / \
+		//    [N] [S]  ====>  [N] <S>
+		//        / \             / \
+		//      [C] [D]         [C] [D]
+		sibling.color = red
+		node.rbtreeRemoveBalance(vn.parent)
+		return
+	} else {
+		if slvn != node.nilLeafNode && slvn.color == red {
+			if vnDir == left {
+				//                            {P}                {P}
+				//      {P}                   / \                / \
+				//      / \    r-rotate(S)  [N] <Sl>   repaint  [N] [Sl]
+				//    [N] [S]  ==========>        \    ======>       \
+				//        / \                     [S]                <S>
+				//     <Sl> [Sr]                    \                  \
+				//                                  [Sr]                [Sr]
+				node.rbtreeRightRotate(sibling)
+			} else if vnDir == right {
+				node.rbtreeLeftRotate(sibling)
+			}
+			slvn.color = black
+			sibling.color = red
+			sibling = node.rbtreeSibling(vn)
+
+			if vnDir == left {
+				slvn = sibling.left
+				srvn = sibling.right
+			} else if vnDir == right {
+				slvn = sibling.right
+				srvn = sibling.left
 			}
 		}
+
+		if slvn != node.nilLeafNode && slvn.color == red {
+			panic("")
+		}
+		if srvn.color == black {
+			panic("")
+		}
+		if vnDir == left {
+			//      {P}                   [S]
+			//      / \    l-rotate(P)    / \
+			//    [N] [S]  ==========>  {P} <D>
+			//        / \               / \
+			//      [C] <D>           [N] [C]
+			node.rbtreeLeftRotate(vn.parent)
+		} else if vnDir == right {
+			node.rbtreeRightRotate(vn.parent)
+		}
+		sibling.color = vn.parent.color
+		vn.parent.color = black
+		if srvn != node.nilLeafNode {
+			srvn.color = black
+		}
+		return
 	}
-	// case 1: vn is the new root node of this rbtree.
-	vn.color = black
 }
 
 func (node *xConcSkipListNode[K, V]) rbtreeSearch(vn *vNode[V], fn func(*vNode[V]) int64) *vNode[V] {
