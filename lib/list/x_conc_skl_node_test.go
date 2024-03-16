@@ -306,7 +306,95 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(35), *x.vptr)
 	require.Equal(t, int64(0), atomic.LoadInt64(&node.count))
+}
 
+func TestRbtree_RemoveMin(t *testing.T) {
+	type checkData struct {
+		color color
+		val   uint64
+	}
+
+	node := &xConcSklNode[uint64, uint64]{
+		vcmp: func(i, j uint64) int64 {
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		},
+	}
+	node.rbInsert(52)
+	node.rbInsert(47)
+	node.rbInsert(3)
+	node.rbInsert(35)
+	node.rbInsert(24)
+	expected := []checkData{
+		{red, 3}, {black, 24}, {red, 35},
+		{black, 47}, {black, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	// remove min
+
+	x, err := node.rbRemoveMin()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), *x.vptr)
+	expected = []checkData{
+		{black, 24}, {red, 35},
+		{black, 47}, {black, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveMin()
+	require.NoError(t, err)
+	require.Equal(t, uint64(24), *x.vptr)
+	expected = []checkData{
+		{black, 35},
+		{black, 47}, {black, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveMin()
+	require.NoError(t, err)
+	require.Equal(t, uint64(35), *x.vptr)
+	expected = []checkData{
+		{black, 47}, {red, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveMin()
+	require.NoError(t, err)
+	require.Equal(t, uint64(47), *x.vptr)
+	expected = []checkData{
+		{black, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveMin()
+	require.NoError(t, err)
+	require.Equal(t, uint64(52), *x.vptr)
+	require.Equal(t, int64(0), atomic.LoadInt64(&node.count))
 }
 
 func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {

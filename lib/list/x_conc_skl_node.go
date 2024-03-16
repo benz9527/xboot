@@ -546,20 +546,7 @@ r3: (2) Current node X is a black leaf node, we have to rebalance after remove.
 r4: Current node X is not a leaf node but contains a not nil child node.
 The child node must be a red node. (See conclusion. Otherwise, black-violation)
 */
-func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
-	if atomic.LoadInt64(&node.count) <= 0 {
-		return nil, errors.New("empty rbtree")
-	}
-	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
-		return node.vcmp(val, *vn.vptr)
-	})
-	if z == nil {
-		return nil, errors.New("not found")
-	}
-	defer func() {
-		atomic.AddInt64(&node.count, -1)
-	}()
-
+func (node *xConcSklNode[K, V]) rbRemoveXNode(z *xNode[V]) (res *xNode[V], err error) {
 	if /* r1 */ atomic.LoadInt64(&node.count) == 1 && z.isRoot() {
 		node.root = nil
 		z.left = nil
@@ -607,6 +594,7 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 		switch dir := y.direction(); dir {
 		case root:
 			node.root = replace
+			node.root.parent = nil
 		case left:
 			y.parent.left = replace
 			replace.parent = y.parent
@@ -627,9 +615,9 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 	}
 
 	// Unlink node
-	if y == y.parent.left {
+	if !y.isRoot() && y == y.parent.left {
 		y.parent.left = nil
-	} else if y == y.parent.right {
+	} else if !y.isRoot() && y == y.parent.right {
 		y.parent.right = nil
 	}
 	y.parent = nil
@@ -637,6 +625,37 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 	y.right = nil
 
 	return res, nil
+}
+
+func (node *xConcSklNode[K, V]) rbRemove(val V) (*xNode[V], error) {
+	if atomic.LoadInt64(&node.count) <= 0 {
+		return nil, errors.New("empty rbtree")
+	}
+	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
+		return node.vcmp(val, *vn.vptr)
+	})
+	if z == nil {
+		return nil, errors.New("not found")
+	}
+	defer func() {
+		atomic.AddInt64(&node.count, -1)
+	}()
+
+	return node.rbRemoveXNode(z)
+}
+
+func (node *xConcSklNode[K, V]) rbRemoveMin() (*xNode[V], error) {
+	if atomic.LoadInt64(&node.count) <= 0 {
+		return nil, errors.New("empty rbtree")
+	}
+	_min := node.root.minimum()
+	if _min.isNilLeaf() {
+		return nil, errors.New("not found")
+	}
+	defer func() {
+		atomic.AddInt64(&node.count, -1)
+	}()
+	return node.rbRemoveXNode(_min)
 }
 
 /*
@@ -837,14 +856,6 @@ func (node *xConcSklNode[K, V]) rbPreorderTraversal(fn func(idx int64, color col
 		}
 		size = int64(len(stack))
 	}
-}
-
-func (node *xConcSklNode[K, V]) rbInorderTraversal(fn func(idx int64, color color, val V) bool) {
-
-}
-
-func (node *xConcSklNode[K, V]) rbPostorderTraversal(fn func(idx int64, color color, val V) bool) {
-
 }
 
 func newXConcSkipListNode[K infra.OrderedKey, V comparable](
