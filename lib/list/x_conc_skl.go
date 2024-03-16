@@ -19,7 +19,9 @@ const (
 	// Indicating that the skip-list exclusive lock implementation type.
 	sklMutexImplBits = 0x00FF
 	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
-	sklVNodeTypeBits = 0x0300
+	sklXNodeModeBits = 0x0300
+	// Indicating that the skip-list data node in rbtree mode and 0 is rm by pred and 1 is rm by succ
+	sklRbtreeRmDirectionModeBit = 0x0400
 )
 
 type xConcSkl[K infra.OrderedKey, V comparable] struct {
@@ -39,8 +41,8 @@ func (skl *xConcSkl[K, V]) loadMutexImpl() mutexImpl {
 	return mutexImpl(skl.flags.atomicLoadBits(sklMutexImplBits))
 }
 
-func (skl *xConcSkl[K, V]) loadVNodeType() xNodeType {
-	return xNodeType(skl.flags.atomicLoadBits(sklVNodeTypeBits))
+func (skl *xConcSkl[K, V]) loadVNodeType() xNodeMode {
+	return xNodeMode(skl.flags.atomicLoadBits(sklXNodeModeBits))
 }
 
 func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {

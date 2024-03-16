@@ -204,7 +204,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
 	skl.flags.setBitsAs(sklMutexImplBits, uint32(goNativeMutex))
-	skl.flags.setBitsAs(sklVNodeTypeBits, uint32(linkedList))
+	skl.flags.setBitsAs(sklXNodeModeBits, uint32(linkedList))
 
 	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
 	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
@@ -272,7 +272,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 }
 
-func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNodeType) {
+func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNodeMode) {
 	skl := &xConcSkl[uint64, int64]{
 		head:  newXConcSklHead[uint64, int64](mu, typ),
 		pool:  newXConcSklPool[uint64, int64](),
@@ -302,7 +302,7 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNode
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
 	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
-	skl.flags.setBitsAs(sklVNodeTypeBits, uint32(typ))
+	skl.flags.setBitsAs(sklXNodeModeBits, uint32(typ))
 
 	size := 10
 	size2 := 10
@@ -367,7 +367,7 @@ func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
 	type testcase struct {
 		name string
 		mu   mutexImpl
-		typ  xNodeType
+		typ  xNodeMode
 	}
 	testcases := []testcase{
 		{

@@ -176,12 +176,12 @@ const (
 	vNodeTypeBits = _duplicate | _containerType
 )
 
-type xNodeType uint8
+type xNodeMode uint8
 
 const (
-	unique     xNodeType = 0
-	linkedList xNodeType = 1
-	rbtree     xNodeType = 3
+	unique     xNodeMode = 0
+	linkedList xNodeMode = 1
+	rbtree     xNodeMode = 3
 )
 
 type xConcSklNode[K infra.OrderedKey, V comparable] struct {
@@ -198,7 +198,7 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 }
 
 func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
-	typ := xNodeType(node.flags.atomicLoadBits(vNodeTypeBits))
+	typ := xNodeMode(node.flags.atomicLoadBits(vNodeTypeBits))
 	switch typ {
 	case unique:
 		// Replace
@@ -754,7 +754,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	val V,
 	lvl int32,
 	mu mutexImpl,
-	typ xNodeType,
+	typ xNodeMode,
 	cmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node := &xConcSklNode[K, V]{
@@ -785,7 +785,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	return node
 }
 
-func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ xNodeType) *xConcSklNode[K, V] {
+func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ xNodeMode) *xConcSklNode[K, V] {
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: xSkipListMaxLevel,
