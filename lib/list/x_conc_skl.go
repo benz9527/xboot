@@ -180,7 +180,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 // reads and writes.
 func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
 	forward := skl.atomicLoadHead().atomicLoadNext(0)
-	idx := int64(0)
+	index := int64(0)
 	typ := skl.loadVNodeType()
 	item := &xSklIter[K, V]{}
 	switch typ {
@@ -206,11 +206,11 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 				}
 				return *vn.vptr
 			}
-			if res := fn(idx, item); !res {
+			if res := fn(index, item); !res {
 				break
 			}
 			forward = forward.atomicLoadNext(0)
-			idx++
+			index++
 		}
 	case linkedList:
 		for forward != nil {
@@ -232,7 +232,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 					return *vn.vptr
 				}
 				var res bool
-				if res, idx = fn(idx, item), idx+1; !res {
+				if res, index = fn(index, item), index+1; !res {
 					break
 				}
 			}
@@ -258,7 +258,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 					return val
 				}
 				var res bool
-				if res, idx = fn(idx, item), idx+1; !res {
+				if res, index = fn(index, item), index+1; !res {
 					return false
 				}
 				return true
@@ -296,7 +296,7 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 				case rbtree:
 					// TODO
 				default:
-					panic("unknown x-node type")
+					panic("skl unknown x-node type")
 				}
 			}
 			return
@@ -501,14 +501,14 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					}
 				case rbtree:
 					// locked
-					if x, err := rmTarget.rbRemoveMin(); err != nil && x != nil {
+					if x, _err := rmTarget.rbRemoveMin(); _err == nil && x != nil {
 						ele = &xSklElement[K, V]{
 							key: key,
 							val: *x.vptr,
 						}
 						atomic.AddInt64(&skl.len, -1)
-						rmTarget.flags.atomicUnset(nodeRemovingFlagBit)
 					}
+					rmTarget.flags.atomicUnset(nodeRemovingFlagBit)
 				}
 
 				if atomic.LoadInt64(&rmTarget.count) <= 0 {
@@ -530,7 +530,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 			break
 		}
 	default:
-		panic("unknown x-node type")
+		panic("skl unknown x-node type")
 	}
 
 	if foundAtLevel == -1 {

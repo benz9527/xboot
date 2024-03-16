@@ -340,8 +340,8 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNode
 	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
 
 	skl.Range(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
-		require.Equal(t, expected[idx].w, item.Key())
-		require.Equal(t, expected[idx].id, item.Val())
+		require.Equalf(t, expected[idx].w, item.Key(), "exp: %d; actual: %d\n", expected[idx].w, item.Key())
+		require.Equalf(t, expected[idx].id, item.Val(), "exp: %d; actual: %d\n", expected[idx].id, item.Val())
 		return true
 	})
 
