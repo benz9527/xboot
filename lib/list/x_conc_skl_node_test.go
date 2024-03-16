@@ -447,6 +447,32 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 	})
 }
 
+func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
+	insertTotal := uint64(100000)
+
+	node := &xConcSklNode[uint64, uint64]{
+		vcmp: func(i, j uint64) int64 {
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		},
+	}
+
+	for i := uint64(0); i < insertTotal; i++ {
+		node.rbInsert(i)
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, uint64(idx), val)
+		return true
+	})
+	node.rbRelease()
+	require.Equal(t, int64(0), node.count)
+	require.Nil(t, node.root)
+}
+
 func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	total := int64(100)
 	insertTotal := int64(float64(total) * 0.8)

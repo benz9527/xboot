@@ -858,6 +858,39 @@ func (node *xConcSklNode[K, V]) rbPreorderTraversal(fn func(idx int64, color col
 	}
 }
 
+func (node *xConcSklNode[K, V]) rbRelease() {
+	size := atomic.LoadInt64(&node.count)
+	aux := node.root
+	node.root = nil
+	if size < 0 || aux == nil {
+		return
+	}
+
+	stack := make([]*xNode[V], 0, size>>1)
+	defer func() {
+		clear(stack)
+	}()
+
+	for ; !aux.isNilLeaf(); aux = aux.left {
+		stack = append(stack, aux)
+	}
+
+	size = int64(len(stack))
+	for size > 0 {
+		aux = stack[size-1]
+		r := aux.right
+		aux.right, aux.parent = nil, nil
+		atomic.AddInt64(&node.count, -1)
+		stack = stack[:size-1]
+		if r != nil {
+			for aux = r; aux != nil; aux = aux.left {
+				stack = append(stack, aux)
+			}
+		}
+		size = int64(len(stack))
+	}
+}
+
 func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	key K,
 	val V,
