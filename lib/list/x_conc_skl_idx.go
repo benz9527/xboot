@@ -8,12 +8,11 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-type xConcSkipListIndex[K infra.OrderedKey, V comparable] struct {
-	forward  *xConcSklNode[K, V]
-	backward *xConcSklNode[K, V] // Doubly linked list
+type xConcSklIndex[K infra.OrderedKey, V comparable] struct {
+	forward *xConcSklNode[K, V]
 }
 
-type xConcSklIndices[W infra.OrderedKey, O comparable] []*xConcSkipListIndex[W, O]
+type xConcSklIndices[W infra.OrderedKey, O comparable] []*xConcSklIndex[W, O]
 
 func (indices xConcSklIndices[W, O]) must(i int32) {
 	l := len(indices)
@@ -27,19 +26,9 @@ func (indices xConcSklIndices[W, O]) loadForward(i int32) *xConcSklNode[W, O] {
 	return indices[i].forward
 }
 
-func (indices xConcSklIndices[W, O]) loadBackward(i int32) *xConcSklNode[W, O] {
-	indices.must(i)
-	return indices[i].backward
-}
-
 func (indices xConcSklIndices[W, O]) storeForward(i int32, n *xConcSklNode[W, O]) {
 	indices.must(i)
 	indices[i].forward = n
-}
-
-func (indices xConcSklIndices[W, O]) storeBackward(i int32, n *xConcSklNode[W, O]) {
-	indices.must(i)
-	indices[i].backward = n
 }
 
 func (indices xConcSklIndices[W, O]) atomicLoadForward(i int32) *xConcSklNode[W, O] {
@@ -48,28 +37,16 @@ func (indices xConcSklIndices[W, O]) atomicLoadForward(i int32) *xConcSklNode[W,
 	return ptr
 }
 
-func (indices xConcSklIndices[W, O]) atomicLoadBackward(i int32) *xConcSklNode[W, O] {
-	indices.must(i)
-	ptr := (*xConcSklNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].backward))))
-	return ptr
-}
-
 func (indices xConcSklIndices[W, O]) atomicStoreForward(i int32, n *xConcSklNode[W, O]) {
 	indices.must(i)
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].forward)), unsafe.Pointer(n))
 }
 
-func (indices xConcSklIndices[W, O]) atomicStoreBackward(i int32, n *xConcSklNode[W, O]) {
-	indices.must(i)
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].backward)), unsafe.Pointer(n))
-}
-
-func newXConcSkipListIndices[K infra.OrderedKey, V comparable](level int32) xConcSklIndices[K, V] {
+func newXConcSklIndices[K infra.OrderedKey, V comparable](level int32) xConcSklIndices[K, V] {
 	indices := make(xConcSklIndices[K, V], level)
 	for i := int32(0); i < level; i++ {
-		indices[i] = &xConcSkipListIndex[K, V]{
-			forward:  nil,
-			backward: nil,
+		indices[i] = &xConcSklIndex[K, V]{
+			forward: nil,
 		}
 	}
 	return indices

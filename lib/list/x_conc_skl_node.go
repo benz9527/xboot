@@ -185,7 +185,7 @@ const (
 )
 
 type xConcSklNode[K infra.OrderedKey, V comparable] struct {
-	// If it is unique v-node type store value directly.
+	// If it is unique x-node type store value directly.
 	// Otherwise, it is a sentinel node.
 	root    *xNode[V]
 	key     K
@@ -245,7 +245,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 	case rbtree:
 		// TODO rbtree store element
 	default:
-		return false, errors.New("unknown v-node type")
+		return false, errors.New("unknown x-node type")
 	}
 	return isAppend, nil
 }
@@ -763,7 +763,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 		mu:    mutexFactory(mu),
 		vcmp:  cmp,
 	}
-	node.indexes = newXConcSkipListIndices[K, V](lvl)
+	node.indexes = newXConcSklIndices[K, V](lvl)
 	node.flags.setBitsAs(vNodeTypeBits, uint32(typ))
 	switch typ {
 	case unique:
@@ -779,7 +779,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	case rbtree:
 		node.rbInsert(val)
 	default:
-		panic("unknown v-node type")
+		panic("unknown x-node type")
 	}
 	node.count = 1
 	return node
@@ -793,7 +793,7 @@ func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ xNodeMod
 	}
 	head.flags.atomicSet(nodeHeadMarkedBit | nodeFullyLinkedBit)
 	head.flags.setBitsAs(vNodeTypeBits, uint32(typ))
-	head.indexes = newXConcSkipListIndices[K, V](xSkipListMaxLevel)
+	head.indexes = newXConcSklIndices[K, V](xSkipListMaxLevel)
 	return head
 }
 

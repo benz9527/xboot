@@ -271,7 +271,7 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 				case rbtree:
 					// TODO
 				default:
-					panic("unknown v-node type")
+					panic("unknown x-node type")
 				}
 			}
 			return
@@ -339,7 +339,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					if !rmTarget.mu.tryLock(ver) {
 						if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
 							// Double check.
-							return nil, errors.New("remove lock acquire failed and node (v-node) has been marked as removing")
+							return nil, errors.New("remove lock acquire failed and node (x-node) has been marked as removing")
 						}
 						isMarked = false
 						continue
@@ -349,7 +349,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
 						// Double check.
 						rmTarget.mu.unlock(ver)
-						return nil, errors.New("node (v-node) has been marked as removing")
+						return nil, errors.New("node (x-node) has been marked as removing")
 					}
 
 					rmTarget.flags.atomicSet(nodeRemovingMarkedBit)
@@ -498,7 +498,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 			break
 		}
 	default:
-		panic("unknown v-node type")
+		panic("unknown x-node type")
 	}
 
 	if foundAtLevel == -1 {

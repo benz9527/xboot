@@ -10,14 +10,12 @@ import (
 
 func TestXConcSkipList_Indexes(t *testing.T) {
 	idx := make(xConcSklIndices[uint8, *xSkipListObject], 2)
-	idx[0] = &xConcSkipListIndex[uint8, *xSkipListObject]{
-		forward:  nil,
-		backward: nil,
+	idx[0] = &xConcSklIndex[uint8, *xSkipListObject]{
+		forward: nil,
 	}
 	idx[0].forward = &xConcSklNode[uint8, *xSkipListObject]{}
-	idx[0] = &xConcSkipListIndex[uint8, *xSkipListObject]{
-		forward:  nil,
-		backward: nil,
+	idx[0] = &xConcSklIndex[uint8, *xSkipListObject]{
+		forward: nil,
 	}
 	ptr := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&idx[0].forward)))
 	t.Logf("%v\n", ptr)
