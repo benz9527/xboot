@@ -252,7 +252,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 
 	// remove
 
-	x, err := node.rbRemoveByPred(24)
+	x, err := node.rbRemove(24)
 	require.NoError(t, err)
 	require.Equal(t, uint64(24), *x.vptr)
 	expected = []checkData{
@@ -265,7 +265,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		return true
 	})
 
-	x, err = node.rbRemoveByPred(47)
+	x, err = node.rbRemove(47)
 	require.NoError(t, err)
 	require.Equal(t, uint64(47), *x.vptr)
 	expected = []checkData{
@@ -278,7 +278,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		return true
 	})
 
-	x, err = node.rbRemoveByPred(52)
+	x, err = node.rbRemove(52)
 	require.NoError(t, err)
 	require.Equal(t, uint64(52), *x.vptr)
 	expected = []checkData{
@@ -290,7 +290,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		return true
 	})
 
-	x, err = node.rbRemoveByPred(3)
+	x, err = node.rbRemove(3)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), *x.vptr)
 	expected = []checkData{
@@ -302,7 +302,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		return true
 	})
 
-	x, err = node.rbRemoveByPred(35)
+	x, err = node.rbRemove(35)
 	require.NoError(t, err)
 	require.Equal(t, uint64(35), *x.vptr)
 	require.Equal(t, int64(0), atomic.LoadInt64(&node.count))
@@ -348,7 +348,7 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 			})
 			require.Equal(t, uint64(92), *x.vptr)
 		}
-		x, err := node.rbRemoveByPred(i)
+		x, err := node.rbRemove(i)
 		require.NoError(t, err)
 		require.Equal(t, i, *x.vptr)
 	}
@@ -398,7 +398,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 			})
 			require.Equal(t, int64(92), *x.vptr)
 		}
-		x, err := node.rbRemoveByPred(i)
+		x, err := node.rbRemove(i)
 		require.NoError(t, err)
 		require.Equal(t, i, *x.vptr)
 	}
@@ -471,7 +471,7 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		node.rbInsert(removeElements[i])
 	}
 	for i := uint64(0); i < removeTotal; i++ {
-		x, err := node.rbRemoveByPred(removeElements[i])
+		x, err := node.rbRemove(removeElements[i])
 		require.NoError(t, err)
 		require.Equalf(t, removeElements[i], *x.vptr, "value exp: %d, real: %d\n", removeElements[i], *x.vptr)
 	}

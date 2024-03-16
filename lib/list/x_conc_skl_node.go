@@ -108,6 +108,63 @@ func (n *xNode[V]) fixLink() {
 	}
 }
 
+func (n *xNode[V]) minimum() *xNode[V] {
+	aux := n
+	for aux != nil && aux.left != nil {
+		aux = aux.left
+	}
+	return aux
+}
+
+func (n *xNode[V]) maximum() *xNode[V] {
+	aux := n
+	for aux != nil && aux.right != nil {
+		aux = aux.right
+	}
+	return aux
+}
+
+// The predecessor node of the current node is its previous node in sorted order
+func (n *xNode[V]) pred() *xNode[V] {
+	x := n
+	if x == nil {
+		return nil
+	}
+	aux := x
+	if aux.left != nil {
+		return aux.left.maximum()
+	}
+
+	aux = x.parent
+	// Backtrack to father node that is the x's predecessor.
+	for aux != nil && x == aux.left {
+		x = aux
+		aux = aux.parent
+	}
+	return aux
+}
+
+// The successor node of the current node is its next node in sorted order.
+func (n *xNode[V]) succ() *xNode[V] {
+	x := n
+	if x == nil {
+		return nil
+	}
+
+	aux := x
+	if aux.right != nil {
+		return aux.right.minimum()
+	}
+
+	aux = x.parent
+	// Backtrack to father node that is the x's successor.
+	for aux != nil && x == aux.right {
+		x = aux
+		aux = aux.parent
+	}
+	return aux
+}
+
 const (
 	nodeFullyLinkedBit = 1 << iota
 	nodeRemovingMarkedBit
@@ -422,157 +479,7 @@ func (node *xConcSklNode[K, V]) rbPostInsertBalance(x *xNode[V]) {
 	}
 }
 
-func (node *xConcSklNode[K, V]) rbtreeMinimum(x *xNode[V]) *xNode[V] {
-	aux := x
-	for aux != nil && aux.left != nil {
-		aux = aux.left
-	}
-	return aux
-}
-
-func (node *xConcSklNode[K, V]) rbtreeMaximum(x *xNode[V]) *xNode[V] {
-	aux := x
-	for aux != nil && aux.right != nil {
-		aux = aux.right
-	}
-	return aux
-}
-
-// The successor node of the current node is its next node in sorted order.
-func (node *xConcSklNode[K, V]) rbtreeSucc(x *xNode[V]) *xNode[V] {
-	if x == nil {
-		return nil
-	}
-
-	aux := x
-	if aux.right != nil {
-		return node.rbtreeMinimum(aux.right)
-	}
-
-	aux = x.parent
-	// Backtrack to father node that is the x's successor.
-	for aux != nil && x == aux.right {
-		x = aux
-		aux = aux.parent
-	}
-	return aux
-}
-
-// The predecessor node of the current node is its previous node in sorted order
-func (node *xConcSklNode[K, V]) rbtreePred(x *xNode[V]) *xNode[V] {
-	if x == nil {
-		return nil
-	}
-	aux := x
-	if aux.left != nil {
-		return node.rbtreeMaximum(aux.left)
-	}
-
-	aux = x.parent
-	// Backtrack to father node that is the x's predecessor.
-	for aux != nil && x == aux.left {
-		x = aux
-		aux = aux.parent
-	}
-	return aux
-}
-
-func (node *xConcSklNode[K, V]) rbRemove(val V) error {
-	if atomic.LoadInt64(&node.count) <= 0 {
-		return errors.New("empty rbtree")
-	}
-	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
-		return node.vcmp(val, *vn.vptr)
-	})
-	if z == nil {
-		return errors.New("not exists")
-	}
-	var y *xNode[V] = nil
-
-	// Found z is the remove target node
-	// case 1: z is the root node of rbtree, remove directly
-	if z.isRoot() {
-		node.root = nil
-		z.left = nil
-		z.right = nil
-		atomic.AddInt64(&node.count, -1)
-		return nil
-	}
-
-	y = z
-	// case 2: y contains 2 not nil leaf node
-	if !y.left.isNilLeaf() && !y.right.isNilLeaf() {
-		// Find the successor then swap value only
-		//     |                    |
-		//     N                    S
-		//    / \                  / \
-		//   L  ..   swap(N, S)   L  ..
-		//       |   =========>       |
-		//       P                    P
-		//      / \                  / \
-		//     S  ..                N  ..
-		y = node.rbtreeSucc(z)
-		// Swap value only.
-		z.vptr = y.vptr
-	}
-
-	// case 3: y is a leaf node.
-	if y.left.isNilLeaf() && y.right.isNilLeaf() {
-		if y.color == black {
-			node.rbRemoveBalance(y)
-			if y == y.parent.left {
-				y.parent.left = nil
-			} else /* y == y.parent.right */ {
-				y.parent.right = nil
-			}
-		} else if y.color == red {
-			// Leaf red node, remove directly.
-			if y == y.parent.left {
-				y.parent.left = nil
-			} else if y == y.parent.right {
-				y.parent.right = nil
-			}
-			atomic.AddInt64(&node.count, -1)
-			return nil
-		}
-	} else {
-		// case 4: y is not a leaf node.
-		var r *xNode[V] = nil
-		if !y.left.isNilLeaf() {
-			r = y.left // Maybe a red node
-		} else /* !y.right.isNilLeaf() */ {
-			r = y.right // Maybe a red node
-		}
-		if y.isRoot() {
-			// Root node of rbtree
-			node.root = r
-		} else if y == y.parent.left {
-			y.parent.left = r
-			r.parent = y.parent
-		} else /* y == y.parent.right */ {
-			y.parent.right = r
-			r.parent = y.parent
-		}
-
-		if y.color == black {
-			if r.color == red {
-				r.color = black
-			} else {
-				node.rbRemoveBalance(r)
-			}
-		}
-	}
-
-	y.parent = nil
-	y.left = nil
-	y.right = nil
-
-	// If it is red, directly remove is okay.
-	atomic.AddInt64(&node.count, -1)
-	return nil
-}
-
-func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (res *xNode[V], err error) {
+func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return nil, errors.New("empty rbtree")
 	}
@@ -612,7 +519,7 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (res *xNode[V], err error)
 		//       P                    P
 		//      / \                  / \
 		//     S  ..                S  ..
-		y = node.rbtreePred(z)
+		y = z.pred()
 		// Swap value only.
 		z.vptr = y.vptr
 	}
@@ -834,11 +741,11 @@ func (node *xConcSklNode[K, V]) rbPreorderTraversal(fn func(idx int64, color col
 	}
 }
 
-func (node *xConcSklNode[K, V]) rbtreeInorderTraversal(fn func(idx int64, color color, val V) bool) {
+func (node *xConcSklNode[K, V]) rbInorderTraversal(fn func(idx int64, color color, val V) bool) {
 
 }
 
-func (node *xConcSklNode[K, V]) rbtreePostorderTraversal(fn func(idx int64, color color, val V) bool) {
+func (node *xConcSklNode[K, V]) rbPostorderTraversal(fn func(idx int64, color color, val V) bool) {
 
 }
 
