@@ -409,7 +409,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 }
 
 func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
-	total := uint64(100000)
+	total := uint64(1000000)
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
