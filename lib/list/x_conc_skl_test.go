@@ -374,10 +374,20 @@ func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
 			name: "go native sync mutex data race - linkedlist",
 			mu:   goNativeMutex,
 			typ:  linkedList,
-		}, {
+		},
+		{
 			name: "skl lock free mutex data race - linkedlist",
 			mu:   xSklLockFree,
 			typ:  linkedList,
+		},
+		{
+			name: "go native sync mutex data race - rbtree",
+			mu:   goNativeMutex,
+			typ:  rbtree,
+		}, {
+			name: "skl lock free mutex data race - rbtree",
+			mu:   xSklLockFree,
+			typ:  rbtree,
 		},
 	}
 	t.Parallel()

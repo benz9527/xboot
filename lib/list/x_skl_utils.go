@@ -10,34 +10,34 @@ import (
 )
 
 var (
-	_ SkipListElement[uint8, uint8]       = (*xSkipListElement[uint8, uint8])(nil)
-	_ SkipListIterationItem[uint8, uint8] = (*xSkipListIterationItem[uint8, uint8])(nil)
+	_ SkipListElement[uint8, uint8]       = (*xSklElement[uint8, uint8])(nil)
+	_ SkipListIterationItem[uint8, uint8] = (*xSklIter[uint8, uint8])(nil)
 )
 
-type xSkipListElement[K infra.OrderedKey, V comparable] struct {
+type xSklElement[K infra.OrderedKey, V comparable] struct {
 	key K
 	val V
 }
 
-func (e *xSkipListElement[K, V]) Key() K {
+func (e *xSklElement[K, V]) Key() K {
 	return e.key
 }
 
-func (e *xSkipListElement[K, V]) Val() V {
+func (e *xSklElement[K, V]) Val() V {
 	return e.val
 }
 
-type xSkipListIterationItem[K infra.OrderedKey, V comparable] struct {
+type xSklIter[K infra.OrderedKey, V comparable] struct {
 	keyFn           func() K
 	valFn           func() V
 	nodeLevelFn     func() uint32
 	nodeItemCountFn func() int64
 }
 
-func (x *xSkipListIterationItem[K, V]) Key() K               { return x.keyFn() }
-func (x *xSkipListIterationItem[K, V]) Val() V               { return x.valFn() }
-func (x *xSkipListIterationItem[K, V]) NodeLevel() uint32    { return x.nodeLevelFn() }
-func (x *xSkipListIterationItem[K, V]) NodeItemCount() int64 { return x.nodeItemCountFn() }
+func (x *xSklIter[K, V]) Key() K               { return x.keyFn() }
+func (x *xSklIter[K, V]) Val() V               { return x.valFn() }
+func (x *xSklIter[K, V]) NodeLevel() uint32    { return x.nodeLevelFn() }
+func (x *xSklIter[K, V]) NodeItemCount() int64 { return x.nodeItemCountFn() }
 
 // Store the concurrent state.
 type flagBits struct {

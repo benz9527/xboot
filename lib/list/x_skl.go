@@ -34,7 +34,7 @@ const (
 )
 
 //var (
-//	_ SkipListElement[uint8, *emptyHashObject] = (*xSkipListElement[uint8, *emptyHashObject])(nil)
+//	_ SkipListElement[uint8, *emptyHashObject] = (*xSklElement[uint8, *emptyHashObject])(nil)
 //	_ SkipListNode[uint8, *emptyHashObject]    = (*xSkipListNode[uint8, *emptyHashObject])(nil)
 //	_ SkipListLevel[uint8, *emptyHashObject]   = (*skipListLevel[uint8, *emptyHashObject])(nil)
 //	_ SkipList[uint8, *emptyHashObject]        = (*xSkipList[uint8, *emptyHashObject])(nil)
@@ -126,7 +126,7 @@ const (
 //
 //func newXSkipListNode[W SkipListWeight, O HashObject](level int32, key W, obj O) SkipListNode[W, O] {
 //	e := &xSkipListNode[W, O]{
-//		element: &xSkipListElement[W, O]{
+//		element: &xSklElement[W, O]{
 //			key: key,
 //			val: obj,
 //		},

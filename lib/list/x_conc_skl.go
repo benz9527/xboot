@@ -182,7 +182,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 	forward := skl.atomicLoadHead().atomicLoadNext(0)
 	idx := int64(0)
 	typ := skl.loadVNodeType()
-	item := &xSkipListIterationItem[K, V]{}
+	item := &xSklIter[K, V]{}
 	switch typ {
 	case unique:
 		for forward != nil {
@@ -239,9 +239,34 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 			forward = forward.atomicLoadNext(0)
 		}
 	case rbtree:
-		// TODO
+		for forward != nil {
+			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
+				forward = forward.atomicLoadNext(0)
+				continue
+			}
+			item.nodeLevelFn = func() uint32 {
+				return atomic.LoadUint32(&forward.level)
+			}
+			item.nodeItemCountFn = func() int64 {
+				return atomic.LoadInt64(&forward.count)
+			}
+			item.keyFn = func() K {
+				return forward.key
+			}
+			forward.rbPreorderTraversal(func(idx int64, color color, val V) bool {
+				item.valFn = func() V {
+					return val
+				}
+				var res bool
+				if res, idx = fn(idx, item), idx+1; !res {
+					return false
+				}
+				return true
+			})
+			forward = forward.atomicLoadNext(0)
+		}
 	default:
-		panic("unknown skip-list node type")
+		panic("skl unknown node type")
 	}
 }
 
@@ -381,7 +406,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					continue
 				}
 
-				ele = &xSkipListElement[K, V]{
+				ele = &xSklElement[K, V]{
 					key: key,
 					val: *rmTarget.loadXNode().vptr,
 				}
@@ -463,7 +488,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 				case linkedList:
 					// locked
 					if n := rmTarget.root.linkedListNext(); n != nil {
-						ele = &xSkipListElement[K, V]{
+						ele = &xSklElement[K, V]{
 							key: key,
 							val: *n.vptr,
 						}
@@ -476,7 +501,14 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					}
 				case rbtree:
 					// locked
-					// TODO
+					if x, err := rmTarget.rbRemoveMin(); err != nil && x != nil {
+						ele = &xSklElement[K, V]{
+							key: key,
+							val: *x.vptr,
+						}
+						atomic.AddInt64(&skl.len, -1)
+						rmTarget.flags.atomicUnset(nodeRemovingFlagBit)
+					}
 				}
 
 				if atomic.LoadInt64(&rmTarget.count) <= 0 {
