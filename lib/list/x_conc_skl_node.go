@@ -44,6 +44,10 @@ func (n *xNode[V]) isNilLeaf() bool {
 	return n == nil || (n.vptr == nil && n.parent == nil && n.left == nil && n.right == nil)
 }
 
+func (n *xNode[V]) isLeaf() bool {
+	return n != nil && n.parent != nil && n.left.isNilLeaf() && n.right.isNilLeaf()
+}
+
 func (n *xNode[V]) isRoot() bool {
 	return n != nil && n.parent == nil
 }
@@ -277,25 +281,30 @@ func (node *xConcSklNode[K, V]) atomicStoreNext(i int32, next *xConcSklNode[K, V
 // References:
 // https://elixir.bootlin.com/linux/latest/source/lib/rbtree.c
 // rbtree properties:
-// 1. Each node is either red or black.
-// 2. The root is black.
-// 3. All leaves (and NIL) are black.
-// 4. If a red node has children, then the children are black (no two red nodes can be adjacent).
-// 5. Every path from a node to its descendant NIL nodes has the same number of black nodes.
+// https://en.wikipedia.org/wiki/Red%E2%80%93black_tree#Properties
+// p1. Every node is either red or black.
+// p2. All NIL nodes are considered black.
+// p3. A red node does not have a red child. (red-violation)
+// p4. Every path from a given node to any of its descendant
+//   NIL nodes goes through the same number of black nodes. (black-violation)
+// p5. (Optional) The root is black.
+// (Conclusion) If a node X has exactly one child, it must be a red child,
+//   because if it were black, its NIL descendants would sit at a different
+//   black depth than X's NIL child, violating p4.
 // So the shortest path nodes are black nodes. Otherwise,
 // the path must contain red node.
 // The longest path nodes' number is 2 * shortest path nodes' number.
 
-//	 |                         |
-//	 X                         S
-//	/ \     leftRotate(X)     / \
-//
-// L   S    ============>    X   R
-//
-//	 / \                   / \
-//	M   R                 L   M
+/*
+		 |                         |
+		 X                         S
+		/ \     leftRotate(X)     / \
+	   L   S    ============>    X   Sd
+		  / \                   / \
+		Sc   Sd                L   Sc
+*/
 func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
-	if x == nil || x.right == nil {
+	if x == nil || x.right.isNilLeaf() {
 		panic("skl rbtree left rotate node x is nil or x.right is nil")
 	}
 
@@ -317,16 +326,16 @@ func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
 	y.parent = p
 }
 
-//	 |                         |
-//	 X                         S
-//	/ \     rightRotate(S)    / \
-//
-// L   S    <============    X   R
-//
-//	 / \                   / \
-//	M   R                 L   M
+/*
+			 |                         |
+			 X                         S
+			/ \     rightRotate(S)    / \
+	       L   S    <============    X   R
+			  / \                   / \
+			Sc   Sd               Sc   Sd
+*/
 func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
-	if x == nil || x.left == nil {
+	if x == nil || x.left.isNilLeaf() {
 		panic("skl rbtree right rotate node x is nil or x.right is nil")
 	}
 
@@ -371,7 +380,10 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) {
 		}
 	}
 
-	// assert y != nil
+	if y.isNilLeaf() {
+		panic("skl rbtree insert a new value into nil node")
+	}
+
 	var z *xNode[V]
 	res := node.vcmp(val, *y.vptr)
 	if /* Equal */ res == 0 {
@@ -394,12 +406,51 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) {
 	}
 
 	atomic.AddInt64(&node.count, 1)
-	node.rbInsertBalance(z)
+	node.rbInsertRebalance(z)
 }
 
-// New node color is red by default.
-// Color adjust from the bottom-up.
-func (node *xConcSklNode[K, V]) rbInsertBalance(x *xNode[V]) {
+/*
+New node X is red by default.
+
+<X> is a RED node.
+[X] is a BLACK node (or NIL).
+{X} is either a RED node or a BLACK node.
+
+i1: Empty rbtree, insert directly, but root node is painted to black.
+
+i2: Current node X's parent P is black and P is root, so hold r3 and r4.
+
+i3: Current node X's parent P is red and P is root, repaint P into black.
+
+i4: If both the parent P and the uncle U are red, grandpa G is black.
+(red-violation)
+After repainted G into red may be still red-violation.
+
+	    [G]             <G>
+	    / \             / \
+	  <P> <U>  ====>  [P] [U]
+	  /               /
+	<X>             <X>
+
+i5: The parent P is red but the uncle U is black. (red-violation)
+X is opposite direction to P.
+After rotation may be still red-violation. Here must enter i6 to fix.
+
+	  [G]                 [G]
+	  / \    rotate(P)    / \
+	<P> [U]  ========>  <X> [U]
+	  \                 /
+	  <X>             <P>
+
+i6: Handle i5 scenario, current node is the same direction as parent.
+
+	    [G]                 <P>               [P]
+	    / \    rotate(G)    / \    repaint    / \
+	  <P> [U]  ========>  <X> [G]  ======>  <X> <G>
+	  /                         \                 \
+	<X>                         [U]               [U]
+*/
+func (node *xConcSklNode[K, V]) rbInsertRebalance(x *xNode[V]) {
 	if x.isRoot() {
 		if x.isRed() {
 			x.color = black
@@ -428,7 +479,7 @@ func (node *xConcSklNode[K, V]) rbInsertBalance(x *xNode[V]) {
 		x.uncle().color = black
 		gp := x.grandpa()
 		gp.color = red
-		node.rbInsertBalance(gp) // tail recursive
+		node.rbInsertRebalance(gp) // tail recursive
 	} else {
 		if !x.hasUncle() || x.uncle().isBlack() {
 			//      [G]                 [G]
@@ -465,6 +516,44 @@ func (node *xConcSklNode[K, V]) rbInsertBalance(x *xNode[V]) {
 	}
 }
 
+/*
+r1: Only a root node, remove directly.
+
+r2: Current node X has left and right node.
+Find node X's predecessor or successor to replace it to be removed.
+Swap the value only.
+Both of predecessor and successor are nil left and right node.
+
+Find predecessor:
+
+	  |                    |
+	  X                    L
+	 / \                  / \
+	L  ..   swap(X, L)   X  ..
+		|   =========>       |
+		P                    P
+	   / \                  / \
+	  S  ..                S  ..
+
+Find successor:
+
+	  |                    |
+	  X                    S
+	 / \                  / \
+	L  ..   swap(X, S)   L  ..
+		|   =========>       |
+		P                    P
+	   / \                  / \
+	  S  ..                X  ..
+
+r3: (1) Current node X is a red leaf node, remove directly.
+
+r3: (2) Current node X is a black leaf node, we have to rebalance after remove.
+(black-violation)
+
+r4: Current node X is not a leaf node but contains a not nil child node.
+The child node must be a red node. (See conclusion. Otherwise, black-violation)
+*/
 func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return nil, errors.New("empty rbtree")
@@ -479,9 +568,7 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 		atomic.AddInt64(&node.count, -1)
 	}()
 
-	// Found z is the remove target node
-	// case 1: z is the root node of rbtree, remove directly
-	if atomic.LoadInt64(&node.count) == 1 && z.isRoot() {
+	if /* r1 */ atomic.LoadInt64(&node.count) == 1 && z.isRoot() {
 		node.root = nil
 		z.left = nil
 		z.right = nil
@@ -493,49 +580,36 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 	}
 
 	y := z
-	// case 2: y contains 2 not nil leaf node
-	if !y.left.isNilLeaf() && !y.right.isNilLeaf() {
-		// Find the predecessor then swap value only
-		//     |                    |
-		//     N                    L
-		//    / \                  / \
-		//   L  ..   swap(N, L)   N  ..
-		//       |   =========>       |
-		//       P                    P
-		//      / \                  / \
-		//     S  ..                S  ..
-		y = z.pred()
+	if /* r2 */ !y.left.isNilLeaf() && !y.right.isNilLeaf() {
+		y = z.pred() // enter r3-r4
 		// Swap value only.
 		z.vptr = y.vptr
 	}
 
-	// case 3: y is a leaf node.
-	if y.left.isNilLeaf() && y.right.isNilLeaf() {
-		if y.isBlack() {
-			node.rbRemoveBalance(y)
-		} else if y.isRed() {
-			// Leaf red node, remove directly.
+	if /* r3 */ y.isLeaf() {
+		if /* r3 (1) */ y.isRed() {
 			switch dir := y.direction(); dir {
 			case left:
 				y.parent.left = nil
 			case right:
 				y.parent.right = nil
 			default:
-				panic("skl rbtree x-node y should be a leaf node")
+				panic("skl rbtree x-node y should be a leaf node (r3-1)")
 			}
 			return res, nil
+		} else /* r3 (2) */ {
+			node.rbRemoveRebalance(y)
 		}
-	} else {
-		// case 4: y is not a leaf node.
-		replace := &xNode[V]{}
+	} else /* r4 */ {
+		var replace *xNode[V]
 		if !y.right.isNilLeaf() {
-			replace = y.right // Maybe a red node
+			replace = y.right
 		} else if !y.left.isNilLeaf() {
-			replace = y.left // Maybe a red node
+			replace = y.left
 		}
 
 		if replace == nil {
-			panic("skl rbtree remove with nil replace node")
+			panic("skl rbtree remove a leaf node without child (r4)")
 		}
 
 		switch dir := y.direction(); dir {
@@ -555,7 +629,7 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 			if replace.isRed() {
 				replace.color = black
 			} else {
-				node.rbRemoveBalance(replace)
+				node.rbRemoveRebalance(replace)
 			}
 		}
 	}
@@ -573,9 +647,79 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 	return res, nil
 }
 
-func (node *xConcSklNode[K, V]) rbRemoveBalance(x *xNode[V]) {
+/*
+<X> is a RED node.
+[X] is a BLACK node (or NIL).
+{X} is either a RED node or a BLACK node.
+
+Sc is the same direction to X and it X's sibling's child node.
+Sd is the opposite direction to X and it X's sibling's child node.
+
+rm1: Current node X's sibling S is red, so the parent P, nephew node Sc and Sd
+must be black. (Otherwise, red-violation)
+(1) X is left node of P, left rotate P
+(2) X is right node of P, right rotate P.
+(3) repaint S into black, P into red.
+
+	  [P]                   <S>               [S]
+	  / \    l-rotate(P)    / \    repaint    / \
+	[X] <S>  ==========>  [P] [D]  ======>  <P> [Sd]
+	    / \               / \               / \
+	 [Sc] [Sd]          [X] [Sc]          [X] [Sc]
+
+rm2: Current node X's parent P is red, the sibling S, nephew node Sc and Sd
+is black.
+Repaint S into red and P into black.
+
+	  <P>             [P]
+	  / \             / \
+	[X] [S]  ====>  [X] <S>
+	    / \             / \
+	 [Sc] [Sd]       [Sc] [Sd]
+
+rm3: All of current node X's parent P, the sibling S, nephew node Sc and Sd
+are black.
+Unable to satisfy p3 and p4. We have to paint the S into red to satisfy
+p4 locally. Then recursive to handle P.
+
+	  [P]             [P]
+	  / \             / \
+	[X] [S]  ====>  [X] <S>
+	    / \             / \
+	 [Sc] [Sd]       [Sc] [Sd]
+
+rm4: Current node X's sibling S is black, nephew node Sc is red and Sd
+is black. Ignore X's parent P's color (red or black is okay)
+Unable to satisfy p3 and p4.
+(1) If X is left node of P, right rotate P.
+(2) If X is right node of P, left rotate P.
+(3) Repaint S into red, Sc into black
+Enter into rm5 to fix.
+
+	                        {P}                {P}
+	  {P}                   / \                / \
+	  / \    r-rotate(S)  [X] <Sc>   repaint  [X] [Sc]
+	[X] [S]  ==========>        \    ======>       \
+	    / \                     [S]                <S>
+	  <Sc> [Sd]                   \                  \
+	                              [Sd]               [Sd]
+
+rm5: Current node X's sibling S is black, nephew node Sc is black and Sd
+is red. Ignore X's parent P's color (red or black is okay)
+Unable to satisfy p4 (black-violation)
+(1) If X is left node of P, left rotate P.
+(2) If X is right node of P, right rotate P.
+(3) Swap P and S's color (red-violation)
+(4) Repaint Sd into black.
+
+	  {P}                   [S]                {S}
+	  / \    l-rotate(P)    / \     repaint    / \
+	[X] [S]  ==========>  {P} <Sd>  ======>  [P] [Sd]
+	    / \               / \                / \
+	 [Sc] <Sd>          [X] [Sc]           [X] [Sc]
+*/
+func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 	if x.isRoot() {
-		// Backtrack to root node
 		return
 	}
 
@@ -629,7 +773,7 @@ func (node *xConcSklNode[K, V]) rbRemoveBalance(x *xNode[V]) {
 		//        / \             / \
 		//      [C] [D]         [C] [D]
 		sibling.color = red
-		node.rbRemoveBalance(x.parent)
+		node.rbRemoveRebalance(x.parent)
 		return
 	} else {
 		if !sc.isNilLeaf() && sc.isRed() {
