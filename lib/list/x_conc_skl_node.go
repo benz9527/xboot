@@ -57,6 +57,10 @@ const (
 )
 
 func (n *xNode[V]) direction() rbDirection {
+	if n.isNilLeaf() {
+		panic("skl rbtree x-node nil leaf node without direction")
+	}
+
 	if n.isRoot() {
 		return root
 	}
@@ -110,16 +114,14 @@ func (n *xNode[V]) fixLink() {
 
 func (n *xNode[V]) minimum() *xNode[V] {
 	aux := n
-	for aux != nil && aux.left != nil {
-		aux = aux.left
+	for ; aux != nil && aux.left != nil; aux = aux.left {
 	}
 	return aux
 }
 
 func (n *xNode[V]) maximum() *xNode[V] {
 	aux := n
-	for aux != nil && aux.right != nil {
-		aux = aux.right
+	for ; aux != nil && aux.right != nil; aux = aux.right {
 	}
 	return aux
 }
@@ -294,7 +296,7 @@ func (node *xConcSklNode[K, V]) atomicStoreNext(i int32, next *xConcSklNode[K, V
 //	M   R                 L   M
 func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
 	if x == nil || x.right == nil {
-		panic("rbtree left rotate node x is nil or x.right is nil")
+		panic("skl rbtree left rotate node x is nil or x.right is nil")
 	}
 
 	p, y := x.parent, x.right
@@ -325,7 +327,7 @@ func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
 //	M   R                 L   M
 func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 	if x == nil || x.left == nil {
-		panic("rbtree right rotate node x is nil or x.right is nil")
+		panic("skl rbtree right rotate node x is nil or x.right is nil")
 	}
 
 	p, y := x.parent, x.left
@@ -471,12 +473,11 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 		return node.vcmp(val, *vn.vptr)
 	})
 	if z == nil {
-		return nil, errors.New("not exists")
+		return nil, errors.New("not found")
 	}
 	defer func() {
 		atomic.AddInt64(&node.count, -1)
 	}()
-	var y *xNode[V] = nil
 
 	// Found z is the remove target node
 	// case 1: z is the root node of rbtree, remove directly
@@ -491,7 +492,7 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 		vptr: z.vptr,
 	}
 
-	y = z
+	y := z
 	// case 2: y contains 2 not nil leaf node
 	if !y.left.isNilLeaf() && !y.right.isNilLeaf() {
 		// Find the predecessor then swap value only
@@ -514,10 +515,13 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 			node.rbRemoveBalance(y)
 		} else if y.isRed() {
 			// Leaf red node, remove directly.
-			if y == y.parent.left {
+			switch dir := y.direction(); dir {
+			case left:
 				y.parent.left = nil
-			} else if y == y.parent.right {
+			case right:
 				y.parent.right = nil
+			default:
+				panic("skl rbtree x-node y should be a leaf node")
 			}
 			return res, nil
 		}
@@ -531,22 +535,24 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 		}
 
 		if replace == nil {
-			panic("rbtree remove with nil replace node")
+			panic("skl rbtree remove with nil replace node")
 		}
 
-		if y.isRoot() {
-			// Root node of rbtree
+		switch dir := y.direction(); dir {
+		case root:
 			node.root = replace
-		} else if y == y.parent.left {
+		case left:
 			y.parent.left = replace
 			replace.parent = y.parent
-		} else /* y == y.parent.right */ {
+		case right:
 			y.parent.right = replace
 			replace.parent = y.parent
+		default:
+			panic("skl rbtree impossible reach code")
 		}
 
-		if y.color == black {
-			if replace.color == red {
+		if y.isBlack() {
+			if replace.isRed() {
 				replace.color = black
 			} else {
 				node.rbRemoveBalance(replace)
@@ -560,7 +566,6 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (res *xNode[V], err error) {
 	} else if y == y.parent.right {
 		y.parent.right = nil
 	}
-
 	y.parent = nil
 	y.left = nil
 	y.right = nil
@@ -677,8 +682,7 @@ func (node *xConcSklNode[K, V]) rbSearch(x *xNode[V], fn func(*xNode[V]) int64) 
 		return nil
 	}
 
-	aux := x
-	for aux != nil {
+	for aux := x; aux != nil; {
 		res := fn(aux)
 		if res == 0 {
 			return aux
@@ -697,28 +701,27 @@ func (node *xConcSklNode[K, V]) rbPreorderTraversal(fn func(idx int64, color col
 	if size < 0 || aux == nil {
 		return
 	}
+
 	stack := make([]*xNode[V], 0, size>>1)
 	defer func() {
 		clear(stack)
 	}()
-	for aux != nil {
+
+	for ; !aux.isNilLeaf(); aux = aux.left {
 		stack = append(stack, aux)
-		aux = aux.left
 	}
+
 	idx := int64(0)
 	size = int64(len(stack))
 	for size > 0 {
-		aux = stack[size-1]
-		if !fn(idx, aux.color, *aux.vptr) {
+		if aux = stack[size-1]; !fn(idx, aux.color, *aux.vptr) {
 			return
 		}
 		idx++
 		stack = stack[:size-1]
 		if aux.right != nil {
-			aux = aux.right
-			for aux != nil {
+			for aux = aux.right; aux != nil; aux = aux.left {
 				stack = append(stack, aux)
-				aux = aux.left
 			}
 		}
 		size = int64(len(stack))
