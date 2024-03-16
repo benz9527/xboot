@@ -582,15 +582,17 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (res *xNode[V], err error)
 	if z == nil {
 		return nil, errors.New("not exists")
 	}
+	defer func() {
+		atomic.AddInt64(&node.count, -1)
+	}()
 	var y *xNode[V] = nil
 
 	// Found z is the remove target node
 	// case 1: z is the root node of rbtree, remove directly
-	if z.isRoot() {
+	if atomic.LoadInt64(&node.count) == 1 && z.isRoot() {
 		node.root = nil
 		z.left = nil
 		z.right = nil
-		atomic.AddInt64(&node.count, -1)
 		return z, nil
 	}
 
@@ -619,11 +621,6 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (res *xNode[V], err error)
 	if y.left.isNilLeaf() && y.right.isNilLeaf() {
 		if y.isBlack() {
 			node.rbRemoveBalance(y)
-			if y == y.parent.left {
-				y.parent.left = nil
-			} else /* y == y.parent.right */ {
-				y.parent.right = nil
-			}
 		} else if y.isRed() {
 			// Leaf red node, remove directly.
 			if y == y.parent.left {
@@ -631,33 +628,37 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (res *xNode[V], err error)
 			} else if y == y.parent.right {
 				y.parent.right = nil
 			}
-			atomic.AddInt64(&node.count, -1)
-			return y, nil
+			return res, nil
 		}
 	} else {
 		// case 4: y is not a leaf node.
-		var r *xNode[V] = nil
+		replace := &xNode[V]{}
 		if !y.right.isNilLeaf() {
-			r = y.right // Maybe a red node
+			replace = y.right // Maybe a red node
 		} else if !y.left.isNilLeaf() {
-			r = y.right // Maybe a red node
+			replace = y.left // Maybe a red node
 		}
+
+		if replace == nil {
+			panic("rbtree remove with nil replace node")
+		}
+
 		if y.isRoot() {
 			// Root node of rbtree
-			node.root = r
+			node.root = replace
 		} else if y == y.parent.left {
-			y.parent.left = r
-			r.parent = y.parent
+			y.parent.left = replace
+			replace.parent = y.parent
 		} else /* y == y.parent.right */ {
-			y.parent.right = r
-			r.parent = y.parent
+			y.parent.right = replace
+			replace.parent = y.parent
 		}
 
 		if y.color == black {
-			if r.color == red {
-				r.color = black
+			if replace.color == red {
+				replace.color = black
 			} else {
-				node.rbRemoveBalance(r)
+				node.rbRemoveBalance(replace)
 			}
 		}
 	}
@@ -673,13 +674,11 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (res *xNode[V], err error)
 	y.left = nil
 	y.right = nil
 
-	// If it is red, directly remove is okay.
-	atomic.AddInt64(&node.count, -1)
 	return res, nil
 }
 
 func (node *xConcSklNode[K, V]) rbRemoveBalance(x *xNode[V]) {
-	if x.parent == nil {
+	if x.isRoot() {
 		// Backtrack to root node
 		return
 	}

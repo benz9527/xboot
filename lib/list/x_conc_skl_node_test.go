@@ -2,8 +2,8 @@ package list
 
 import (
 	"github.com/benz9527/xboot/lib/id"
-	"github.com/stretchr/testify/assert"
 	"runtime"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -178,13 +178,18 @@ func TestAuxIndexes(t *testing.T) {
 	})
 }
 
-func TestRbtree(t *testing.T) {
+// test remove by predecessor references:
+// https://www.cs.usfca.edu/~galles/visualization/RedBlack.html
+// https://github.com/minghu6/rust-minghu6/blob/master/coll_st/src/bst/rb.rs
+
+func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	type checkData struct {
 		color color
-		val   int32
+		val   uint64
 	}
-	node := &xConcSklNode[int32, int32]{
-		vcmp: func(i, j int32) int64 {
+
+	node := &xConcSklNode[uint64, uint64]{
+		vcmp: func(i, j uint64) int64 {
 			if i == j {
 				return 0
 			} else if i > j {
@@ -193,61 +198,114 @@ func TestRbtree(t *testing.T) {
 			return -1
 		},
 	}
-	for i := int32(0); i < 10; i++ {
-		node.rbInsert(i)
-	}
+	node.rbInsert(52)
 	expected := []checkData{
-		{false, 0}, {false, 1}, {false, 2}, {false, 3},
-		{false, 4}, {false, 5}, {false, 6}, {true, 7},
-		{false, 8}, {true, 9},
+		{black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 
-	t.Log("delete 5")
-	_, err := node.rbRemoveByPred(5)
-	assert.NoError(t, err)
+	node.rbInsert(47)
 	expected = []checkData{
-		{false, 0}, {false, 1}, {false, 2}, {false, 3},
-		{false, 4}, {true, 6}, {false, 7},
-		{false, 8}, {true, 9},
+		{red, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 
-	t.Log("delete 1")
-	_, err = node.rbRemoveByPred(1)
-	assert.NoError(t, err)
+	node.rbInsert(3)
 	expected = []checkData{
-		{false, 0}, {true, 2}, {false, 3},
-		{false, 4}, {true, 6}, {true, 7},
-		{false, 8}, {true, 9},
+		{red, 3}, {black, 47}, {red, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
 
-	t.Log("delete 7")
-	_, err = node.rbRemoveByPred(7)
-	assert.NoError(t, err)
+	node.rbInsert(35)
 	expected = []checkData{
-		{false, 0}, {true, 2}, {false, 3},
-		{false, 4}, {true, 6},
-		{false, 8}, {true, 9},
+		{black, 3}, {red, 35},
+		{black, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val int32) bool {
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+
+	node.rbInsert(24)
+	expected = []checkData{
+		{red, 3}, {black, 24}, {red, 35},
+		{black, 47}, {black, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	// remove
+
+	x, err := node.rbRemoveByPred(24)
+	require.NoError(t, err)
+	require.Equal(t, uint64(24), *x.vptr)
+	expected = []checkData{
+		{black, 3}, {red, 35},
+		{black, 47}, {black, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveByPred(47)
+	require.NoError(t, err)
+	require.Equal(t, uint64(47), *x.vptr)
+	expected = []checkData{
+		{black, 3}, {black, 35},
+		{black, 52},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveByPred(52)
+	require.NoError(t, err)
+	require.Equal(t, uint64(52), *x.vptr)
+	expected = []checkData{
+		{red, 3}, {black, 35},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveByPred(3)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), *x.vptr)
+	expected = []checkData{
+		{black, 35},
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+
+	x, err = node.rbRemoveByPred(35)
+	require.NoError(t, err)
+	require.Equal(t, uint64(35), *x.vptr)
+	require.Equal(t, int64(0), atomic.LoadInt64(&node.count))
 
 }
 
@@ -271,7 +329,6 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 		node.rbInsert(i)
 	}
 
-	t.Log("insert okay1")
 	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
@@ -279,7 +336,6 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		node.rbInsert(i)
 	}
-	t.Log("insert okay2")
 	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
@@ -287,10 +343,6 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		if i == 92 {
-			node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
-				t.Logf("idx: %d, expected: %d, actual: %d\n", idx, idx, val)
-				return true
-			})
 			x := node.rbSearch(node.root, func(x *xNode[uint64]) int64 {
 				return node.vcmp(i, *x.vptr)
 			})
@@ -300,7 +352,6 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, i, *x.vptr)
 	}
-	t.Log("remove okay")
 
 	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
@@ -308,8 +359,57 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 	})
 }
 
+func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
+	total := int64(100)
+	insertTotal := int64(float64(total) * 0.8)
+	removeTotal := int64(float64(total) * 0.2)
+
+	node := &xConcSklNode[uint64, int64]{
+		vcmp: func(i, j int64) int64 {
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		},
+	}
+
+	for i := insertTotal - 1; i >= 0; i-- {
+		node.rbInsert(i)
+	}
+
+	node.rbPreorderTraversal(func(idx int64, color color, val int64) bool {
+		require.Equal(t, int64(idx), val)
+		return true
+	})
+	for i := removeTotal + insertTotal - 1; i >= insertTotal; i-- {
+		node.rbInsert(i)
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val int64) bool {
+		require.Equal(t, int64(idx), val)
+		return true
+	})
+
+	for i := insertTotal; i < removeTotal+insertTotal; i++ {
+		if i == 92 {
+			x := node.rbSearch(node.root, func(x *xNode[int64]) int64 {
+				return node.vcmp(i, *x.vptr)
+			})
+			require.Equal(t, int64(92), *x.vptr)
+		}
+		x, err := node.rbRemoveByPred(i)
+		require.NoError(t, err)
+		require.Equal(t, i, *x.vptr)
+	}
+	node.rbPreorderTraversal(func(idx int64, color color, val int64) bool {
+		require.Equal(t, int64(idx), val)
+		return true
+	})
+}
+
 func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
-	total := uint64(100)
+	total := uint64(100000)
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
@@ -334,6 +434,18 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 			break
 		}
 	}
+
+	shuffle := func(arr []uint64) {
+		count := uint32(len(arr) >> 2)
+		for i := uint32(0); i < count; i++ {
+			j := cryptoRandUint32() % (i + 1)
+			arr[i], arr[j] = arr[j], arr[i]
+		}
+	}
+
+	shuffle(insertElements)
+	shuffle(removeElements)
+
 	t.Log("gen okay")
 	node := &xConcSklNode[uint64, uint64]{
 		vcmp: func(i, j uint64) int64 {
@@ -350,6 +462,9 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		node.rbInsert(insertElements[i])
 	}
 	t.Log("insert okay1")
+	sort.Slice(insertElements, func(i, j int) bool {
+		return insertElements[i] < insertElements[j]
+	})
 	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, insertElements[idx], val)
 		return true
@@ -361,7 +476,7 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 	for i := uint64(0); i < removeTotal; i++ {
 		x, err := node.rbRemoveByPred(removeElements[i])
 		require.NoError(t, err)
-		require.Equal(t, removeElements[i], *x.vptr)
+		require.Equalf(t, removeElements[i], *x.vptr, "value exp: %d, real: %d\n", removeElements[i], *x.vptr)
 	}
 	t.Log("remove okay")
 	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
