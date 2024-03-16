@@ -446,7 +446,6 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 	shuffle(insertElements)
 	shuffle(removeElements)
 
-	t.Log("gen okay")
 	node := &xConcSklNode[uint64, uint64]{
 		vcmp: func(i, j uint64) int64 {
 			if i == j {
@@ -461,7 +460,6 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 	for i := uint64(0); i < insertTotal; i++ {
 		node.rbInsert(insertElements[i])
 	}
-	t.Log("insert okay1")
 	sort.Slice(insertElements, func(i, j int) bool {
 		return insertElements[i] < insertElements[j]
 	})
@@ -472,13 +470,11 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 	for i := uint64(0); i < removeTotal; i++ {
 		node.rbInsert(removeElements[i])
 	}
-	t.Log("insert okay2")
 	for i := uint64(0); i < removeTotal; i++ {
 		x, err := node.rbRemoveByPred(removeElements[i])
 		require.NoError(t, err)
 		require.Equalf(t, removeElements[i], *x.vptr, "value exp: %d, real: %d\n", removeElements[i], *x.vptr)
 	}
-	t.Log("remove okay")
 	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, insertElements[idx], val)
 		return true
