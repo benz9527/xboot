@@ -214,45 +214,17 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 		// predecessor
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
-			res := node.vcmp(val, *n.vptr)
-			if res == 0 {
-				// Replace
-				pred = n
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.vptr)), unsafe.Pointer(&val))
-				break
-			} else if res > 0 {
-				pred = n
-				if next := n.parent; next != nil {
-					continue
-				}
-				// Append
-				vn := &xNode[V]{
-					vptr:   &val,
-					parent: n.parent,
-				}
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.parent)), unsafe.Pointer(vn))
-				atomic.AddInt64(&node.count, 1)
-				isAppend = true
-				break
-			} else {
-				// Prepend
-				vn := &xNode[V]{
-					vptr:   &val,
-					parent: n,
-				}
-				atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.parent)), unsafe.Pointer(vn))
-				atomic.AddInt64(&node.count, 1)
-				isAppend = true
-				break
-			}
-		}
+		isAppend = node.llInsert(val)
 		node.mu.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	case rbtree:
-		// TODO rbtree store element
+		node.mu.lock(ver)
+		node.flags.atomicUnset(nodeInsertedFlagBit)
+		isAppend = node.rbInsert(val)
+		node.mu.unlock(ver)
+		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
-		return false, errors.New("unknown x-node type")
+		return false, errors.New("skl unknown x-node type")
 	}
 	return isAppend, nil
 }
@@ -275,6 +247,45 @@ func (node *xConcSklNode[K, V]) atomicLoadNext(i int32) *xConcSklNode[K, V] {
 
 func (node *xConcSklNode[K, V]) atomicStoreNext(i int32, next *xConcSklNode[K, V]) {
 	node.indexes.atomicStoreForward(i, next)
+}
+
+/* linked-list operation implementation */
+
+func (node *xConcSklNode[K, V]) llInsert(val V) (isAppend bool) {
+	for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
+		res := node.vcmp(val, *n.vptr)
+		if res == 0 {
+			// Replace
+			pred = n
+			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.vptr)), unsafe.Pointer(&val))
+			break
+		} else if res > 0 {
+			pred = n
+			if next := n.parent; next != nil {
+				continue
+			}
+			// Append
+			vn := &xNode[V]{
+				vptr:   &val,
+				parent: n.parent,
+			}
+			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.parent)), unsafe.Pointer(vn))
+			atomic.AddInt64(&node.count, 1)
+			isAppend = true
+			break
+		} else {
+			// Prepend
+			vn := &xNode[V]{
+				vptr:   &val,
+				parent: n,
+			}
+			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.parent)), unsafe.Pointer(vn))
+			atomic.AddInt64(&node.count, 1)
+			isAppend = true
+			break
+		}
+	}
+	return
 }
 
 /* rbtree operation implementation */
@@ -359,14 +370,14 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 }
 
 // i1: Empty rbtree, insert directly, but root node is painted to black.
-func (node *xConcSklNode[K, V]) rbInsert(val V) {
+func (node *xConcSklNode[K, V]) rbInsert(val V) (isAppend bool) {
 
 	if /* i1 */ node.root.isNilLeaf() {
 		node.root = &xNode[V]{
 			vptr: &val,
 		}
 		atomic.AddInt64(&node.count, 1)
-		return
+		return true
 	}
 
 	var x, y *xNode[V] = node.root, nil
@@ -390,7 +401,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) {
 	res := node.vcmp(val, *y.vptr)
 	if /* Equal */ res == 0 {
 		y.vptr = &val
-		return
+		return false
 	} else /* Less */ if res < 0 {
 		z = &xNode[V]{
 			vptr:   &val,
@@ -409,6 +420,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) {
 
 	atomic.AddInt64(&node.count, 1)
 	node.rbInsertRebalance(z)
+	return true
 }
 
 /*
