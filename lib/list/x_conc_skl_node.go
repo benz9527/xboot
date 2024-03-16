@@ -717,99 +717,74 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 
 	sibling := x.sibling()
 	dir := x.direction()
-	if sibling.isRed() {
-		// case 1: x's sibling node is red
-		if dir == left {
-			// [] is black, <> is red
-			//     |                     |
-			//    [P]                   [S]
-			//    / \                  /   \
-			// [N]  <S>               <P>  [Sr]
-			//      /  \   =======>  /  \
-			//    [Sl] [Sr]        [N]  [Sl]
-			// rotate father node
+	if /* rm1 */ sibling.isRed() {
+		switch dir {
+		case left:
 			node.rbLeftRotate(x.parent)
-		} else if dir == right {
+		case right:
 			node.rbRightRotate(x.parent)
+		default:
+			panic("skl rbtree remove violate (rm1)")
 		}
 		sibling.color = black
-		x.parent.color = red
+		x.parent.color = red // ready to enter rm2
 		sibling = x.sibling()
 	}
 
-	var sc, sd *xNode[V] = nil, nil
-	if dir == left {
-		sc = sibling.left
-		sd = sibling.right
-	} else if dir == right {
-		sc = sibling.right
-		sd = sibling.left
+	var sc, sd *xNode[V]
+	switch /* rm2 */ dir {
+	case left:
+		sc, sd = sibling.left, sibling.right
+	case right:
+		sc, sd = sibling.right, sibling.left
+	default:
+		panic("skl rbtree remove violate (rm2)")
 	}
 
-	// sibling must be black
-
 	if sc.isBlack() && sd.isBlack() {
-		if x.parent.isRed() {
-			//      <P>             [P]
-			//      / \             / \
-			//    [N] [S]  ====>  [N] <S>
-			//        / \             / \
-			//     [Sl] [Sr]       [Sl] [Sr]
+		if /* rm2 */ x.parent.isRed() {
 			sibling.color = red
 			x.parent.color = black
-			return
+		} else /* rm3 */ {
+			sibling.color = red
+			node.rbRemoveRebalance(x.parent) // tail recursive?
 		}
-		//      [P]             [P]
-		//      / \             / \
-		//    [N] [S]  ====>  [N] <S>
-		//        / \             / \
-		//      [C] [D]         [C] [D]
-		sibling.color = red
-		node.rbRemoveRebalance(x.parent)
-		return
 	} else {
-		if !sc.isNilLeaf() && sc.isRed() {
-			if dir == left {
-				//                            {P}                {P}
-				//      {P}                   / \                / \
-				//      / \    r-rotate(S)  [N] <Sl>   repaint  [N] [Sl]
-				//    [N] [S]  ==========>        \    ======>       \
-				//        / \                     [S]                <S>
-				//     <Sl> [Sr]                    \                  \
-				//                                  [Sr]                [Sr]
+		if /* rm 4 */ !sc.isNilLeaf() && sc.isRed() {
+			switch dir {
+			case left:
 				node.rbRightRotate(sibling)
-			} else if dir == right {
+			case right:
 				node.rbLeftRotate(sibling)
+			default:
+				panic("skl rbtree remove violate (rm4)")
 			}
 			sc.color = black
 			sibling.color = red
 			sibling = x.sibling()
-
-			if dir == left {
-				sc = sibling.left
+			switch dir {
+			case left:
 				sd = sibling.right
-			} else if dir == right {
-				sc = sibling.right
+			case right:
 				sd = sibling.left
+			default:
+				panic("skl rbtree remove violate (rm4)")
 			}
 		}
 
-		if dir == left {
-			//      {P}                   [S]
-			//      / \    l-rotate(P)    / \
-			//    [N] [S]  ==========>  {P} <D>
-			//        / \               / \
-			//      [C] <D>           [N] [C]
+		switch /* rm5 */ dir {
+		case left:
 			node.rbLeftRotate(x.parent)
-		} else if dir == right {
+		case right:
 			node.rbRightRotate(x.parent)
+		default:
+			panic("skl rbtree remove violate (rm5)")
 		}
 		sibling.color = x.parent.color
 		x.parent.color = black
 		if !sd.isNilLeaf() {
 			sd.color = black
 		}
-		return
 	}
 }
 
