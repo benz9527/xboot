@@ -2,7 +2,6 @@ package list
 
 import (
 	"errors"
-	"log/slog"
 	"sync/atomic"
 	"unsafe"
 
@@ -89,7 +88,7 @@ func (n *xNode[V]) uncle() *xNode[V] {
 }
 
 func (n *xNode[V]) hasUncle() bool {
-	return !n.isRoot() && n.hasSibling()
+	return !n.isRoot() && n.parent.hasSibling()
 }
 
 func (n *xNode[V]) grandpa() *xNode[V] {
@@ -259,7 +258,7 @@ func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
 
 	p, y := x.parent, x.right
 	dir := x.direction()
-	x.right, y.left = y, x
+	x.right, y.left = y.left, x
 
 	x.fixLink()
 	y.fixLink()
@@ -290,7 +289,7 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 
 	p, y := x.parent, x.left
 	dir := x.direction()
-	x.left, y.right = y, x
+	x.left, y.right = y.right, x
 
 	x.fixLink()
 	y.fixLink()
@@ -358,9 +357,17 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) {
 // New node color is red by default.
 // Color adjust from the bottom-up.
 func (node *xConcSklNode[K, V]) rbPostInsertBalance(x *xNode[V]) {
-	if x.isRoot() || x.parent.isBlack() {
+	if x.isRoot() {
+		if x.isRed() {
+			x.color = black
+		}
 		return
 	}
+
+	if x.parent.isBlack() {
+		return
+	}
+
 	if x.parent.isRoot() {
 		if x.parent.isRed() {
 			x.parent.color = black
@@ -565,7 +572,7 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) error {
 	return nil
 }
 
-func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (*xNode[V], error) {
+func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (res *xNode[V], err error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return nil, errors.New("empty rbtree")
 	}
@@ -587,6 +594,10 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (*xNode[V], error) {
 		return z, nil
 	}
 
+	res = &xNode[V]{
+		vptr: z.vptr,
+	}
+
 	y = z
 	// case 2: y contains 2 not nil leaf node
 	if !y.left.isNilLeaf() && !y.right.isNilLeaf() {
@@ -601,7 +612,6 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (*xNode[V], error) {
 		//     S  ..                S  ..
 		y = node.rbtreePred(z)
 		// Swap value only.
-		slog.Info("before swap", "old z", *z.vptr, "new y", *y.vptr)
 		z.vptr = y.vptr
 	}
 
@@ -626,28 +636,28 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (*xNode[V], error) {
 		}
 	} else {
 		// case 4: y is not a leaf node.
-		var rvn *xNode[V] = nil
+		var r *xNode[V] = nil
 		if !y.right.isNilLeaf() {
-			rvn = y.right // Maybe a red node
+			r = y.right // Maybe a red node
 		} else if !y.left.isNilLeaf() {
-			rvn = y.right // Maybe a red node
+			r = y.right // Maybe a red node
 		}
 		if y.isRoot() {
 			// Root node of rbtree
-			node.root = rvn
+			node.root = r
 		} else if y == y.parent.left {
-			y.parent.left = rvn
-			rvn.parent = y.parent
+			y.parent.left = r
+			r.parent = y.parent
 		} else /* y == y.parent.right */ {
-			y.parent.right = rvn
-			rvn.parent = y.parent
+			y.parent.right = r
+			r.parent = y.parent
 		}
 
 		if y.color == black {
-			if rvn.color == red {
-				rvn.color = black
+			if r.color == red {
+				r.color = black
 			} else {
-				node.rbRemoveBalance(rvn)
+				node.rbRemoveBalance(r)
 			}
 		}
 	}
@@ -665,7 +675,7 @@ func (node *xConcSklNode[K, V]) rbRemoveByPred(val V) (*xNode[V], error) {
 
 	// If it is red, directly remove is okay.
 	atomic.AddInt64(&node.count, -1)
-	return y, nil
+	return res, nil
 }
 
 func (node *xConcSklNode[K, V]) rbRemoveBalance(x *xNode[V]) {
@@ -707,8 +717,8 @@ func (node *xConcSklNode[K, V]) rbRemoveBalance(x *xNode[V]) {
 
 	// sibling must be black
 
-	if sc.color == black && sd.color == black {
-		if x.parent.color == red {
+	if sc.isBlack() && sd.isBlack() {
+		if x.parent.isRed() {
 			//      <P>             [P]
 			//      / \             / \
 			//    [N] [S]  ====>  [N] <S>

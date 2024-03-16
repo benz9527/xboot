@@ -206,6 +206,7 @@ func TestRbtree(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+
 	t.Log("delete 5")
 	_, err := node.rbRemoveByPred(5)
 	assert.NoError(t, err)
@@ -290,13 +291,14 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 				t.Logf("idx: %d, expected: %d, actual: %d\n", idx, idx, val)
 				return true
 			})
-			vn := node.rbSearch(node.root, func(x *xNode[uint64]) int64 {
-				return 0
+			x := node.rbSearch(node.root, func(x *xNode[uint64]) int64 {
+				return node.vcmp(i, *x.vptr)
 			})
-			require.Equal(t, uint64(92), *vn.vptr)
+			require.Equal(t, uint64(92), *x.vptr)
 		}
-		vn, err := node.rbRemoveByPred(i)
-		t.Logf("rm target: %d, rm actual: %v, err? %v\n", i, vn, err)
+		x, err := node.rbRemoveByPred(i)
+		require.NoError(t, err)
+		require.Equal(t, i, *x.vptr)
 	}
 	t.Log("remove okay")
 
@@ -306,7 +308,7 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 	})
 }
 
-func TestRandomInsertAndRemoveRbtree(t *testing.T) {
+func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 	total := uint64(100)
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
@@ -357,12 +359,12 @@ func TestRandomInsertAndRemoveRbtree(t *testing.T) {
 	}
 	t.Log("insert okay2")
 	for i := uint64(0); i < removeTotal; i++ {
-		vn, err := node.rbRemoveByPred(removeElements[i])
-		t.Logf("rm target: %d, rm actual: %v, err? %v\n", removeElements[i], vn, err)
+		x, err := node.rbRemoveByPred(removeElements[i])
+		require.NoError(t, err)
+		require.Equal(t, removeElements[i], *x.vptr)
 	}
 	t.Log("remove okay")
 	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
-		t.Logf("idx: %d, expected: %d, actual: %d\n", idx, insertElements[idx], val)
 		require.Equal(t, insertElements[idx], val)
 		return true
 	})
