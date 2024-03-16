@@ -107,7 +107,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 	for {
 		if node := skl.traverse(maxHeight(oldIdxHi, newIdxHi), key, aux); node != nil {
 			// Check node whether is deleting by another G.
-			if node.flags.atomicIsSet(nodeRemovingMarkedBit) {
+			if node.flags.atomicIsSet(nodeRemovingFlagBit) {
 				continue
 			}
 			if isAppend, err := node.storeVal(ver, val); err != nil {
@@ -138,8 +138,8 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 			//      +------+       +------+      +------+
 			// 1. Both the pred and succ isn't removing.
 			// 2. The pred's next node is the succ in this level.
-			isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) &&
-				(succ == nil || !succ.flags.atomicIsSet(nodeRemovingMarkedBit)) &&
+			isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) &&
+				(succ == nil || !succ.flags.atomicIsSet(nodeRemovingFlagBit)) &&
 				pred.loadNext(l) == succ
 		}
 		if !isValid {
@@ -159,7 +159,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 			n.storeNext(l, aux.loadSucc(l))       // Useless to use atomic here.
 			aux.loadPred(l).atomicStoreNext(l, n) // Memory barrier, concurrent safety.
 		}
-		n.flags.atomicSet(nodeFullyLinkedBit)
+		n.flags.atomicSet(nodeInsertedFlagBit)
 		if oldIdxHi = skl.Level(); oldIdxHi < newIdxHi {
 			atomic.StoreInt32(&skl.idxHi, newIdxHi)
 		}
@@ -186,7 +186,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 	switch typ {
 	case unique:
 		for forward != nil {
-			if !forward.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) {
+			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				forward = forward.atomicLoadNext(0)
 				continue
 			}
@@ -214,7 +214,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 		}
 	case linkedList:
 		for forward != nil {
-			if !forward.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) {
+			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				forward = forward.atomicLoadNext(0)
 				continue
 			}
@@ -260,7 +260,7 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 
 		// Check if the key already in the skip list.
 		if nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
-			if nIdx.flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) {
+			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				switch typ {
 				case unique:
 					vn := nIdx.loadXNode()
@@ -329,7 +329,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 		for {
 			foundAtLevel = skl.rmTraverse(key, aux)
 			if isMarked || foundAtLevel != -1 &&
-				aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked) &&
+				aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) &&
 				(int32(aux.loadSucc(foundAtLevel).level)-1) == foundAtLevel {
 				if !isMarked {
 					// Don't mark at once.
@@ -337,7 +337,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					rmTarget = aux.loadSucc(foundAtLevel)
 					topLevel = foundAtLevel
 					if !rmTarget.mu.tryLock(ver) {
-						if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
+						if rmTarget.flags.atomicIsSet(nodeRemovingFlagBit) {
 							// Double check.
 							return nil, errors.New("remove lock acquire failed and node (x-node) has been marked as removing")
 						}
@@ -346,13 +346,13 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					}
 
 					// Segment Locked
-					if rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
+					if rmTarget.flags.atomicIsSet(nodeRemovingFlagBit) {
 						// Double check.
 						rmTarget.mu.unlock(ver)
 						return nil, errors.New("node (x-node) has been marked as removing")
 					}
 
-					rmTarget.flags.atomicSet(nodeRemovingMarkedBit)
+					rmTarget.flags.atomicSet(nodeRemovingFlagBit)
 					isMarked = true
 				}
 
@@ -372,7 +372,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					// Check:
 					// 1. the previous node exists.
 					// 2. no other nodes are inserted into the skip list in this layer.
-					isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) && pred.atomicLoadNext(l) == succ
+					isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) && pred.atomicLoadNext(l) == succ
 				}
 				if !isValid {
 					aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
@@ -410,7 +410,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 		for {
 			foundAtLevel = skl.rmTraverse(key, aux)
 			if isMarked || foundAtLevel != -1 {
-				fullyLinkedButNotRemove := aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeFullyLinkedBit|nodeRemovingMarkedBit, fullyLinked)
+				fullyLinkedButNotRemove := aux.loadSucc(foundAtLevel).flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
 				succMatch := (int32(aux.loadSucc(foundAtLevel).level) - 1) == foundAtLevel
 				if !succMatch {
 					break
@@ -428,8 +428,8 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					}
 
 					// Segment Locked
-					if !rmTarget.flags.atomicIsSet(nodeRemovingMarkedBit) {
-						rmTarget.flags.atomicSet(nodeRemovingMarkedBit)
+					if !rmTarget.flags.atomicIsSet(nodeRemovingFlagBit) {
+						rmTarget.flags.atomicSet(nodeRemovingFlagBit)
 					}
 					isMarked = true
 				}
@@ -450,7 +450,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					// Check:
 					// 1. the previous node exists.
 					// 2. no other nodes are inserted into the skip list in this layer.
-					isValid = !pred.flags.atomicIsSet(nodeRemovingMarkedBit) && pred.atomicLoadNext(l) == succ
+					isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) && pred.atomicLoadNext(l) == succ
 				}
 				if !isValid {
 					aux.foreachPred(func(list ...*xConcSklNode[K, V]) {
@@ -470,7 +470,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 						atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.parent)), unsafe.Pointer(n.parent))
 						atomic.AddInt64(&rmTarget.count, -1)
 						atomic.AddInt64(&skl.len, -1)
-						rmTarget.flags.atomicUnset(nodeRemovingMarkedBit)
+						rmTarget.flags.atomicUnset(nodeRemovingFlagBit)
 					} else {
 						atomic.StoreInt64(&rmTarget.count, 0)
 					}
@@ -509,7 +509,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 
 func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SklWeightComparator[K], rand SklRand) *xConcSkl[K, V] {
 	//h := newXConcSklHead[K, V]()
-	//h.flags.atomicSet(nodeFullyLinkedBit)
+	//h.flags.atomicSet(nodeInsertedFlagBit)
 	//return &xConcSkl[K, V]{
 	//	head:  h,
 	//	idxHi: 0,

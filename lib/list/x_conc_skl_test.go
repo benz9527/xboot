@@ -239,7 +239,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	aux := make(xConcSklAux[uint64, *xSkipListObject], 2*xSkipListMaxLevel)
 	foundResult := skl.rmTraverse(1, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
-	require.True(t, aux.loadPred(0).flags.isSet(nodeHeadMarkedBit))
+	require.True(t, aux.loadPred(0).flags.isSet(nodeIsHeadFlagBit))
 	require.Equal(t, uint64(1), aux.loadSucc(0).key)
 	require.Equal(t, "9", (*aux.loadSucc(0).loadXNode().linkedListNext().vptr).id)
 

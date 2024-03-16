@@ -166,14 +166,14 @@ func (n *xNode[V]) succ() *xNode[V] {
 }
 
 const (
-	nodeFullyLinkedBit = 1 << iota
-	nodeRemovingMarkedBit
-	nodeHeadMarkedBit
-	_duplicate
-	_containerType
+	nodeInsertedFlagBit = 1 << iota
+	nodeRemovingFlagBit
+	nodeIsHeadFlagBit
+	nodeIsSetFlagBit   /* 0: unique; 1: enable linked-list or rbtree */
+	nodeSetModeFlagBit /* 0: linked-list; 1: rbtree */
 
-	fullyLinked   = nodeFullyLinkedBit
-	vNodeTypeBits = _duplicate | _containerType
+	insertFullyLinked = nodeInsertedFlagBit
+	xNodeModeFlagBits = nodeIsSetFlagBit | nodeSetModeFlagBit
 )
 
 type xNodeMode uint8
@@ -186,7 +186,7 @@ const (
 
 type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	// If it is unique x-node type store value directly.
-	// Otherwise, it is a sentinel node.
+	// Otherwise, it is a sentinel node for linked-list or rbtree.
 	root    *xNode[V]
 	key     K
 	vcmp    SklValComparator[V]
@@ -198,7 +198,7 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 }
 
 func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
-	typ := xNodeMode(node.flags.atomicLoadBits(vNodeTypeBits))
+	typ := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits))
 	switch typ {
 	case unique:
 		// Replace
@@ -206,7 +206,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 	case linkedList:
 		// predecessor
 		node.mu.lock(ver)
-		node.flags.atomicUnset(nodeFullyLinkedBit)
+		node.flags.atomicUnset(nodeInsertedFlagBit)
 		for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
 			res := node.vcmp(val, *n.vptr)
 			if res == 0 {
@@ -241,7 +241,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 			}
 		}
 		node.mu.unlock(ver)
-		node.flags.atomicSet(nodeFullyLinkedBit)
+		node.flags.atomicSet(nodeInsertedFlagBit)
 	case rbtree:
 		// TODO rbtree store element
 	default:
@@ -268,22 +268,6 @@ func (node *xConcSklNode[K, V]) atomicLoadNext(i int32) *xConcSklNode[K, V] {
 
 func (node *xConcSklNode[K, V]) atomicStoreNext(i int32, next *xConcSklNode[K, V]) {
 	node.indexes.atomicStoreForward(i, next)
-}
-
-func (node *xConcSklNode[K, V]) loadPrev(i int32) *xConcSklNode[K, V] {
-	return node.indexes.loadBackward(i)
-}
-
-func (node *xConcSklNode[K, V]) storePrev(i int32, prev *xConcSklNode[K, V]) {
-	node.indexes.storeBackward(i, prev)
-}
-
-func (node *xConcSklNode[K, V]) atomicLoadPrev(i int32) *xConcSklNode[K, V] {
-	return node.indexes.atomicLoadBackward(i)
-}
-
-func (node *xConcSklNode[K, V]) atomicStorePrev(i int32, prev *xConcSklNode[K, V]) {
-	node.indexes.atomicStoreBackward(i, prev)
 }
 
 /* rbtree operation implementation */
@@ -408,12 +392,12 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) {
 	}
 
 	atomic.AddInt64(&node.count, 1)
-	node.rbPostInsertBalance(z)
+	node.rbInsertBalance(z)
 }
 
 // New node color is red by default.
 // Color adjust from the bottom-up.
-func (node *xConcSklNode[K, V]) rbPostInsertBalance(x *xNode[V]) {
+func (node *xConcSklNode[K, V]) rbInsertBalance(x *xNode[V]) {
 	if x.isRoot() {
 		if x.isRed() {
 			x.color = black
@@ -442,7 +426,7 @@ func (node *xConcSklNode[K, V]) rbPostInsertBalance(x *xNode[V]) {
 		x.uncle().color = black
 		gp := x.grandpa()
 		gp.color = red
-		node.rbPostInsertBalance(gp) // tail recursive
+		node.rbInsertBalance(gp) // tail recursive
 	} else {
 		if !x.hasUncle() || x.uncle().isBlack() {
 			//      [G]                 [G]
@@ -764,7 +748,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 		vcmp:  cmp,
 	}
 	node.indexes = newXConcSklIndices[K, V](lvl)
-	node.flags.setBitsAs(vNodeTypeBits, uint32(typ))
+	node.flags.setBitsAs(xNodeModeFlagBits, uint32(typ))
 	switch typ {
 	case unique:
 		node.root = &xNode[V]{
@@ -791,8 +775,8 @@ func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ xNodeMod
 		level: xSkipListMaxLevel,
 		mu:    mutexFactory(e),
 	}
-	head.flags.atomicSet(nodeHeadMarkedBit | nodeFullyLinkedBit)
-	head.flags.setBitsAs(vNodeTypeBits, uint32(typ))
+	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
+	head.flags.setBitsAs(xNodeModeFlagBits, uint32(typ))
 	head.indexes = newXConcSklIndices[K, V](xSkipListMaxLevel)
 	return head
 }
