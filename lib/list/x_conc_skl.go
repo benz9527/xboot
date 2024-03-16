@@ -21,7 +21,7 @@ const (
 	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
 	sklXNodeModeBits = 0x0300
 	// Indicating that the skip-list data node in rbtree mode and 0 is rm by pred and 1 is rm by succ
-	sklRbtreeRmDirectionModeBit = 0x0400
+	sklRbtreeRmReplaceFnFlagBit = 0x0400
 )
 
 type xConcSkl[K infra.OrderedKey, V comparable] struct {
