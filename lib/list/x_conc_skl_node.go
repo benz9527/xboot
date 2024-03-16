@@ -357,9 +357,10 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 	y.parent = p
 }
 
+// i1: Empty rbtree, insert directly, but root node is painted to black.
 func (node *xConcSklNode[K, V]) rbInsert(val V) {
 
-	if node.root.isNilLeaf() {
+	if /* i1 */ node.root.isNilLeaf() {
 		node.root = &xNode[V]{
 			vptr: &val,
 		}
@@ -416,15 +417,14 @@ New node X is red by default.
 [X] is a BLACK node (or NIL).
 {X} is either a RED node or a BLACK node.
 
-i1: Empty rbtree, insert directly, but root node is painted to black.
+im1: Current node X's parent P is black and P is root, so hold r3 and r4.
 
-i2: Current node X's parent P is black and P is root, so hold r3 and r4.
+im2: Current node X's parent P is red and P is root, repaint P into black.
 
-i3: Current node X's parent P is red and P is root, repaint P into black.
-
-i4: If both the parent P and the uncle U are red, grandpa G is black.
+im3: If both the parent P and the uncle U are red, grandpa G is black.
 (red-violation)
 After repainted G into red may be still red-violation.
+Recursive to fix grandpa.
 
 	    [G]             <G>
 	    / \             / \
@@ -432,9 +432,9 @@ After repainted G into red may be still red-violation.
 	  /               /
 	<X>             <X>
 
-i5: The parent P is red but the uncle U is black. (red-violation)
-X is opposite direction to P.
-After rotation may be still red-violation. Here must enter i6 to fix.
+im4: The parent P is red but the uncle U is black. (red-violation)
+X is opposite direction to P. Rotate P to opposite direction.
+After rotation may be still red-violation. Here must enter im5 to fix.
 
 	  [G]                 [G]
 	  / \    rotate(P)    / \
@@ -442,7 +442,7 @@ After rotation may be still red-violation. Here must enter i6 to fix.
 	  \                 /
 	  <X>             <P>
 
-i6: Handle i5 scenario, current node is the same direction as parent.
+im5: Handle im4 scenario, current node is the same direction as parent.
 
 	    [G]                 <P>               [P]
 	    / \    rotate(G)    / \    repaint    / \
@@ -463,50 +463,42 @@ func (node *xConcSklNode[K, V]) rbInsertRebalance(x *xNode[V]) {
 	}
 
 	if x.parent.isRoot() {
-		if x.parent.isRed() {
+		if /* im1 */ x.parent.isBlack() {
+			return
+		} else /* im2 */ {
 			x.parent.color = black
 		}
-		return
 	}
 
-	//        [G]             <G>
-	//        / \             / \
-	//      <P> <U>  ====>  [P] [U]
-	//      /               /
-	//    <X>             <X>
-	if x.hasUncle() && x.uncle().isRed() {
+	if /* im3 */ x.hasUncle() && x.uncle().isRed() {
 		x.parent.color = black
 		x.uncle().color = black
 		gp := x.grandpa()
 		gp.color = red
-		node.rbInsertRebalance(gp) // tail recursive
+		node.rbInsertRebalance(gp) // tail recursive?
 	} else {
 		if !x.hasUncle() || x.uncle().isBlack() {
-			//      [G]                 [G]
-			//      / \    rotate(P)    / \
-			//    <P> [U]  ========>  <X> [U]
-			//      \                 /
-			//      <X>             <P>
 			dir := x.direction()
-			if dir != x.parent.direction() {
+			if /* im4 */ dir != x.parent.direction() {
 				p := x.parent
-				if dir == left {
+				switch dir {
+				case left:
 					node.rbRightRotate(p)
-				} else /* Right */ {
+				case right:
 					node.rbLeftRotate(p)
+				default:
+					panic("skl rbtree insert violate (im4)")
 				}
-				x = p
+				x = p // enter im5 to fix
 			}
-			//        [G]                 <P>               [P]
-			//        / \    rotate(G)    / \    repaint    / \
-			//      <P> [U]  ========>  <X> [G]  ======>  <X> <G>
-			//      /                         \                 \
-			//    <X>                         [U]               [U]
-			dir = x.parent.direction()
-			if dir == left {
+
+			switch /* im5 */ dir = x.parent.direction(); dir {
+			case left:
 				node.rbRightRotate(x.grandpa())
-			} else /* Right */ {
+			case right:
 				node.rbLeftRotate(x.grandpa())
+			default:
+				panic("skl rbtree insert violate (im5)")
 			}
 
 			x.parent.color = black
