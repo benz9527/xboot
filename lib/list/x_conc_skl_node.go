@@ -205,8 +205,7 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 }
 
 func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
-	typ := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits))
-	switch typ {
+	switch mode := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits)); mode {
 	case unique:
 		// Replace
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
@@ -908,12 +907,12 @@ func (node *xConcSklNode[K, V]) rbRelease() {
 	}
 }
 
-func newXConcSkipListNode[K infra.OrderedKey, V comparable](
+func newXConcSklNode[K infra.OrderedKey, V comparable](
 	key K,
 	val V,
 	lvl int32,
 	mu mutexImpl,
-	typ xNodeMode,
+	mode xNodeMode,
 	cmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node := &xConcSklNode[K, V]{
@@ -923,8 +922,8 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 		vcmp:  cmp,
 	}
 	node.indexes = newXConcSklIndices[K, V](lvl)
-	node.flags.setBitsAs(xNodeModeFlagBits, uint32(typ))
-	switch typ {
+	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
+	switch mode {
 	case unique:
 		node.root = &xNode[V]{
 			vptr: &val,
@@ -944,14 +943,14 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	return node
 }
 
-func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, typ xNodeMode) *xConcSklNode[K, V] {
+func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, mode xNodeMode) *xConcSklNode[K, V] {
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: xSkipListMaxLevel,
 		mu:    mutexFactory(e),
 	}
 	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
-	head.flags.setBitsAs(xNodeModeFlagBits, uint32(typ))
+	head.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
 	head.indexes = newXConcSklIndices[K, V](xSkipListMaxLevel)
 	return head
 }

@@ -272,7 +272,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 }
 
-func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNodeMode) {
+func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNodeMode, rmBySucc bool) {
 	skl := &xConcSkl[uint64, int64]{
 		head:  newXConcSklHead[uint64, int64](mu, typ),
 		pool:  newXConcSklPool[uint64, int64](),
@@ -303,6 +303,9 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNode
 	skl.idGen = idGen
 	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
 	skl.flags.setBitsAs(sklXNodeModeBits, uint32(typ))
+	if typ == rbtree && rmBySucc {
+		skl.flags.set(sklRbtreeRmReplaceFnFlagBit)
+	}
 
 	size := 10
 	size2 := 10
@@ -365,9 +368,10 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNode
 
 func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
 	type testcase struct {
-		name string
-		mu   mutexImpl
-		typ  xNodeMode
+		name       string
+		mu         mutexImpl
+		typ        xNodeMode
+		rbRmBySucc bool
 	}
 	testcases := []testcase{
 		{
@@ -389,11 +393,22 @@ func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
 			mu:   xSklLockFree,
 			typ:  rbtree,
 		},
+		{
+			name:       "go native sync mutex data race - rbtree (succ)",
+			mu:         goNativeMutex,
+			typ:        rbtree,
+			rbRmBySucc: true,
+		}, {
+			name:       "skl lock free mutex data race - rbtree (succ)",
+			mu:         xSklLockFree,
+			typ:        rbtree,
+			rbRmBySucc: true,
+		},
 	}
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSkipListDuplicateDataRaceRunCore(tt, tc.mu, tc.typ)
+			xConcSkipListDuplicateDataRaceRunCore(tt, tc.mu, tc.typ, tc.rbRmBySucc)
 		})
 	}
 }

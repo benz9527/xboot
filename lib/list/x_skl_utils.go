@@ -59,6 +59,10 @@ func (f *flagBits) atomicSet(bits uint32) {
 	}
 }
 
+func (f *flagBits) set(bits uint32) {
+	f.bits = f.bits | bits
+}
+
 // Bit flag set from 1 to 0.
 func (f *flagBits) atomicUnset(bits uint32) {
 	for {

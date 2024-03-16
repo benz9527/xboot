@@ -397,7 +397,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	require.Equal(t, int64(0), atomic.LoadInt64(&node.count))
 }
 
-func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
+func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T, rbRmBySucc bool) {
 	total := uint64(100)
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
@@ -411,6 +411,9 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 			}
 			return -1
 		},
+	}
+	if rbRmBySucc {
+		node.flags.set(nodeRbRmReplaceFnFlagBit)
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {
@@ -445,6 +448,27 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
+}
+
+func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
+	type testcase struct {
+		name       string
+		rbRmBySucc bool
+	}
+	testcases := []testcase{
+		{
+			name: "rm by pred",
+		},
+		{
+			name:       "rm by succ",
+			rbRmBySucc: true,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(tt *testing.T) {
+			xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(tt, tc.rbRmBySucc)
+		})
+	}
 }
 
 func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
@@ -522,8 +546,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	})
 }
 
-func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
-	total := uint64(1000000)
+func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T, total uint64, rbRmBySucc bool) {
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
@@ -570,6 +593,9 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 			return -1
 		},
 	}
+	if rbRmBySucc {
+		node.flags.set(nodeRbRmReplaceFnFlagBit)
+	}
 
 	for i := uint64(0); i < insertTotal; i++ {
 		node.rbInsert(insertElements[i])
@@ -593,4 +619,28 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		require.Equal(t, insertElements[idx], val)
 		return true
 	})
+}
+
+func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
+	type testcase struct {
+		name       string
+		rbRmBySucc bool
+		total      uint64
+	}
+	testcases := []testcase{
+		{
+			name:  "rm by pred 1000000",
+			total: 1000000,
+		},
+		{
+			name:       "rm by succ 1000000",
+			rbRmBySucc: true,
+			total:      1000000,
+		},
+	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(tt *testing.T) {
+			xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(tt, tc.total, tc.rbRmBySucc)
+		})
+	}
 }

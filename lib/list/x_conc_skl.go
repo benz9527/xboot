@@ -142,9 +142,8 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 			continue
 		}
 
-		n := newXConcSkipListNode(key, val, newIdxHi, skl.loadMutexImpl(), skl.loadXNodeMode(), skl.vcmp)
-		for l := int32(0); l < newIdxHi; l++ {
-			// Linking
+		n := newXConcSklNode(key, val, newIdxHi, skl.loadMutexImpl(), skl.loadXNodeMode(), skl.vcmp)
+		for /* linking */ l := int32(0); l < newIdxHi; l++ {
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...
 			//      +------+       +------+      +------+
@@ -172,9 +171,8 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
 	forward := skl.atomicLoadHead().atomicLoadNext(0)
 	index := int64(0)
-	typ := skl.loadXNodeMode()
 	item := &xSklIter[K, V]{}
-	switch typ {
+	switch mode := skl.loadXNodeMode(); mode {
 	case unique:
 		for forward != nil {
 			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
@@ -266,7 +264,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 // The ok result indicates whether the value was found in the skip-list.
 func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 	forward := skl.atomicLoadHead()
-	typ := skl.loadXNodeMode()
+	mode := skl.loadXNodeMode()
 	for /* vertical */ l := skl.Level() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
@@ -279,7 +277,7 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return *new(V), false
 				}
-				switch typ {
+				switch mode {
 				case unique:
 					x := nIdx.loadXNode()
 					return *x.vptr, true
@@ -335,14 +333,13 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
 		ver      = skl.idGen.NumberUUID()
-		typ      = skl.loadXNodeMode()
 		foundAt  = int32(-1)
 	)
 	defer func() {
 		skl.pool.releaseAux(aux)
 	}()
 
-	switch typ {
+	switch mode := skl.loadXNodeMode(); mode {
 	// FIXME: Merge these 2 deletion loops logic
 	case unique:
 		for {
@@ -465,7 +462,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					continue
 				}
 
-				switch typ {
+				switch mode {
 				case linkedList:
 					if /* locked */ x := rmTarget.root.linkedListNext(); x != nil {
 						ele = &xSklElement[K, V]{
