@@ -266,7 +266,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 			forward = forward.atomicLoadNext(0)
 		}
 	default:
-		panic("skl unknown node type")
+		panic("[x-conc-skl] unknown node type")
 	}
 }
 
@@ -296,7 +296,7 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 				case rbtree:
 					// TODO
 				default:
-					panic("skl unknown x-node type")
+					panic("[x-conc-skl] unknown x-node type")
 				}
 			}
 			return
@@ -530,7 +530,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 			break
 		}
 	default:
-		panic("skl unknown x-node type")
+		panic("[x-conc-skl] unknown x-node type")
 	}
 
 	if foundAtLevel == -1 {

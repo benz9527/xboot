@@ -62,7 +62,7 @@ const (
 
 func (n *xNode[V]) direction() rbDirection {
 	if n.isNilLeaf() {
-		panic("skl rbtree x-node nil leaf node without direction")
+		panic("[x-conc-skl] rbtree nil leaf node without direction")
 	}
 
 	if n.isRoot() {
@@ -224,7 +224,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 		node.mu.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
-		return false, errors.New("skl unknown x-node type")
+		return false, errors.New("[x-conc-skl] unknown x-node type")
 	}
 	return isAppend, nil
 }
@@ -317,7 +317,7 @@ func (node *xConcSklNode[K, V]) llInsert(val V) (isAppend bool) {
 */
 func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
 	if x == nil || x.right.isNilLeaf() {
-		panic("skl rbtree left rotate node x is nil or x.right is nil")
+		panic("[x-conc-skl] rbtree left rotate node x is nil or x.right is nil")
 	}
 
 	p, y := x.parent, x.right
@@ -348,7 +348,7 @@ func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
 */
 func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 	if x == nil || x.left.isNilLeaf() {
-		panic("skl rbtree right rotate node x is nil or x.right is nil")
+		panic("[x-conc-skl] rbtree right rotate node x is nil or x.right is nil")
 	}
 
 	p, y := x.parent, x.left
@@ -394,7 +394,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) (isAppend bool) {
 	}
 
 	if y.isNilLeaf() {
-		panic("skl rbtree insert a new value into nil node")
+		panic("[x-conc-skl] rbtree insert a new value into nil node")
 	}
 
 	var z *xNode[V]
@@ -500,7 +500,7 @@ func (node *xConcSklNode[K, V]) rbInsertRebalance(x *xNode[V]) {
 				case right:
 					node.rbLeftRotate(p)
 				default:
-					panic("skl rbtree insert violate (im4)")
+					panic("[x-conc-skl] rbtree insert violate (im4)")
 				}
 				x = p // enter im5 to fix
 			}
@@ -511,7 +511,7 @@ func (node *xConcSklNode[K, V]) rbInsertRebalance(x *xNode[V]) {
 			case right:
 				node.rbLeftRotate(x.grandpa())
 			default:
-				panic("skl rbtree insert violate (im5)")
+				panic("[x-conc-skl] rbtree insert violate (im5)")
 			}
 
 			x.parent.color = black
@@ -590,7 +590,7 @@ func (node *xConcSklNode[K, V]) rbRemoveXNode(z *xNode[V]) (res *xNode[V], err e
 			case right:
 				y.parent.right = nil
 			default:
-				panic("skl rbtree x-node y should be a leaf node (r3-1)")
+				panic("[x-conc-skl] rbtree x-node y should be a leaf node, violate (r3-1)")
 			}
 			return res, nil
 		} else /* r3 (2) */ {
@@ -605,7 +605,7 @@ func (node *xConcSklNode[K, V]) rbRemoveXNode(z *xNode[V]) (res *xNode[V], err e
 		}
 
 		if replace == nil {
-			panic("skl rbtree remove a leaf node without child (r4)")
+			panic("[x-conc-skl] rbtree remove a leaf node without child, violate (r4)")
 		}
 
 		switch dir := y.direction(); dir {
@@ -619,7 +619,7 @@ func (node *xConcSklNode[K, V]) rbRemoveXNode(z *xNode[V]) (res *xNode[V], err e
 			y.parent.right = replace
 			replace.parent = y.parent
 		default:
-			panic("skl rbtree impossible reach code")
+			panic("[x-conc-skl] rbtree impossible run to here")
 		}
 
 		if y.isBlack() {
@@ -760,7 +760,7 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 		case right:
 			node.rbRightRotate(x.parent)
 		default:
-			panic("skl rbtree remove violate (rm1)")
+			panic("[x-conc-skl] rbtree remove violate (rm1)")
 		}
 		sibling.color = black
 		x.parent.color = red // ready to enter rm2
@@ -774,7 +774,7 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 	case right:
 		sc, sd = sibling.right, sibling.left
 	default:
-		panic("skl rbtree remove violate (rm2)")
+		panic("[x-conc-skl] rbtree remove violate (rm2)")
 	}
 
 	if sc.isBlack() && sd.isBlack() {
@@ -793,7 +793,7 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 			case right:
 				node.rbLeftRotate(sibling)
 			default:
-				panic("skl rbtree remove violate (rm4)")
+				panic("[x-conc-skl] rbtree remove violate (rm4)")
 			}
 			sc.color = black
 			sibling.color = red
@@ -804,7 +804,7 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 			case right:
 				sd = sibling.left
 			default:
-				panic("skl rbtree remove violate (rm4)")
+				panic("[x-conc-skl] rbtree remove violate (rm4)")
 			}
 		}
 
@@ -814,7 +814,7 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 		case right:
 			node.rbRightRotate(x.parent)
 		default:
-			panic("skl rbtree remove violate (rm5)")
+			panic("[x-conc-skl] rbtree remove violate (rm5)")
 		}
 		sibling.color = x.parent.color
 		x.parent.color = black
@@ -938,7 +938,7 @@ func newXConcSkipListNode[K infra.OrderedKey, V comparable](
 	case rbtree:
 		node.rbInsert(val)
 	default:
-		panic("unknown x-node type")
+		panic("[x-conc-skl] unknown x-node type")
 	}
 	node.count = 1
 	return node
