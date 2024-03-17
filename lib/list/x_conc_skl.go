@@ -119,7 +119,7 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 
 // Insert add the val by a key into skip-list.
 // Only works for unique element skip-list.
-func (skl *xConcSkl[K, V]) Insert(key K, val V) {
+func (skl *xConcSkl[K, V]) Insert(key K, val V) error {
 	var (
 		aux     = skl.pool.loadAux()
 		oldLvls = skl.Levels()
@@ -139,11 +139,11 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 				continue
 			}
 			if isAppend, err := node.storeVal(ver, val); err != nil {
-				panic(err)
-			} else if isAppend {
+				return err
+			} else if err == nil && isAppend {
 				atomic.AddInt64(&skl.nodeLen, 1)
 			}
-			return
+			return nil
 		}
 		// Node not present. Add this node into skip list.
 		var (
@@ -193,7 +193,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 		})
 		atomic.AddInt64(&skl.nodeLen, 1)
 		atomic.AddUint64(&skl.indexCount, uint64(newLvls))
-		return
+		return nil
 	}
 }
 
