@@ -1,8 +1,6 @@
 package list
 
 import (
-	"golang.org/x/exp/constraints"
-
 	"github.com/benz9527/xboot/lib/infra"
 )
 
@@ -71,20 +69,6 @@ type LinkedList[T comparable] interface {
 	PushBackList(srcList LinkedList[T])
 }
 
-type HashObject interface {
-	comparable
-	Hash() uint64
-}
-
-type emptyHashObject struct{}
-
-func (o *emptyHashObject) Hash() uint64 { return 0 }
-
-type SkipListWeight interface {
-	constraints.Ordered | ~complex64 | ~complex128
-	// ~uint8 == byte
-}
-
 type SkipListElement[K infra.OrderedKey, V comparable] interface {
 	Key() K
 	Val() V
@@ -96,50 +80,26 @@ type SkipListIterationItem[K infra.OrderedKey, V comparable] interface {
 	NodeItemCount() int64
 }
 
-type SkipListNode[W infra.OrderedKey, O comparable] interface {
-	Free()
-	Element() SkipListElement[W, O]
-	setElement(e SkipListElement[W, O])
-	backwardPredecessor() SkipListNode[W, O]
-	setBackwardPredecessor(pred SkipListNode[W, O])
-	levels() []SkipListLevel[W, O]
+type SkipList[K infra.OrderedKey, V comparable] interface {
+	Levels() int32
+	Len() int64
+	IndexCount() uint64
+	Insert(key K, val V) error
+	LoadFirst(key K) (SkipListElement[K, V], bool)
+	RemoveFirst(key K) (SkipListElement[K, V], error)
+	Foreach(action func(i int64, item SkipListIterationItem[K, V]) bool)
+	PopHead() (SkipListElement[K, V], error)
+	PeekHead() SkipListElement[K, V]
 }
 
-type SkipListLevel[W infra.OrderedKey, O comparable] interface {
-	forwardSuccessor() SkipListNode[W, O]
-	setForwardSuccessor(succ SkipListNode[W, O])
+type XSkipList[K infra.OrderedKey, V comparable] interface {
+	SkipList[K, V]
+	LoadAll(weight K) []SkipListElement[K, V]
+	LoadIfMatched(weight K, matcher func(that V) bool) []SkipListElement[K, V]
+	RemoveAll(key K) []SkipListElement[K, V]
+	RemoveIfMatched(key K, matcher func(that V) bool) []SkipListElement[K, V]
 }
-
-type SkipList[W infra.OrderedKey, O comparable] interface {
-	Level() int32
-	Len() int32
-	Free()
-	ForEach(fn func(idx int64, weight W, object O))
-	Insert(weight W, object O) (SkipListNode[W, O], bool)
-	RemoveFirst(weight W) SkipListElement[W, O]
-	RemoveAll(weight W) []SkipListElement[W, O]
-	RemoveIfMatch(weight W, cmp SklObjMatcher[O]) []SkipListElement[W, O]
-	FindFirst(weight W) SkipListElement[W, O]
-	FindAll(weight W) []SkipListElement[W, O]
-	FindIfMatch(weight W, cmp SklObjMatcher[O]) []SkipListElement[W, O]
-	PopHead() SkipListElement[W, O]
-}
-
-// SklWeightComparator
-// Assume j is the key of the new element.
-//  1. i == j (i-j == 0, return 0), contains the same element.
-//     If insert a new element, we have to linear probe the next position that can be inserted.
-//  2. i > j (i-j > 0, return 1), find left part.
-//  3. i < j (i-j < 0, return -1), find right part.
-type SklWeightComparator[W SkipListWeight] func(i, j W) int
 
 type SklValComparator[V comparable] func(i, j V) int64
-
-// SklObjMatcher
-// return true, if val is satisfied the query condition.
-// return false is used to find predecessor, for the reason that those same key elements
-//
-//	need to do iteration.
-type SklObjMatcher[O comparable] func(obj O) bool
 
 type SklRand func(maxLevel int, currentElements int32) int32

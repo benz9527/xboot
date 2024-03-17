@@ -1,11 +1,26 @@
 package list
 
 import (
+	"cmp"
 	"hash/fnv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+type HashObject interface {
+	comparable
+	Hash() uint64
+}
+
+type emptyHashObject struct{}
+
+func (o *emptyHashObject) Hash() uint64 { return 0 }
+
+type SkipListWeight interface {
+	cmp.Ordered
+	// ~uint8 == byte
+}
 
 type xSkipListObject struct {
 	id string

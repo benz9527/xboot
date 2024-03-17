@@ -201,7 +201,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) error {
 // Once the function return false, the iteration should be stopped.
 // This function doesn't guarantee correctness in the case of concurrent
 // reads and writes.
-func (skl *xConcSkl[K, V]) Foreach(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
+func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SkipListIterationItem[K, V]) bool) {
 	forward := skl.atomicLoadHead().atomicLoadNextNode(0)
 	i := int64(0)
 	item := &xSklIter[K, V]{}
@@ -228,7 +228,7 @@ func (skl *xConcSkl[K, V]) Foreach(fn func(idx int64, metadata SkipListIteration
 				}
 				return *vn.vptr
 			}
-			if res := fn(i, item); !res {
+			if res := action(i, item); !res {
 				break
 			}
 			forward = forward.atomicLoadNextNode(0)
@@ -254,7 +254,7 @@ func (skl *xConcSkl[K, V]) Foreach(fn func(idx int64, metadata SkipListIteration
 					return *x.vptr
 				}
 				var res bool
-				if res, i = fn(i, item), i+1; !res {
+				if res, i = action(i, item), i+1; !res {
 					break
 				}
 			}
@@ -280,7 +280,7 @@ func (skl *xConcSkl[K, V]) Foreach(fn func(idx int64, metadata SkipListIteration
 					return val
 				}
 				var res bool
-				if res, i = fn(i, item), i+1; !res {
+				if res, i = action(i, item), i+1; !res {
 					return false
 				}
 				return true
@@ -528,7 +528,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SkipListElement[K, V], er
 
 // Duplicated element Skip-List basic APIs
 
-func (skl *xConcSkl[K, V]) LoadIfMatched(key K, fn func(that V) bool) ([]SkipListElement[K, V], error) {
+func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
 	var (
 		forward  = skl.atomicLoadHead()
 		mode     = skl.loadXNodeMode()
@@ -552,7 +552,7 @@ func (skl *xConcSkl[K, V]) LoadIfMatched(key K, fn func(that V) bool) ([]SkipLis
 				case linkedList:
 					for x := nIdx.atomicLoadRoot().parent.linkedListNext(); x != nil; x = x.linkedListNext() {
 						v := *x.vptr
-						if fn(v) {
+						if matcher(v) {
 							elements = append(elements, &xSklElement[K, V]{
 								key: key,
 								val: v,
@@ -562,7 +562,7 @@ func (skl *xConcSkl[K, V]) LoadIfMatched(key K, fn func(that V) bool) ([]SkipLis
 					return elements, nil
 				case rbtree:
 					nIdx.rbPreorderTraversal(func(idx int64, color color, v V) bool {
-						if fn(v) {
+						if matcher(v) {
 							elements = append(elements, &xSklElement[K, V]{
 								key: key,
 								val: v,
@@ -633,7 +633,7 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SkipListElement[K, V], error) {
 	return nil, errors.New("key not found in skip-list")
 }
 
-func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, fn func(that V) bool) ([]SkipListElement[K, V], error) {
+func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
 	var (
 		aux      = skl.pool.loadAux()
 		rmNode   *xConcSklNode[K, V]
@@ -707,7 +707,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, fn func(that V) bool) ([]SkipL
 					} else {
 						first, prev := x, x
 						for ; /* locked */ x != nil; x = x.linkedListNext() {
-							if fn(*x.vptr) {
+							if matcher(*x.vptr) {
 								if x == first {
 									first = x.linkedListNext()
 									atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmNode.root.parent)), unsafe.Pointer(first))
@@ -729,7 +729,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, fn func(that V) bool) ([]SkipL
 				case rbtree:
 					// TODO fix bad efficiency
 					rmNode.rbPreorderTraversal( /* locked */ func(idx int64, color color, v V) bool {
-						if fn(v) {
+						if matcher(v) {
 							elements = append(elements, &xSklElement[K, V]{
 								key: key,
 								val: v,

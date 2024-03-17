@@ -1,5 +1,7 @@
 package list
 
+import "github.com/benz9527/xboot/lib/infra"
+
 // References:
 // https://people.csail.mit.edu/shanir/publications/DCAS.pdf
 // https://www.cl.cam.ac.uk/teaching/0506/Algorithms/skiplists.pdf
@@ -28,6 +30,20 @@ package list
 // | |->|A|->|B|->|C|->|D|->|E|->|F|->|G|->|H|->|I|->|J|->|K|->null
 // +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+
 
+type SkipListNode[W infra.OrderedKey, O comparable] interface {
+	Free()
+	Element() SkipListElement[W, O]
+	setElement(e SkipListElement[W, O])
+	backwardPredecessor() SkipListNode[W, O]
+	setBackwardPredecessor(pred SkipListNode[W, O])
+	levels() []SkipListLevel[W, O]
+}
+
+type SkipListLevel[W infra.OrderedKey, O comparable] interface {
+	forwardSuccessor() SkipListNode[W, O]
+	setForwardSuccessor(succ SkipListNode[W, O])
+}
+
 const (
 	xSkipListMaxLevel    = 32   // 2^32 - 1 elements
 	xSkipListProbability = 0.25 // P = 1/4, a skip list node element has 1/4 probability to have a level
@@ -41,28 +57,28 @@ const (
 //)
 //
 //
-//type skipListLevel[W SkipListWeight, O HashObject] struct {
+//type skipListLevel[K SkipListWeight, V HashObject] struct {
 //	// Works for the forward iteration direction.
-//	successor SkipListNode[W, O]
+//	successor SkipListNode[K, V]
 //	// Ignore the node level span metadata (for rank).
 //}
 //
-//func (lvl *skipListLevel[W, O]) forwardSuccessor() SkipListNode[W, O] {
+//func (lvl *skipListLevel[K, V]) forwardSuccessor() SkipListNode[K, V] {
 //	if lvl == nil {
 //		return nil
 //	}
 //	return lvl.successor
 //}
 //
-//func (lvl *skipListLevel[W, O]) setForwardSuccessor(succ SkipListNode[W, O]) {
+//func (lvl *skipListLevel[K, V]) setForwardSuccessor(succ SkipListNode[K, V]) {
 //	if lvl == nil {
 //		return
 //	}
 //	lvl.successor = succ
 //}
 //
-//func newSkipListLevel[W SkipListWeight, V HashObject](succ SkipListNode[W, V]) SkipListLevel[W, V] {
-//	return &skipListLevel[W, V]{
+//func newSkipListLevel[K SkipListWeight, V HashObject](succ SkipListNode[K, V]) SkipListLevel[K, V] {
+//	return &skipListLevel[K, V]{
 //		successor: succ,
 //	}
 //}
@@ -72,116 +88,116 @@ const (
 ////	the bisection search. Used to locate an element quickly.
 ////
 //// The cache level array index == 0, it is the X axis, and it means that it is the bits container.
-//type xSkipListNode[W SkipListWeight, O HashObject] struct {
+//type xSkipListNode[K SkipListWeight, V HashObject] struct {
 //	// The cache part.
 //	// When the current node works as a data node, it doesn't contain levels metadata.
 //	// If a node is a level node, the cache is from levels[0], but it is differed
 //	//  to the sentinel's levels[0].
-//	levelList []SkipListLevel[W, O] // The cache level array.
-//	element   SkipListElement[W, O]
+//	levelList []SkipListLevel[K, V] // The cache level array.
+//	element   SkipListElement[K, V]
 //	// Works for a backward iteration direction.
-//	predecessor SkipListNode[W, O]
+//	predecessor SkipListNode[K, V]
 //}
 //
-//func (node *xSkipListNode[W, O]) Element() SkipListElement[W, O] {
+//func (node *xSkipListNode[K, V]) Element() SkipListElement[K, V] {
 //	if node == nil {
 //		return nil
 //	}
 //	return node.element
 //}
 //
-//func (node *xSkipListNode[W, O]) setElement(e SkipListElement[W, O]) {
+//func (node *xSkipListNode[K, V]) setElement(e SkipListElement[K, V]) {
 //	if node == nil {
 //		return
 //	}
 //	node.element = e
 //}
 //
-//func (node *xSkipListNode[W, O]) backwardPredecessor() SkipListNode[W, O] {
+//func (node *xSkipListNode[K, V]) backwardPredecessor() SkipListNode[K, V] {
 //	if node == nil {
 //		return nil
 //	}
 //	return node.predecessor
 //}
 //
-//func (node *xSkipListNode[W, O]) setBackwardPredecessor(pred SkipListNode[W, O]) {
+//func (node *xSkipListNode[K, V]) setBackwardPredecessor(pred SkipListNode[K, V]) {
 //	if node == nil {
 //		return
 //	}
 //	node.predecessor = pred
 //}
 //
-//func (node *xSkipListNode[W, O]) levels() []SkipListLevel[W, O] {
+//func (node *xSkipListNode[K, V]) levels() []SkipListLevel[K, V] {
 //	if node == nil {
 //		return nil
 //	}
 //	return node.levelList
 //}
 //
-//func (node *xSkipListNode[W, O]) Free() {
+//func (node *xSkipListNode[K, V]) Free() {
 //	node.element = nil
 //	node.predecessor = nil
 //	node.levelList = nil
 //}
 //
-//func newXSkipListNode[W SkipListWeight, O HashObject](level int32, key W, obj O) SkipListNode[W, O] {
-//	e := &xSkipListNode[W, O]{
-//		element: &xSklElement[W, O]{
+//func newXSkipListNode[K SkipListWeight, V HashObject](level int32, key K, obj V) SkipListNode[K, V] {
+//	e := &xSkipListNode[K, V]{
+//		element: &xSklElement[K, V]{
 //			key: key,
 //			val: obj,
 //		},
 //		// Fill zero to all level span.
 //		// Initialization.
-//		levelList: make([]SkipListLevel[W, O], level),
+//		levelList: make([]SkipListLevel[K, V], level),
 //	}
 //	for i := int32(0); i < level; i++ {
-//		e.levelList[i] = newSkipListLevel[W, O](nil)
+//		e.levelList[i] = newSkipListLevel[K, V](nil)
 //	}
 //	return e
 //}
 //
 //// This is a sentinel node and used to point to nodes in memory.
-//type xSkipList[W SkipListWeight, O HashObject] struct {
-//	cmp          SklWeightComparator[W]
+//type xSkipList[K SkipListWeight, V HashObject] struct {
+//	cmp          SklWeightComparator[K]
 //	rand         SklRand
 //	traversePool *sync.Pool
 //	// The sentinel node.
 //	// The head.levels[0].successor is the first data node of skip-list.
 //	// From head.levels[1], they point to the levels node (i.e., the cache metadata)
-//	head SkipListNode[W, O]
+//	head SkipListNode[K, V]
 //	// The sentinel node.
-//	tail SkipListNode[W, O]
+//	tail SkipListNode[K, V]
 //	// The real max level in used. And the max limitation is xSkipListMaxLevel.
 //	level int32
 //	nodeLen   int32
 //}
 //
-//func (skl *xSkipList[W, O]) loadTraverse() []SkipListNode[W, O] {
-//	traverse, ok := skl.traversePool.LoadFirst().([]SkipListNode[W, O])
+//func (skl *xSkipList[K, V]) loadTraverse() []SkipListNode[K, V] {
+//	traverse, ok := skl.traversePool.LoadFirst().([]SkipListNode[K, V])
 //	if !ok {
 //		panic("load unknown traverse element from pool")
 //	}
 //	return traverse
 //}
 //
-//func (skl *xSkipList[W, O]) putTraverse(traverse []SkipListNode[W, O]) {
+//func (skl *xSkipList[K, V]) putTraverse(traverse []SkipListNode[K, V]) {
 //	for i := 0; i < xSkipListMaxLevel; i++ {
 //		traverse[i] = nil
 //	}
 //	skl.traversePool.Put(traverse)
 //}
 //
-//func (skl *xSkipList[W, O]) Levels() int32 {
+//func (skl *xSkipList[K, V]) Levels() int32 {
 //	return atomic.LoadInt32(&skl.level)
 //}
 //
-//func (skl *xSkipList[W, O]) Len() int32 {
+//func (skl *xSkipList[K, V]) Len() int32 {
 //	return atomic.LoadInt32(&skl.nodeLen)
 //}
 //
-//func (skl *xSkipList[W, O]) ForEach(fn func(idx int64, key W, obj O)) {
+//func (skl *xSkipList[K, V]) ForEach(fn func(idx int64, key K, obj V)) {
 //	var (
-//		x   SkipListNode[W, O]
+//		x   SkipListNode[K, V]
 //		idx int64
 //	)
 //	x = skl.head.levels()[0].forwardSuccessor()
@@ -193,7 +209,7 @@ const (
 //	}
 //}
 //
-//func (skl *xSkipList[W, O]) Insert(key W, obj O) (SkipListNode[W, O], bool) {
+//func (skl *xSkipList[K, V]) Insert(key K, obj V) (SkipListNode[K, V], bool) {
 //	var (
 //		predecessor = skl.head
 //		traverse    = skl.loadTraverse()
@@ -236,7 +252,7 @@ const (
 //		atomic.StoreInt32(&skl.level, lvl)
 //	}
 //
-//	newNode := newXSkipListNode[W, O](lvl, key, obj)
+//	newNode := newXSkipListNode[K, V](lvl, key, obj)
 //	// Insert new node and update the new node levels metadata.
 //	for i := int32(0); i < lvl; i++ {
 //		next := traverse[i].levels()[i].forwardSuccessor()
@@ -262,9 +278,9 @@ const (
 //// Preparing for linear probing. V(N)
 //// @return value 1: the predecessor node
 //// @return value 2: the query traverse path (nodes)
-//func (skl *xSkipList[W, O]) findPredecessor0(key W) (SkipListNode[W, O], []SkipListNode[W, O]) {
+//func (skl *xSkipList[K, V]) findPredecessor0(key K) (SkipListNode[K, V], []SkipListNode[K, V]) {
 //	var (
-//		predecessor SkipListNode[W, O]
+//		predecessor SkipListNode[K, V]
 //		traverse    = skl.loadTraverse()
 //	)
 //	predecessor = skl.head
@@ -297,7 +313,7 @@ const (
 //	return nil, traverse // not found
 //}
 //
-//func (skl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipListNode[W, O]) {
+//func (skl *xSkipList[K, V]) removeNode(x SkipListNode[K, V], traverse []SkipListNode[K, V]) {
 //	for i := int32(0); i < skl.Levels(); i++ {
 //		if traverse[i].levels()[i].forwardSuccessor() == x {
 //			traverse[i].levels()[i].setForwardSuccessor(x.levels()[i].forwardSuccessor())
@@ -315,7 +331,7 @@ const (
 //	atomic.AddInt32(&skl.nodeLen, -1)
 //}
 //
-//func (skl *xSkipList[W, O]) RemoveFirst(key W) SkipListElement[W, O] {
+//func (skl *xSkipList[K, V]) RemoveFirst(key K) SkipListElement[K, V] {
 //	predecessor, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -332,7 +348,7 @@ const (
 //	return nil // not found
 //}
 //
-//func (skl *xSkipList[W, O]) RemoveAll(key W) []SkipListElement[W, O] {
+//func (skl *xSkipList[K, V]) RemoveAll(key K) []SkipListElement[K, V] {
 //	predecessor, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -341,7 +357,7 @@ const (
 //		return nil // not found
 //	}
 //
-//	elements := make([]SkipListElement[W, O], 0, 16)
+//	elements := make([]SkipListElement[K, V], 0, 16)
 //	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), key) == 0; {
 //		skl.removeNode(cur, traverse)
 //		elements = append(elements, cur.Element())
@@ -352,7 +368,7 @@ const (
 //	return elements
 //}
 //
-//func (skl *xSkipList[W, O]) RemoveIfMatch(key W, cmp SklObjMatcher[O]) []SkipListElement[W, O] {
+//func (skl *xSkipList[K, V]) RemoveIfMatch(key K, cmp SklObjMatcher[V]) []SkipListElement[K, V] {
 //	predecessor, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -361,7 +377,7 @@ const (
 //		return nil // not found
 //	}
 //
-//	elements := make([]SkipListElement[W, O], 0, 16)
+//	elements := make([]SkipListElement[K, V], 0, 16)
 //	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), key) == 0; {
 //		if cmp(cur.Element().Val()) {
 //			skl.removeNode(cur, traverse)
@@ -380,7 +396,7 @@ const (
 //	return elements
 //}
 //
-//func (skl *xSkipList[W, O]) LoadFirst(key W) SkipListElement[W, O] {
+//func (skl *xSkipList[K, V]) LoadFirst(key K) SkipListElement[K, V] {
 //	e, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -392,7 +408,7 @@ const (
 //	return e.levels()[0].forwardSuccessor().Element()
 //}
 //
-//func (skl *xSkipList[W, O]) FindAll(key W) []SkipListElement[W, O] {
+//func (skl *xSkipList[K, V]) FindAll(key K) []SkipListElement[K, V] {
 //	predecessor, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -401,14 +417,14 @@ const (
 //		return nil // not found
 //	}
 //
-//	elements := make([]SkipListElement[W, O], 0, 16)
+//	elements := make([]SkipListElement[K, V], 0, 16)
 //	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), key) == 0; cur = cur.levels()[0].forwardSuccessor() {
 //		elements = append(elements, cur.Element())
 //	}
 //	return elements
 //}
 //
-//func (skl *xSkipList[W, O]) FindIfMatch(key W, cmp SklObjMatcher[O]) []SkipListElement[W, O] {
+//func (skl *xSkipList[K, V]) FindIfMatch(key K, cmp SklObjMatcher[V]) []SkipListElement[K, V] {
 //	predecessor, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
@@ -417,7 +433,7 @@ const (
 //		return nil // not found
 //	}
 //
-//	elements := make([]SkipListElement[W, O], 0, 16)
+//	elements := make([]SkipListElement[K, V], 0, 16)
 //	for cur := predecessor.levels()[0].forwardSuccessor(); cur != nil && skl.cmp(cur.Element().Key(), key) == 0; cur = cur.levels()[0].forwardSuccessor() {
 //		if cmp(cur.Element().Val()) {
 //			elements = append(elements, cur.Element())
@@ -426,7 +442,7 @@ const (
 //	return elements
 //}
 //
-//func (skl *xSkipList[W, O]) PopHead() (e SkipListElement[W, O]) {
+//func (skl *xSkipList[K, V]) PopHead() (e SkipListElement[K, V]) {
 //	target := skl.head
 //	if target == nil || skl.Len() <= 0 {
 //		return
@@ -439,9 +455,9 @@ const (
 //	return
 //}
 //
-//func (skl *xSkipList[W, O]) Free() {
+//func (skl *xSkipList[K, V]) Free() {
 //	var (
-//		x, next SkipListNode[W, O]
+//		x, next SkipListNode[K, V]
 //		idx     int
 //	)
 //	x = skl.head.levels()[0].forwardSuccessor()
@@ -458,19 +474,19 @@ const (
 //	skl.traversePool = nil
 //}
 //
-//func NewXSkipList[W SkipListWeight, O HashObject](cmp SklWeightComparator[W], rand SklRand) SkipList[W, O] {
+//func NewXSkipList[K SkipListWeight, V HashObject](cmp SklWeightComparator[K], rand SklRand) SkipList[K, V] {
 //	if cmp == nil || rand == nil {
 //		panic("empty inner core function to new x-skip-list")
 //	}
 //
-//	xsl := &xSkipList[W, O]{
+//	xsl := &xSkipList[K, V]{
 //		// Start from 1 means the x-skip-list cache levels at least a one level is fixed
 //		level: 1,
 //		nodeLen:   0,
 //		cmp:   cmp,
 //		rand:  rand,
 //	}
-//	xsl.head = newXSkipListNode[W, O](xSkipListMaxLevel, *new(W), *new(O))
+//	xsl.head = newXSkipListNode[K, V](xSkipListMaxLevel, *new(K), *new(V))
 //	// Initialization.
 //	// The head must be initialized with array element size with xSkipListMaxLevel.
 //	for i := 0; i < xSkipListMaxLevel; i++ {
@@ -480,7 +496,7 @@ const (
 //	xsl.tail = nil
 //	xsl.traversePool = &sync.Pool{
 //		New: func() any {
-//			return make([]SkipListNode[W, O], xSkipListMaxLevel)
+//			return make([]SkipListNode[K, V], xSkipListMaxLevel)
 //		},
 //	}
 //	return xsl
