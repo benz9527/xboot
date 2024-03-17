@@ -153,7 +153,7 @@ const (
 //	tail SkipListNode[W, O]
 //	// The real max level in used. And the max limitation is xSkipListMaxLevel.
 //	level int32
-//	len   int32
+//	nodeLen   int32
 //}
 //
 //func (skl *xSkipList[W, O]) loadTraverse() []SkipListNode[W, O] {
@@ -171,12 +171,12 @@ const (
 //	skl.traversePool.Put(traverse)
 //}
 //
-//func (skl *xSkipList[W, O]) Level() int32 {
+//func (skl *xSkipList[W, O]) Levels() int32 {
 //	return atomic.LoadInt32(&skl.level)
 //}
 //
 //func (skl *xSkipList[W, O]) Len() int32 {
-//	return atomic.LoadInt32(&skl.len)
+//	return atomic.LoadInt32(&skl.nodeLen)
 //}
 //
 //func (skl *xSkipList[W, O]) ForEach(fn func(idx int64, key W, obj O)) {
@@ -228,8 +228,8 @@ const (
 //	// It means that duplicated key elements query through the cache (V(logN))
 //	// But duplicated elements query (linear probe) will be degraded into V(N)
 //	lvl := skl.rand(xSkipListMaxLevel, skl.Len())
-//	if lvl > skl.Level() {
-//		for i := skl.Level(); i < lvl; i++ {
+//	if lvl > skl.Levels() {
+//		for i := skl.Levels(); i < lvl; i++ {
 //			// Update the whole traverse path, from top to bottom.
 //			traverse[i] = skl.head // avoid nil pointer
 //		}
@@ -254,7 +254,7 @@ const (
 //	} else {
 //		newNode.levels()[0].forwardSuccessor().setBackwardPredecessor(newNode)
 //	}
-//	atomic.AddInt32(&skl.len, 1)
+//	atomic.AddInt32(&skl.nodeLen, 1)
 //	return newNode, true
 //}
 //
@@ -268,7 +268,7 @@ const (
 //		traverse    = skl.loadTraverse()
 //	)
 //	predecessor = skl.head
-//	for i := skl.Level() - 1; i >= 0; i-- {
+//	for i := skl.Levels() - 1; i >= 0; i-- {
 //		// Note: Will start probing linearly from a local position in some interval
 //		// V(N)
 //		for predecessor.levels()[i].forwardSuccessor() != nil {
@@ -298,7 +298,7 @@ const (
 //}
 //
 //func (skl *xSkipList[W, O]) removeNode(x SkipListNode[W, O], traverse []SkipListNode[W, O]) {
-//	for i := int32(0); i < skl.Level(); i++ {
+//	for i := int32(0); i < skl.Levels(); i++ {
 //		if traverse[i].levels()[i].forwardSuccessor() == x {
 //			traverse[i].levels()[i].setForwardSuccessor(x.levels()[i].forwardSuccessor())
 //		}
@@ -309,10 +309,10 @@ const (
 //	} else {
 //		skl.tail = x.backwardPredecessor()
 //	}
-//	for skl.Level() > 1 && skl.head.levels()[skl.Level()-1].forwardSuccessor() == nil {
+//	for skl.Levels() > 1 && skl.head.levels()[skl.Levels()-1].forwardSuccessor() == nil {
 //		atomic.AddInt32(&skl.level, -1)
 //	}
-//	atomic.AddInt32(&skl.len, -1)
+//	atomic.AddInt32(&skl.nodeLen, -1)
 //}
 //
 //func (skl *xSkipList[W, O]) RemoveFirst(key W) SkipListElement[W, O] {
@@ -371,7 +371,7 @@ const (
 //			cur = next
 //		} else {
 //			// Merge the traverse path.
-//			for i := 0; i < len(cur.levels()); i++ {
+//			for i := 0; i < nodeLen(cur.levels()); i++ {
 //				traverse[i] = cur
 //			}
 //			cur = cur.levels()[0].forwardSuccessor()
@@ -466,7 +466,7 @@ const (
 //	xsl := &xSkipList[W, O]{
 //		// Start from 1 means the x-skip-list cache levels at least a one level is fixed
 //		level: 1,
-//		len:   0,
+//		nodeLen:   0,
 //		cmp:   cmp,
 //		rand:  rand,
 //	}

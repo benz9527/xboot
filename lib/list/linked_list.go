@@ -117,9 +117,9 @@ package list
 * remove operation, thus avoiding unwanted garbage retention.
 *
 * Indexing uses skip list parameters that maintain good search
-* performance while using sparser-than-usual indices: The
+* performance while using sparser-than-usual indexCount: The
 * hardwired parameters k=1, p=0.5 (see method doPut) mean that
-* about one-quarter of the nodes have indices. Of those that do,
+* about one-quarter of the nodes have indexCount. Of those that do,
 * half have one level, a quarter have two, and so on (see Pugh's
 * Skip List Cookbook, sec 3.4), up to a maximum of 62 levels
 * (appropriate for up to 2^63 elements).  The expected total

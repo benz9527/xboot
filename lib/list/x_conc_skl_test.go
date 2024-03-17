@@ -14,10 +14,10 @@ import (
 
 func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 	skl := &xConcSkl[uint64, *xSkipListObject]{
-		head:  newXConcSklHead[uint64, *xSkipListObject](me, unique),
-		pool:  newXConcSklPool[uint64, *xSkipListObject](),
-		idxHi: 1,
-		len:   0,
+		head:    newXConcSklHead[uint64, *xSkipListObject](me, unique),
+		pool:    newXConcSklPool[uint64, *xSkipListObject](),
+		levels:  1,
+		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
 			res := int64(i - j)
 			return res
@@ -39,7 +39,7 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 			skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
 		}
 	}
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
+	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
 	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
 		//t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
@@ -57,7 +57,7 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 		}
 	}
 	require.Equal(t, int64(0), skl.Len())
-	require.Equal(t, uint64(0), skl.Indices())
+	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
 func TestXConcSkipList_SerialProcessing(t *testing.T) {
@@ -84,10 +84,10 @@ func TestXConcSkipList_SerialProcessing(t *testing.T) {
 
 func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	skl := &xConcSkl[uint64, *xSkipListObject]{
-		head:  newXConcSklHead[uint64, *xSkipListObject](mu, unique),
-		pool:  newXConcSklPool[uint64, *xSkipListObject](),
-		idxHi: 1,
-		len:   0,
+		head:    newXConcSklHead[uint64, *xSkipListObject](mu, unique),
+		pool:    newXConcSklPool[uint64, *xSkipListObject](),
+		levels:  1,
+		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
 			// avoid calculation overflow
 			if i == j {
@@ -129,7 +129,7 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 		}
 	}
 	wg.Wait()
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
+	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
 	obj, ok := skl.Get(401)
 	require.True(t, ok)
@@ -148,7 +148,7 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	}
 	wg.Wait()
 	require.Equal(t, int64(0), skl.Len())
-	require.Equal(t, uint64(0), skl.Indices())
+	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
 func TestXConcSkipList_DataRace(t *testing.T) {
@@ -175,10 +175,10 @@ func TestXConcSkipList_DataRace(t *testing.T) {
 
 func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSkipListObject]{
-		head:  newXConcSklHead[uint64, *xSkipListObject](goNativeMutex, linkedList),
-		pool:  newXConcSklPool[uint64, *xSkipListObject](),
-		idxHi: 1,
-		len:   0,
+		head:    newXConcSklHead[uint64, *xSkipListObject](goNativeMutex, linkedList),
+		pool:    newXConcSklPool[uint64, *xSkipListObject](),
+		levels:  1,
+		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
 			// avoid calculation overflow
 			if i == j {
@@ -229,7 +229,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
 	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
 
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
+	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
 	skl.Range(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
 		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
@@ -274,10 +274,10 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNodeMode, rmBySucc bool) {
 	skl := &xConcSkl[uint64, int64]{
-		head:  newXConcSklHead[uint64, int64](mu, typ),
-		pool:  newXConcSklPool[uint64, int64](),
-		idxHi: 1,
-		len:   0,
+		head:    newXConcSklHead[uint64, int64](mu, typ),
+		pool:    newXConcSklPool[uint64, int64](),
+		levels:  1,
+		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
 			// avoid calculation overflow
 			if i == j {
@@ -340,7 +340,7 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNode
 		}
 	}
 	wg.Wait()
-	t.Logf("len: %d, indexes: %d\n", skl.Len(), skl.Indices())
+	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
 	skl.Range(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
 		require.Equalf(t, expected[idx].w, item.Key(), "exp: %d; actual: %d\n", expected[idx].w, item.Key())
@@ -363,7 +363,7 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, typ xNode
 	}
 	wg.Wait()
 	require.Equal(t, int64(0), skl.Len())
-	require.Equal(t, uint64(0), skl.Indices())
+	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
 func TestXConcSkipListDuplicate_DataRace(t *testing.T) {

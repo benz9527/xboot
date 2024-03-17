@@ -17,7 +17,7 @@ type xConcSklIndices[W infra.OrderedKey, O comparable] []*xConcSklIndex[W, O]
 func (indices xConcSklIndices[W, O]) must(i int32) {
 	l := len(indices)
 	if int(i) >= l {
-		panic("[x-conc-skl-indices] " + strconv.Itoa(int(i)) + " out of len " + strconv.Itoa(l))
+		panic("[x-conc-skl-indexCount] " + strconv.Itoa(int(i)) + " out of nodeLen " + strconv.Itoa(l))
 	}
 }
 

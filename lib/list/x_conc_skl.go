@@ -24,19 +24,33 @@ const (
 )
 
 type xConcSkl[K infra.OrderedKey, V comparable] struct {
-	head    *xConcSklNode[K, V]
-	pool    *xConcSklPool[K, V]
-	kcmp    infra.OrderedKeyComparator[K]
-	vcmp    SklValComparator[V]
-	rand    SklRand
-	idGen   id.Generator
-	flags   flagBits
-	len     int64  // skip-list's node size
-	idxSize uint64 // skip-list's index count
-	idxHi   int32  // skip-list's indexes' height
+	head       *xConcSklNode[K, V]
+	pool       *xConcSklPool[K, V]
+	kcmp       infra.OrderedKeyComparator[K]
+	vcmp       SklValComparator[V]
+	rand       SklRand
+	idGen      id.Generator
+	flags      flagBits
+	nodeLen    int64  // skip-list's node count.
+	indexCount uint64 // skip-list's index count.
+	levels     int32  // skip-list's max height value inside the indexCount.
 }
 
-func (skl *xConcSkl[K, V]) loadMutexImpl() mutexImpl {
+// Len skip-list's node count.
+func (skl *xConcSkl[K, V]) Len() int64 {
+	return atomic.LoadInt64(&skl.nodeLen)
+}
+
+func (skl *xConcSkl[K, V]) IndexCount() uint64 {
+	return atomic.LoadUint64(&skl.indexCount)
+}
+
+// Levels skip-list's max height value inside the indexCount.
+func (skl *xConcSkl[K, V]) Levels() int32 {
+	return atomic.LoadInt32(&skl.levels)
+}
+
+func (skl *xConcSkl[K, V]) loadMutex() mutexImpl {
 	return mutexImpl(skl.flags.atomicLoadBits(sklMutexImplBits))
 }
 
@@ -48,19 +62,7 @@ func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
 	return (*xConcSklNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&skl.head))))
 }
 
-func (skl *xConcSkl[K, V]) Len() int64 {
-	return atomic.LoadInt64(&skl.len)
-}
-
-func (skl *xConcSkl[K, V]) Indices() uint64 {
-	return atomic.LoadUint64(&skl.idxSize)
-}
-
-func (skl *xConcSkl[K, V]) Level() int32 {
-	return atomic.LoadInt32(&skl.idxHi)
-}
-
-// traverse locates the target key and store the nodes encountered during the indices traversal.
+// traverse locates the target key and store the nodes encountered during the indexCount traversal.
 func (skl *xConcSkl[K, V]) traverse(
 	lvl int32,
 	key K,
@@ -80,7 +82,7 @@ func (skl *xConcSkl[K, V]) traverse(
 		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
 			return nIdx
 		}
-		// Not found at current level, downward to next level's indices.
+		// Not found at current level, downward to next level's indexCount.
 	}
 	return nil
 }
@@ -89,11 +91,11 @@ func (skl *xConcSkl[K, V]) traverse(
 // Only works for unique element skip-list.
 func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 	var (
-		aux      = skl.pool.loadAux()
-		oldIdxHi = skl.Level()
-		newIdxHi = /* avoid loop call */ skl.rand(
-			int(oldIdxHi),
-			int32(atomic.LoadInt64(&skl.len)),
+		aux     = skl.pool.loadAux()
+		oldLvls = skl.Levels()
+		newLvls = /* avoid loop call */ skl.rand(
+			int(oldLvls),
+			int32(atomic.LoadInt64(&skl.nodeLen)),
 		)
 		ver = skl.idGen.NumberUUID()
 	)
@@ -101,14 +103,14 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 		skl.pool.releaseAux(aux)
 	}()
 	for {
-		if node := skl.traverse(max(oldIdxHi, newIdxHi), key, aux); node != nil {
+		if node := skl.traverse(max(oldLvls, newLvls), key, aux); node != nil {
 			if /* conc rm */ node.flags.atomicIsSet(nodeRemovingFlagBit) {
 				continue
 			}
 			if isAppend, err := node.storeVal(ver, val); err != nil {
 				panic(err)
 			} else if isAppend {
-				atomic.AddInt64(&skl.len, 1)
+				atomic.AddInt64(&skl.nodeLen, 1)
 			}
 			return
 		}
@@ -118,14 +120,14 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 			isValid                              = true
 			lockedLevels                         = int32(-1)
 		)
-		for l := int32(0); isValid && l < newIdxHi; l++ {
+		for l := int32(0); isValid && l < newLvls; l++ {
 			pred, succ = aux.loadPred(l), aux.loadSucc(l)
 			if /* lock */ pred != prev {
 				pred.mu.lock(ver)
 				lockedLevels = l
 				prev = pred
 			}
-			// Check indices and data node:
+			// Check indexCount and data node:
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...
 			//      +------+       +------+      +------+
@@ -142,24 +144,24 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 			continue
 		}
 
-		n := newXConcSklNode(key, val, newIdxHi, skl.loadMutexImpl(), skl.loadXNodeMode(), skl.vcmp)
-		for /* linking */ l := int32(0); l < newIdxHi; l++ {
+		node := newXConcSklNode(key, val, newLvls, skl.loadMutex(), skl.loadXNodeMode(), skl.vcmp)
+		for /* linking */ l := int32(0); l < newLvls; l++ {
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...
 			//      +------+       +------+      +------+
-			n.storeNext(l, aux.loadSucc(l))       // Useless to use atomic here.
-			aux.loadPred(l).atomicStoreNext(l, n) // Memory barrier, concurrency safety.
+			node.storeNext(l, aux.loadSucc(l))       // Useless to use atomic here.
+			aux.loadPred(l).atomicStoreNext(l, node) // Memory barrier, concurrency safety.
 		}
-		n.flags.atomicSet(nodeInsertedFlagBit)
-		if oldIdxHi = skl.Level(); oldIdxHi < newIdxHi {
-			atomic.StoreInt32(&skl.idxHi, newIdxHi)
+		node.flags.atomicSet(nodeInsertedFlagBit)
+		if oldLvls = skl.Levels(); oldLvls < newLvls {
+			atomic.StoreInt32(&skl.levels, newLvls)
 		}
 
 		aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
 			unlockNodes(ver, lockedLevels, list...)
 		})
-		atomic.AddInt64(&skl.len, 1)
-		atomic.AddUint64(&skl.idxSize, uint64(newIdxHi))
+		atomic.AddInt64(&skl.nodeLen, 1)
+		atomic.AddUint64(&skl.indexCount, uint64(newLvls))
 		return
 	}
 }
@@ -170,7 +172,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 // reads and writes.
 func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
 	forward := skl.atomicLoadHead().atomicLoadNext(0)
-	index := int64(0)
+	i := int64(0)
 	item := &xSklIter[K, V]{}
 	switch mode := skl.loadXNodeMode(); mode {
 	case unique:
@@ -195,11 +197,11 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 				}
 				return *vn.vptr
 			}
-			if res := fn(index, item); !res {
+			if res := fn(i, item); !res {
 				break
 			}
 			forward = forward.atomicLoadNext(0)
-			index++
+			i++
 		}
 	case linkedList:
 		for forward != nil {
@@ -221,7 +223,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 					return *x.vptr
 				}
 				var res bool
-				if res, index = fn(index, item), index+1; !res {
+				if res, i = fn(i, item), i+1; !res {
 					break
 				}
 			}
@@ -247,7 +249,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 					return val
 				}
 				var res bool
-				if res, index = fn(index, item), index+1; !res {
+				if res, i = fn(i, item), i+1; !res {
 					return false
 				}
 				return true
@@ -265,7 +267,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 	forward := skl.atomicLoadHead()
 	mode := skl.loadXNodeMode()
-	for /* vertical */ l := skl.Level() - 1; l >= 0; l-- {
+	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
 			forward = nIdx
@@ -298,7 +300,7 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 }
 
 // rmTraverse locates the target key and stores the nodes encountered
-// during the indices traversal.
+// during the indexCount traversal.
 // Returns with the target key found level index.
 func (skl *xConcSkl[K, V]) rmTraverse(
 	weight K,
@@ -307,7 +309,7 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 	// foundAt represents the index of the first layer at which it found a node.
 	foundAt = -1
 	forward := skl.atomicLoadHead()
-	for /* vertical */ l := skl.Level() - 1; l >= 0; l-- {
+	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNext(l)
 		for /* horizontal */ nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
 			forward = nIdx
@@ -374,7 +376,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 				)
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
 					pred, succ = aux.loadPred(l), aux.loadSucc(l)
-					if /* lock indices */ pred != prevPred {
+					if /* lock indexCount */ pred != prevPred {
 						pred.mu.lock(ver)
 						lockedLayers = l
 						prevPred = pred
@@ -396,13 +398,13 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					val: *rmTarget.loadXNode().vptr,
 				}
 				atomic.AddInt64(&rmTarget.count, -1)
-				atomic.AddInt64(&skl.len, -1)
+				atomic.AddInt64(&skl.nodeLen, -1)
 
 				if atomic.LoadInt64(&rmTarget.count) <= 0 {
 					for /* re-linking, reduce levels */ l := topLevel; l >= 0; l-- {
 						aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
 					}
-					atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
+					atomic.AddUint64(&skl.indexCount, ^uint64(rmTarget.level-1))
 				}
 
 				rmTarget.mu.unlock(ver)
@@ -445,7 +447,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 				)
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
 					pred, succ = aux.loadPred(l), aux.loadSucc(l)
-					if /* lock indices */ pred != prev {
+					if /* lock indexCount */ pred != prev {
 						pred.mu.lock(ver)
 						lockedLayers = l
 						prev = pred
@@ -471,7 +473,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 						}
 						atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&rmTarget.root.parent)), unsafe.Pointer(x.parent))
 						atomic.AddInt64(&rmTarget.count, -1)
-						atomic.AddInt64(&skl.len, -1)
+						atomic.AddInt64(&skl.nodeLen, -1)
 						rmTarget.flags.atomicUnset(nodeRemovingFlagBit)
 					} else {
 						atomic.StoreInt64(&rmTarget.count, 0)
@@ -482,7 +484,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 							key: key,
 							val: *x.vptr,
 						}
-						atomic.AddInt64(&skl.len, -1)
+						atomic.AddInt64(&skl.nodeLen, -1)
 					}
 					rmTarget.flags.atomicUnset(nodeRemovingFlagBit)
 				}
@@ -491,7 +493,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 					for /* re-linking, reduce levels */ l := topLevel; l >= 0; l-- {
 						aux.loadPred(l).atomicStoreNext(l, rmTarget.loadNext(l))
 					}
-					atomic.AddUint64(&skl.idxSize, ^uint64(rmTarget.level-1))
+					atomic.AddUint64(&skl.indexCount, ^uint64(rmTarget.level-1))
 				}
 
 				rmTarget.mu.unlock(ver)
@@ -517,8 +519,8 @@ func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SklWeightComparator[
 	//h.flags.atomicSet(nodeInsertedFlagBit)
 	//return &xConcSkl[K, V]{
 	//	head:  h,
-	//	idxHi: 0,
-	//	len:   0,
+	//	levels: 0,
+	//	nodeLen:   0,
 	//	kcmp:   kcmp,
 	//	rand:  rand,
 	//}

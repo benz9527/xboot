@@ -197,10 +197,10 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	root    *xNode[V]
 	key     K
 	vcmp    SklValComparator[V]
-	indexes xConcSklIndices[K, V]
+	indices xConcSklIndices[K, V]
 	mu      segmentedMutex
 	flags   flagBits
-	count   int64
+	count   int64 // Duplicated elements' count
 	level   uint32
 }
 
@@ -233,19 +233,19 @@ func (node *xConcSklNode[K, V]) loadXNode() *xNode[V] {
 }
 
 func (node *xConcSklNode[K, V]) loadNext(i int32) *xConcSklNode[K, V] {
-	return node.indexes.loadForward(i)
+	return node.indices.loadForward(i)
 }
 
 func (node *xConcSklNode[K, V]) storeNext(i int32, next *xConcSklNode[K, V]) {
-	node.indexes.storeForward(i, next)
+	node.indices.storeForward(i, next)
 }
 
 func (node *xConcSklNode[K, V]) atomicLoadNext(i int32) *xConcSklNode[K, V] {
-	return node.indexes.atomicLoadForward(i)
+	return node.indices.atomicLoadForward(i)
 }
 
 func (node *xConcSklNode[K, V]) atomicStoreNext(i int32, next *xConcSklNode[K, V]) {
-	node.indexes.atomicStoreForward(i, next)
+	node.indices.atomicStoreForward(i, next)
 }
 
 /* linked-list operation implementation */
@@ -921,7 +921,7 @@ func newXConcSklNode[K infra.OrderedKey, V comparable](
 		mu:    mutexFactory(mu),
 		vcmp:  cmp,
 	}
-	node.indexes = newXConcSklIndices[K, V](lvl)
+	node.indices = newXConcSklIndices[K, V](lvl)
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
 	switch mode {
 	case unique:
@@ -951,7 +951,7 @@ func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, mode xNodeMo
 	}
 	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
 	head.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
-	head.indexes = newXConcSklIndices[K, V](xSkipListMaxLevel)
+	head.indices = newXConcSklIndices[K, V](xSkipListMaxLevel)
 	return head
 }
 

@@ -71,7 +71,7 @@ func TestStringHash_FNV(t *testing.T) {
 //		assert.Equal(t, orders[idx].w, key)
 //		assert.Equal(t, orders[idx].id, val.id)
 //	})
-//	assert.Equal(t, int32(len(orders)), xsl.Len())
+//	assert.Equal(t, int32(nodeLen(orders)), xsl.Len())
 //
 //	expectedFirstList := []element{
 //		{1, "3"},
@@ -99,7 +99,7 @@ func TestStringHash_FNV(t *testing.T) {
 //	expectedRemoveList := []element{
 //		{4, "6"}, {4, "3"},
 //	}
-//	assert.Equal(t, len(expectedRemoveList), len(eleList))
+//	assert.Equal(t, nodeLen(expectedRemoveList), nodeLen(eleList))
 //	for i, e := range expectedRemoveList {
 //		assert.Equal(t, e.w, eleList[i].Key())
 //		assert.Equal(t, e.id, eleList[i].Val().id)
@@ -117,7 +117,7 @@ func TestStringHash_FNV(t *testing.T) {
 //		assert.Equal(t, orders[idx].w, key)
 //		assert.Equal(t, orders[idx].id, val.id)
 //	})
-//	assert.Equal(t, int32(len(orders)), xsl.Len())
+//	assert.Equal(t, int32(nodeLen(orders)), xsl.Len())
 //
 //	expectedFirstList = []element{
 //		{1, "3"},
@@ -142,7 +142,7 @@ func TestStringHash_FNV(t *testing.T) {
 //			return obj.id == e.id
 //		})
 //		assert.NotNil(t, eleList)
-//		assert.Equal(t, 1, len(eleList))
+//		assert.Equal(t, 1, nodeLen(eleList))
 //		assert.Equal(t, e.w, eleList[0].Key())
 //		assert.Equal(t, e.id, eleList[0].Val().id)
 //	}
@@ -159,7 +159,7 @@ func TestStringHash_FNV(t *testing.T) {
 //		assert.Equal(t, orders[idx].w, key)
 //		assert.Equal(t, orders[idx].id, val.id)
 //	})
-//	assert.Equal(t, int32(len(orders)), xsl.Len())
+//	assert.Equal(t, int32(nodeLen(orders)), xsl.Len())
 //
 //	expectedFindList := []element{
 //		{7, "7"}, {6, "100"}, {3, "7"},
@@ -169,7 +169,7 @@ func TestStringHash_FNV(t *testing.T) {
 //			return obj.id == e.id
 //		})
 //		assert.NotNil(t, eleList)
-//		assert.Equal(t, 1, len(eleList))
+//		assert.Equal(t, 1, nodeLen(eleList))
 //		assert.Equal(t, e.w, eleList[0].Key())
 //		assert.Equal(t, e.id, eleList[0].Val().id)
 //	}
@@ -181,14 +181,14 @@ func TestStringHash_FNV(t *testing.T) {
 //		eleList = xsl.FindIfMatch(e.w, func(obj *xSkipListObject) bool {
 //			return obj.id == e.id
 //		})
-//		assert.Zero(t, len(eleList))
+//		assert.Zero(t, nodeLen(eleList))
 //	}
 //
 //	expectedFindList = []element{
 //		{3, "9"}, {3, "7"}, {3, "1"},
 //	}
 //	eleList = xsl.FindAll(3)
-//	assert.NotZero(t, len(eleList))
+//	assert.NotZero(t, nodeLen(eleList))
 //	for i, e := range eleList {
 //		assert.Equal(t, expectedFindList[i].w, e.Key())
 //		assert.Equal(t, expectedFindList[i].id, e.Val().id)
@@ -216,7 +216,7 @@ func TestStringHash_FNV(t *testing.T) {
 //	for _, o := range orders {
 //		xsl.Insert(o.w, &xSkipListObject{id: o.id})
 //	}
-//	for i := 0; i < len(orders); i++ {
+//	for i := 0; i < nodeLen(orders); i++ {
 //		e := xsl.PopHead()
 //		assert.Equal(t, orders[i].w, e.Key())
 //		assert.Equal(t, orders[i].id, e.Val().id)
