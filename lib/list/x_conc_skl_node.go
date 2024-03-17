@@ -958,7 +958,7 @@ func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, mode xNodeMo
 func unlockNodes[K infra.OrderedKey, V comparable](version uint64, num int32, nodes ...*xConcSklNode[K, V]) {
 	var prev *xConcSklNode[K, V]
 	for i := num; i >= 0; i-- {
-		if nodes[i] != prev { // the node could be unlocked by previous loop
+		if nodes[i] != prev {
 			nodes[i].mu.unlock(version)
 			prev = nodes[i]
 		}
