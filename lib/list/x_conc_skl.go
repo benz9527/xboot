@@ -18,6 +18,10 @@ const (
 	sklRbtreeRmReplaceFnFlagBit = 0x0400
 )
 
+var (
+	_ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
+)
+
 type xConcSkl[K infra.OrderedKey, V comparable] struct {
 	head       *xConcSklNode[K, V]
 	pool       *xConcSklPool[K, V]

@@ -13,6 +13,10 @@ const (
 	xSkipListProbability = 0.25 // P = 1/4, a skip list node element has 1/4 probability to have a level
 )
 
+var (
+	_ XSkipList[uint8, uint8] = (*xComSkl[uint8, uint8])(nil)
+)
+
 // A common implementation of skip-list.
 // @field head A sentinel node.
 // The head.indices[0].succ is the first data node of skip-list.
@@ -181,16 +185,16 @@ func (skl *xComSkl[K, V]) Insert(key K, val V) error {
 	return nil
 }
 
-func (skl *xComSkl[K, V]) LoadFirst(key K) (SkipListElement[K, V], error) {
+func (skl *xComSkl[K, V]) LoadFirst(key K) (SkipListElement[K, V], bool) {
 	e, traverse := skl.findPredecessor0(key)
 	defer func() {
 		skl.putTraverse(traverse)
 	}()
 	if e.levels() == nil {
-		return nil, errors.New("")
+		return nil, false
 	}
 
-	return e.levels()[0].forward().Element(), nil
+	return e.levels()[0].forward().Element(), true
 }
 
 func (skl *xComSkl[K, V]) RemoveFirst(key K) (SkipListElement[K, V], error) {
@@ -229,7 +233,7 @@ func (skl *xComSkl[K, V]) Foreach(action func(i int64, item SkipListIterationIte
 	}
 }
 
-func (skl *xComSkl[K, V]) PeekHead() (element SkipListElement[K, V]) {
+func (skl *xComSkl[K, V]) PeekHead() SkipListElement[K, V] {
 	target := skl.head
 	if target == nil || skl.Len() <= 0 {
 		return nil
