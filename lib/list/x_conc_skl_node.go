@@ -130,7 +130,7 @@ func (n *xNode[V]) maximum() *xNode[V] {
 	return aux
 }
 
-// The predecessor node of the current node is its previous node in sorted order
+// The pred node of the current node is its previous node in sorted order
 func (n *xNode[V]) pred() *xNode[V] {
 	x := n
 	if x == nil {
@@ -142,7 +142,7 @@ func (n *xNode[V]) pred() *xNode[V] {
 	}
 
 	aux = x.parent
-	// Backtrack to father node that is the x's predecessor.
+	// Backtrack to father node that is the x's pred.
 	for aux != nil && x == aux.left {
 		x = aux
 		aux = aux.parent
@@ -150,7 +150,7 @@ func (n *xNode[V]) pred() *xNode[V] {
 	return aux
 }
 
-// The successor node of the current node is its next node in sorted order.
+// The succ node of the current node is its next node in sorted order.
 func (n *xNode[V]) succ() *xNode[V] {
 	x := n
 	if x == nil {
@@ -163,7 +163,7 @@ func (n *xNode[V]) succ() *xNode[V] {
 	}
 
 	aux = x.parent
-	// Backtrack to father node that is the x's successor.
+	// Backtrack to father node that is the x's succ.
 	for aux != nil && x == aux.right {
 		x = aux
 		aux = aux.parent
@@ -210,7 +210,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 		// Replace
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
 	case linkedList:
-		// predecessor
+		// pred
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
 		isAppend = node.llInsert(val)
@@ -524,11 +524,11 @@ func (node *xConcSklNode[K, V]) rbInsertRebalance(x *xNode[V]) {
 r1: Only a root node, remove directly.
 
 r2: Current node X has left and right node.
-Find node X's predecessor or successor to replace it to be removed.
+Find node X's pred or succ to replace it to be removed.
 Swap the value only.
-Both of predecessor and successor are nil left and right node.
+Both of pred and succ are nil left and right node.
 
-Find predecessor:
+Find pred:
 
 	  |                    |
 	  X                    L
@@ -539,7 +539,7 @@ Find predecessor:
 	   / \                  / \
 	  S  ..                S  ..
 
-Find successor:
+Find succ:
 
 	  |                    |
 	  X                    S

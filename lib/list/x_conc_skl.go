@@ -1,10 +1,5 @@
 package list
 
-// References:
-// https://people.csail.mit.edu/shanir/publications/LazySkipList.pdf
-// github:
-// https://github.com/zhangyunhao116/skipmap
-
 import (
 	"errors"
 	"sync/atomic"

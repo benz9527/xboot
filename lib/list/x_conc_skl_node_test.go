@@ -178,7 +178,7 @@ func TestAuxIndexes(t *testing.T) {
 	})
 }
 
-// test remove by predecessor references:
+// test remove by pred references:
 // https://www.cs.usfca.edu/~galles/visualization/RedBlack.html
 // https://github.com/minghu6/rust-minghu6/blob/master/coll_st/src/bst/rb.rs
 
