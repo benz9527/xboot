@@ -295,7 +295,7 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 // LoadFirst returns the first value stored in the skip-list for a key,
 // or nil if no val is present.
 // The ok result indicates whether the value was found in the skip-list.
-func (skl *xConcSkl[K, V]) LoadFirst(key K) (val V, ok bool) {
+func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SkipListElement[K, V], ok bool) {
 	forward := skl.atomicLoadHead()
 	mode := skl.loadXNodeMode()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
@@ -308,18 +308,27 @@ func (skl *xConcSkl[K, V]) LoadFirst(key K) (val V, ok bool) {
 		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
-					return *new(V), false
+					return nil, false
 				}
 				switch mode {
 				case unique:
 					x := nIdx.atomicLoadRoot()
-					return *x.vptr, true
+					return &xSklElement[K, V]{
+						key: key,
+						val: *x.vptr,
+					}, true
 				case linkedList:
 					x := nIdx.atomicLoadRoot()
-					return *x.parent.vptr, true
+					return &xSklElement[K, V]{
+						key: key,
+						val: *x.parent.vptr,
+					}, true
 				case rbtree:
 					x := nIdx.root.minimum()
-					return *x.vptr, true
+					return &xSklElement[K, V]{
+						key: key,
+						val: *x.vptr,
+					}, true
 				default:
 					panic("[x-conc-skl] unknown x-node type")
 				}
