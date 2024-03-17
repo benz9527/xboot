@@ -10,14 +10,14 @@ type xComSklIndex[K infra.OrderedKey, V comparable] struct {
 	// Ignore the node level span metadata (for rank).
 }
 
-func (idx *xComSklIndex[K, V]) forwardSuccessor() *xComSklNode[K, V] {
+func (idx *xComSklIndex[K, V]) forward() *xComSklNode[K, V] {
 	if idx == nil {
 		return nil
 	}
 	return idx.succ
 }
 
-func (idx *xComSklIndex[K, V]) setForwardSuccessor(succ *xComSklNode[K, V]) {
+func (idx *xComSklIndex[K, V]) setForward(succ *xComSklNode[K, V]) {
 	if idx == nil {
 		return
 	}

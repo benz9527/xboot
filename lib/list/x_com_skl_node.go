@@ -32,14 +32,14 @@ func (node *xComSklNode[K, V]) setElement(e SkipListElement[K, V]) {
 	node.element = e
 }
 
-func (node *xComSklNode[K, V]) backwardPredecessor() *xComSklNode[K, V] {
+func (node *xComSklNode[K, V]) backward() *xComSklNode[K, V] {
 	if node == nil {
 		return nil
 	}
 	return node.pred
 }
 
-func (node *xComSklNode[K, V]) setBackwardPredecessor(pred *xComSklNode[K, V]) {
+func (node *xComSklNode[K, V]) setBackward(pred *xComSklNode[K, V]) {
 	if node == nil {
 		return
 	}
