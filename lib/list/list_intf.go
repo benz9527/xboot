@@ -94,10 +94,10 @@ type SkipList[K infra.OrderedKey, V comparable] interface {
 
 type XSkipList[K infra.OrderedKey, V comparable] interface {
 	SkipList[K, V]
-	LoadAll(weight K) []SkipListElement[K, V]
-	LoadIfMatched(weight K, matcher func(that V) bool) []SkipListElement[K, V]
-	RemoveAll(key K) []SkipListElement[K, V]
-	RemoveIfMatched(key K, matcher func(that V) bool) []SkipListElement[K, V]
+	LoadIfMatched(weight K, matcher func(that V) bool) ([]SkipListElement[K, V], error)
+	LoadAll(weight K) ([]SkipListElement[K, V], error)
+	RemoveIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error)
+	RemoveAll(key K) ([]SkipListElement[K, V], error)
 }
 
 type SklValComparator[V comparable] func(i, j V) int64

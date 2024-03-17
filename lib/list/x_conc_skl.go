@@ -202,10 +202,9 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) error {
 // This function doesn't guarantee correctness in the case of concurrent
 // reads and writes.
 func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SkipListIterationItem[K, V]) bool) {
-	forward := skl.atomicLoadHead().atomicLoadNextNode(0)
 	i := int64(0)
 	item := &xSklIter[K, V]{}
-	switch mode := skl.loadXNodeMode(); mode {
+	switch forward, mode := skl.atomicLoadHead().atomicLoadNextNode(0), skl.loadXNodeMode(); mode {
 	case unique:
 		for forward != nil {
 			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
@@ -222,11 +221,11 @@ func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SkipListIterationIt
 				return forward.key
 			}
 			item.valFn = func() V {
-				vn := forward.atomicLoadRoot()
-				if vn == nil {
+				node := forward.atomicLoadRoot()
+				if node == nil {
 					return *new(V)
 				}
-				return *vn.vptr
+				return *node.vptr
 			}
 			if res := action(i, item); !res {
 				break
@@ -526,8 +525,60 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SkipListElement[K, V], er
 	return nil, errors.New("others unknown reasons")
 }
 
-func (skl *xConcSkl[K, V]) PeekHead() SkipListElement[K, V] {
-	return nil
+func (skl *xConcSkl[K, V]) PeekHead() (element SkipListElement[K, V]) {
+	switch forward, mode := skl.atomicLoadHead().atomicLoadNextNode(0), skl.loadXNodeMode(); mode {
+	case unique:
+		for {
+			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
+				forward = forward.atomicLoadNextNode(0)
+				continue
+			}
+			node := forward.atomicLoadRoot()
+			if node == nil {
+				return nil
+			}
+			element = &xSklElement[K, V]{
+				key: forward.key,
+				val: *node.vptr,
+			}
+			break
+		}
+	case linkedList:
+		for {
+			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
+				forward = forward.atomicLoadNextNode(0)
+				continue
+			}
+			x := forward.atomicLoadRoot().parent
+			if x == nil {
+				return nil
+			}
+			element = &xSklElement[K, V]{
+				key: forward.key,
+				val: *x.vptr,
+			}
+			break
+		}
+	case rbtree:
+		for {
+			if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
+				forward = forward.atomicLoadNextNode(0)
+				continue
+			}
+			x := forward.root.minimum()
+			if x == nil {
+				return nil
+			}
+			element = &xSklElement[K, V]{
+				key: forward.key,
+				val: *x.vptr,
+			}
+			break
+		}
+	default:
+		panic("[x-conc-skl] unknown node type")
+	}
+	return element
 }
 
 func (skl *xConcSkl[K, V]) PopHead() (SkipListElement[K, V], error) {
