@@ -104,7 +104,7 @@ func (skl *xComSkl[K, V]) Insert(key K, obj V) (*xComSklNode[K, V], bool) {
 	// Each duplicated key element may contain its cache levels.
 	// It means that duplicated key elements query through the cache (V(logN))
 	// But duplicated elements query (linear probe) will be degraded into V(N)
-	lvl := skl.rand(xSkipListMaxLevel, int32(skl.Len()))
+	lvl := skl.rand(xSkipListMaxLevel, skl.Len())
 	if lvl > skl.Levels() {
 		for i := skl.Levels(); i < lvl; i++ {
 			// Update the whole traverse path, from top to bottom.

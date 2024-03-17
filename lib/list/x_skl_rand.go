@@ -12,6 +12,8 @@ import (
 	randv2 "math/rand/v2"
 )
 
+type SklRand func(maxLevel int, currentElements int64) int32
+
 func maxLevels(totalElements int64, P float64) int {
 	// Ref https://www.cl.cam.ac.uk/teaching/2005/Algorithms/skiplists.pdf
 	// maxLevels = log(1/P) * log(totalElements)
@@ -41,7 +43,7 @@ func randomLevel(maxLevel int, currentElements int32) int32 {
 
 // randomLevelV2 is the skip list level element.
 // Dynamic level calculation.
-func randomLevelV2(maxLevel int, currentElements int32) int32 {
+func randomLevelV2(maxLevel int, currentElements int64) int32 {
 	// Call function maxLevels to get total?
 	// maxLevel => n, 2^n-1, there will be 2^n-1 elements in the skip list
 	var total uint64
@@ -73,7 +75,7 @@ func randomLevelV2(maxLevel int, currentElements int32) int32 {
 // randomLevelV3 is the skip list level element.
 // Dynamic level calculation.
 // Concurrency safe.
-func randomLevelV3(maxLevel int, currentElements int32) int32 {
+func randomLevelV3(maxLevel int, currentElements int64) int32 {
 	// Call function maxLevels to get total?
 	// maxLevel => n, 2^n-1, there will be 2^n-1 elements in the skip list
 	var total uint64

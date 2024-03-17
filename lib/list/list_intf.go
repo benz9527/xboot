@@ -101,5 +101,3 @@ type XSkipList[K infra.OrderedKey, V comparable] interface {
 }
 
 type SklValComparator[V comparable] func(i, j V) int64
-
-type SklRand func(maxLevel int, currentElements int32) int32

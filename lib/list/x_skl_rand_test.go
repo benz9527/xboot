@@ -79,7 +79,7 @@ func TestRandomLevelV2(t *testing.T) {
 		go func(id int) {
 			loop := 1000
 			for j := 0; j < loop; j++ {
-				t.Logf("randv2 id: %d; rand: %d\n", id, randomLevelV2(xSkipListMaxLevel, int32(j)))
+				t.Logf("randv2 id: %d; rand: %d\n", id, randomLevelV2(xSkipListMaxLevel, int64(j)))
 			}
 			wg.Done()
 		}(i)
@@ -94,7 +94,7 @@ func TestRandomLevelV3(t *testing.T) {
 		go func(id int) {
 			loop := 1000
 			for j := 0; j < loop; j++ {
-				t.Logf("randv3 id: %d; rand: %d\n", id, randomLevelV3(xSkipListMaxLevel, int32(j)))
+				t.Logf("randv3 id: %d; rand: %d\n", id, randomLevelV3(xSkipListMaxLevel, int64(j)))
 			}
 			wg.Done()
 		}(i)
@@ -111,7 +111,7 @@ func BenchmarkRandomLevel(b *testing.B) {
 
 func BenchmarkRandomLevelV2(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		randomLevelV2(xSkipListMaxLevel, int32(i))
+		randomLevelV2(xSkipListMaxLevel, int64(i))
 	}
 	b.ReportAllocs()
 }

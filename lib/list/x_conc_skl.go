@@ -120,7 +120,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) error {
 		oldLvls = skl.Levels()
 		newLvls = /* avoid loop call */ skl.rand(
 			int(oldLvls),
-			int32(atomic.LoadInt64(&skl.nodeLen)),
+			atomic.LoadInt64(&skl.nodeLen),
 		)
 		ver = skl.idGen.NumberUUID()
 	)
