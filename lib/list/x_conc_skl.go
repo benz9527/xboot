@@ -197,11 +197,11 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 	}
 }
 
-// Range iterates each node (xnode within the node) by pass in function.
+// Foreach iterates each node (xNode within the node) by pass in function.
 // Once the function return false, the iteration should be stopped.
 // This function doesn't guarantee correctness in the case of concurrent
 // reads and writes.
-func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
+func (skl *xConcSkl[K, V]) Foreach(fn func(idx int64, metadata SkipListIterationItem[K, V]) bool) {
 	forward := skl.atomicLoadHead().atomicLoadNextNode(0)
 	i := int64(0)
 	item := &xSklIter[K, V]{}
