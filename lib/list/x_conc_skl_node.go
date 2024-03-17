@@ -558,7 +558,7 @@ r3: (2) Current node X is a black leaf node, we have to rebalance after remove.
 r4: Current node X is not a leaf node but contains a not nil child node.
 The child node must be a red node. (See conclusion. Otherwise, black-violation)
 */
-func (node *xConcSklNode[K, V]) rbRemoveXNode(z *xNode[V]) (res *xNode[V], err error) {
+func (node *xConcSklNode[K, V]) rbRemoveNode(z *xNode[V]) (res *xNode[V], err error) {
 	if /* r1 */ atomic.LoadInt64(&node.count) == 1 && z.isRoot() {
 		node.root = nil
 		z.left = nil
@@ -657,7 +657,7 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (*xNode[V], error) {
 		atomic.AddInt64(&node.count, -1)
 	}()
 
-	return node.rbRemoveXNode(z)
+	return node.rbRemoveNode(z)
 }
 
 func (node *xConcSklNode[K, V]) rbRemoveMin() (*xNode[V], error) {
@@ -671,7 +671,7 @@ func (node *xConcSklNode[K, V]) rbRemoveMin() (*xNode[V], error) {
 	defer func() {
 		atomic.AddInt64(&node.count, -1)
 	}()
-	return node.rbRemoveXNode(_min)
+	return node.rbRemoveNode(_min)
 }
 
 /*

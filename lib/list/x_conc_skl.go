@@ -526,6 +526,14 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SkipListElement[K, V], er
 	return nil, errors.New("others unknown reasons")
 }
 
+func (skl *xConcSkl[K, V]) PeekHead() SkipListElement[K, V] {
+	return nil
+}
+
+func (skl *xConcSkl[K, V]) PopHead() (SkipListElement[K, V], error) {
+	return nil, nil
+}
+
 // Duplicated element Skip-List basic APIs
 
 func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
