@@ -83,7 +83,7 @@ func TestStringHash_FNV(t *testing.T) {
 //		{7, "8"},
 //	}
 //	for _, first := range expectedFirstList {
-//		ele := xsl.FindFirst(first.w)
+//		ele := xsl.LoadFirst(first.w)
 //		assert.NotNil(t, ele)
 //		assert.Equal(t, first.w, ele.Key())
 //		assert.Equal(t, first.id, ele.Val().id)
@@ -128,7 +128,7 @@ func TestStringHash_FNV(t *testing.T) {
 //		{7, "8"},
 //	}
 //	for _, first := range expectedFirstList {
-//		ele := xsl.FindFirst(first.w)
+//		ele := xsl.LoadFirst(first.w)
 //		assert.NotNil(t, ele)
 //		assert.Equal(t, first.w, ele.Key())
 //		assert.Equal(t, first.id, ele.Val().id)

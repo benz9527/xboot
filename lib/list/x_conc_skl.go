@@ -102,6 +102,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) {
 	defer func() {
 		skl.pool.releaseAux(aux)
 	}()
+
 	for {
 		if node := skl.traverse(max(oldLvls, newLvls), key, aux); node != nil {
 			if /* conc rm */ node.flags.atomicIsSet(nodeRemovingFlagBit) {
@@ -261,10 +262,10 @@ func (skl *xConcSkl[K, V]) Range(fn func(idx int64, metadata SkipListIterationIt
 	}
 }
 
-// Get returns the first value stored in the skip-list for a key,
+// LoadFirst returns the first value stored in the skip-list for a key,
 // or nil if no val is present.
 // The ok result indicates whether the value was found in the skip-list.
-func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
+func (skl *xConcSkl[K, V]) LoadFirst(key K) (val V, ok bool) {
 	forward := skl.atomicLoadHead()
 	mode := skl.loadXNodeMode()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
@@ -299,8 +300,8 @@ func (skl *xConcSkl[K, V]) Get(key K) (val V, ok bool) {
 	return
 }
 
-// rmTraverse locates the target key and stores the nodes encountered
-// during the indexCount traversal.
+// rmTraverse locates the remove target key and stores the nodes encountered
+// during the indices traversal.
 // Returns with the target key found level index.
 func (skl *xConcSkl[K, V]) rmTraverse(
 	weight K,
@@ -512,17 +513,4 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (ele SkipListElement[K, V], err er
 		return nil, errors.New("not found remove target")
 	}
 	return nil, errors.New("others unknown reasons")
-}
-
-func NewXConcSkipList[K infra.OrderedKey, V comparable](cmp SklWeightComparator[K], rand SklRand) *xConcSkl[K, V] {
-	//h := newXConcSklHead[K, V]()
-	//h.flags.atomicSet(nodeInsertedFlagBit)
-	//return &xConcSkl[K, V]{
-	//	head:  h,
-	//	levels: 0,
-	//	nodeLen:   0,
-	//	kcmp:   kcmp,
-	//	rand:  rand,
-	//}
-	return nil
 }

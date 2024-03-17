@@ -46,7 +46,7 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 		return true
 	})
 
-	obj, ok := skl.Get(401)
+	obj, ok := skl.LoadFirst(401)
 	require.True(t, ok)
 	require.Equal(t, "401", obj.id)
 
@@ -131,7 +131,7 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	wg.Wait()
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
-	obj, ok := skl.Get(401)
+	obj, ok := skl.LoadFirst(401)
 	require.True(t, ok)
 	require.Equal(t, "401", obj.id)
 

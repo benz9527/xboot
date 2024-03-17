@@ -157,7 +157,7 @@ const (
 //}
 //
 //func (skl *xSkipList[W, O]) loadTraverse() []SkipListNode[W, O] {
-//	traverse, ok := skl.traversePool.Get().([]SkipListNode[W, O])
+//	traverse, ok := skl.traversePool.LoadFirst().([]SkipListNode[W, O])
 //	if !ok {
 //		panic("load unknown traverse element from pool")
 //	}
@@ -380,7 +380,7 @@ const (
 //	return elements
 //}
 //
-//func (skl *xSkipList[W, O]) FindFirst(key W) SkipListElement[W, O] {
+//func (skl *xSkipList[W, O]) LoadFirst(key W) SkipListElement[W, O] {
 //	e, traverse := skl.findPredecessor0(key)
 //	defer func() {
 //		skl.putTraverse(traverse)
