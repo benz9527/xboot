@@ -581,8 +581,9 @@ func (skl *xConcSkl[K, V]) PeekHead() (element SkipListElement[K, V]) {
 	return element
 }
 
-func (skl *xConcSkl[K, V]) PopHead() (SkipListElement[K, V], error) {
-	return nil, nil
+func (skl *xConcSkl[K, V]) PopHead() (element SkipListElement[K, V], err error) {
+	forward := skl.atomicLoadHead().atomicLoadNextNode(0)
+	return skl.RemoveFirst(forward.key)
 }
 
 // Duplicated element Skip-List basic APIs
