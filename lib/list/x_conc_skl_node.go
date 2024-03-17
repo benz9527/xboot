@@ -228,24 +228,24 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err 
 	return isAppend, nil
 }
 
-func (node *xConcSklNode[K, V]) loadXNode() *xNode[V] {
+func (node *xConcSklNode[K, V]) atomicLoadRoot() *xNode[V] {
 	return (*xNode[V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.root))))
 }
 
-func (node *xConcSklNode[K, V]) loadNext(i int32) *xConcSklNode[K, V] {
-	return node.indices.loadForward(i)
+func (node *xConcSklNode[K, V]) loadNextNode(i int32) *xConcSklNode[K, V] {
+	return node.indices.loadForwardIndex(i)
 }
 
-func (node *xConcSklNode[K, V]) storeNext(i int32, next *xConcSklNode[K, V]) {
-	node.indices.storeForward(i, next)
+func (node *xConcSklNode[K, V]) storeNextNode(i int32, next *xConcSklNode[K, V]) {
+	node.indices.storeForwardIndex(i, next)
 }
 
-func (node *xConcSklNode[K, V]) atomicLoadNext(i int32) *xConcSklNode[K, V] {
-	return node.indices.atomicLoadForward(i)
+func (node *xConcSklNode[K, V]) atomicLoadNextNode(i int32) *xConcSklNode[K, V] {
+	return node.indices.atomicLoadForwardIndex(i)
 }
 
-func (node *xConcSklNode[K, V]) atomicStoreNext(i int32, next *xConcSklNode[K, V]) {
-	node.indices.atomicStoreForward(i, next)
+func (node *xConcSklNode[K, V]) atomicStoreNextNode(i int32, next *xConcSklNode[K, V]) {
+	node.indices.atomicStoreForwardIndex(i, next)
 }
 
 /* linked-list operation implementation */

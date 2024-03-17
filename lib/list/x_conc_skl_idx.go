@@ -21,23 +21,23 @@ func (indices xConcSklIndices[W, O]) must(i int32) {
 	}
 }
 
-func (indices xConcSklIndices[W, O]) loadForward(i int32) *xConcSklNode[W, O] {
+func (indices xConcSklIndices[W, O]) loadForwardIndex(i int32) *xConcSklNode[W, O] {
 	indices.must(i)
 	return indices[i].forward
 }
 
-func (indices xConcSklIndices[W, O]) storeForward(i int32, n *xConcSklNode[W, O]) {
+func (indices xConcSklIndices[W, O]) storeForwardIndex(i int32, n *xConcSklNode[W, O]) {
 	indices.must(i)
 	indices[i].forward = n
 }
 
-func (indices xConcSklIndices[W, O]) atomicLoadForward(i int32) *xConcSklNode[W, O] {
+func (indices xConcSklIndices[W, O]) atomicLoadForwardIndex(i int32) *xConcSklNode[W, O] {
 	indices.must(i)
 	ptr := (*xConcSklNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].forward))))
 	return ptr
 }
 
-func (indices xConcSklIndices[W, O]) atomicStoreForward(i int32, n *xConcSklNode[W, O]) {
+func (indices xConcSklIndices[W, O]) atomicStoreForwardIndex(i int32, n *xConcSklNode[W, O]) {
 	indices.must(i)
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].forward)), unsafe.Pointer(n))
 }
