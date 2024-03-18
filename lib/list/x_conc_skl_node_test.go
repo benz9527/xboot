@@ -638,6 +638,7 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 			total:      1000000,
 		},
 	}
+	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
 			xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(tt, tc.total, tc.rbRmBySucc)

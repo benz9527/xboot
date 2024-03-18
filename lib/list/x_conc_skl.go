@@ -118,7 +118,7 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 
 // Insert add the val by a key into skip-list.
 // Only works for unique element skip-list.
-func (skl *xConcSkl[K, V]) Insert(key K, val V) error {
+func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	var (
 		aux     = skl.pool.loadAux()
 		oldLvls = skl.Levels()
@@ -132,12 +132,16 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V) error {
 		skl.pool.releaseAux(aux)
 	}()
 
+	if len(ifNotPresent) <= 0 {
+		ifNotPresent = insertReplaceDisabled
+	}
+
 	for {
 		if node := skl.traverse(max(oldLvls, newLvls), key, aux); node != nil {
 			if /* conc rm */ node.flags.atomicIsSet(nodeRemovingFlagBit) {
 				continue
 			}
-			if isAppend, err := node.storeVal(ver, val); err != nil {
+			if isAppend, err := node.storeVal(ver, val, ifNotPresent...); err != nil {
 				return err
 			} else if err == nil && isAppend {
 				atomic.AddInt64(&skl.nodeLen, 1)

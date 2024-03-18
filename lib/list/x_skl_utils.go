@@ -10,6 +10,10 @@ import (
 )
 
 var (
+	insertReplaceDisabled = []bool{false}
+)
+
+var (
 	_ SkipListElement[uint8, uint8]       = (*xSklElement[uint8, uint8])(nil)
 	_ SkipListIterationItem[uint8, uint8] = (*xSklIter[uint8, uint8])(nil)
 )

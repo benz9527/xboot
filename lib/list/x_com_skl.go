@@ -34,19 +34,21 @@ type xComSkl[K infra.OrderedKey, V comparable] struct {
 	levels     int32  // skip-list's max height value inside the indexCount.
 }
 
-func (skl *xComSkl[K, V]) loadTraverse() []*xComSklNode[K, V] {
-	traverse, ok := skl.pool.Get().([]*xComSklNode[K, V])
+// loadAux is to load auxiliary array for traversal.
+func (skl *xComSkl[K, V]) loadAux() []*xComSklNode[K, V] {
+	aux, ok := skl.pool.Get().([]*xComSklNode[K, V])
 	if !ok {
 		panic("[x-com-skl] load unknown traverse elements from pool")
 	}
-	return traverse
+	return aux
 }
 
-func (skl *xComSkl[K, V]) putTraverse(traverse []*xComSklNode[K, V]) {
+// putAux is to recycle auxiliary array after traversal.
+func (skl *xComSkl[K, V]) putAux(aux []*xComSklNode[K, V]) {
 	for i := 0; i < xSkipListMaxLevel; i++ {
-		traverse[i] = nil
+		aux[i] = nil
 	}
-	skl.pool.Put(traverse)
+	skl.pool.Put(aux)
 }
 
 func (skl *xComSkl[K, V]) Len() int64 {
@@ -62,57 +64,52 @@ func (skl *xComSkl[K, V]) Levels() int32 {
 }
 
 // findPredecessor0 is used to find the (succ) first element whose key equals to target value.
-// Preparing for linear probing. V(N)
+// Preparing for linear probing. O(N)
 // @return value 1: the pred node
 // @return value 2: the query traverse path (nodes)
 func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSklNode[K, V]) {
 	var (
-		predecessor *xComSklNode[K, V]
-		traverse    = skl.loadTraverse()
+		forward *xComSklNode[K, V]
+		aux     = skl.loadAux()
 	)
-	predecessor = skl.head
-	for i := skl.Levels() - 1; i >= 0; i-- {
-		// Note: Will start probing linearly from a local position in some interval
-		// V(N)
-		for predecessor.levels()[i].forward() != nil {
-			cur := predecessor.levels()[i].forward()
+	forward = skl.head
+	for /* vertical */ i := skl.Levels() - 1; i >= 0; i-- {
+		for /* horizontal */ forward.levels()[i].forward() != nil {
+			cur := forward.levels()[i].forward()
 			res := skl.kcmp(key, cur.Element().Key())
-			// find pred node
-			if res > 0 {
-				predecessor = cur
-			} else {
-				// downward to the next level, continue to find
+			if /* find pred node */ res > 0 {
+				forward = cur
+			} else /* downward to next level */ {
 				break
 			}
 		}
-		traverse[i] = predecessor
+		aux[i] = forward
 	}
 
-	if predecessor == nil {
-		return nil, traverse // not found
+	if /* not found */ forward == nil {
+		return nil, aux
 	}
 
-	target := predecessor.levels()[0].forward()
-	// Check next element's key
-	if target != nil && skl.kcmp(key, target.Element().Key()) == 0 {
-		return predecessor, traverse
+	target := forward.levels()[0].forward()
+	if /* found */ target != nil && skl.kcmp(key, target.Element().Key()) == 0 {
+		return forward, aux
 	}
-	return nil, traverse // not found
+	return /* not found */ nil, aux
 }
 
-func (skl *xComSkl[K, V]) removeNode(x *xComSklNode[K, V], traverse []*xComSklNode[K, V]) {
+// removeNode will reduce the levels.
+func (skl *xComSkl[K, V]) removeNode(x *xComSklNode[K, V], aux []*xComSklNode[K, V]) {
 	for i := int32(0); i < skl.Levels(); i++ {
-		if traverse[i].levels()[i].forward() == x {
-			traverse[i].levels()[i].setForward(x.levels()[i].forward())
+		if aux[i].levels()[i].forward() == x {
+			aux[i].levels()[i].setForward(x.levels()[i].forward())
 		}
 	}
 	if next := x.levels()[0].forward(); next != nil {
-		// Adjust the pred.
 		next.setBackward(x.backward())
 	} else {
 		skl.tail = x.backward()
 	}
-	for skl.Levels() > 1 && skl.head.levels()[skl.Levels()-1].forward() == nil {
+	for /* reduce levels */ skl.Levels() > 1 && skl.head.levels()[skl.Levels()-1].forward() == nil {
 		atomic.AddInt32(&skl.levels, -1)
 	}
 	atomic.AddInt64(&skl.nodeLen, -1)
@@ -120,25 +117,35 @@ func (skl *xComSkl[K, V]) removeNode(x *xComSklNode[K, V], traverse []*xComSklNo
 
 // Classic Skip-List basic APIs
 
-func (skl *xComSkl[K, V]) Insert(key K, val V) error {
+func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	var (
-		predecessor = skl.head
-		traverse    = skl.loadTraverse()
+		pred = skl.head
+		aux  = skl.loadAux()
 	)
 	defer func() {
-		skl.putTraverse(traverse)
+		skl.putAux(aux)
 	}()
 
-	// Iteration from top to bottom.
-	// First to iterate the cache and access the data finally.
-	for i := atomic.LoadInt32(&skl.levels) - 1; i >= 0; i-- { // move down level
-		for predecessor.levels()[i].forward() != nil {
-			cur := predecessor.levels()[i].forward()
+	if len(ifNotPresent) <= 0 {
+		ifNotPresent = insertReplaceDisabled
+	}
+
+	for /* vertical */ i := atomic.LoadInt32(&skl.levels) - 1; i >= 0; i-- { // move down level
+		for /* horizontal */ pred.levels()[i].forward() != nil {
+			cur := pred.levels()[i].forward()
 			res := skl.kcmp(cur.Element().Key(), key)
 			if res < 0 || (res == 0 && skl.vcmp(val, cur.Element().Val()) > 0) {
-				predecessor = cur // Changes the node iteration path to locate different node.
+				pred = cur // Changes the node iteration path to locate different node.
 			} else if res == 0 && skl.vcmp(val, cur.Element().Val()) == 0 {
-				return errors.New("")
+				if ifNotPresent[0] {
+					return errors.New("unable to insert a duplicate element")
+				}
+				// Replace by default.
+				cur.element = &xSklElement[K, V]{
+					key: key,
+					val: val,
+				}
+				return nil
 			} else {
 				break
 			}
@@ -148,7 +155,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V) error {
 		// 3. (key duplicated) If new element hash equals to current node's (replace an element, because the hash
 		//      value and element are not strongly correlated)
 		// 4. (new key) If a new element does not exist, (do append next to the current node)
-		traverse[i] = predecessor
+		aux[i] = pred
 	}
 
 	// Each duplicated key element may contain its cache levels.
@@ -158,7 +165,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V) error {
 	if lvl > skl.Levels() {
 		for i := skl.Levels(); i < lvl; i++ {
 			// Update the whole traverse path, from top to bottom.
-			traverse[i] = skl.head // avoid nil pointer
+			aux[i] = skl.head // avoid nil pointer
 		}
 		atomic.StoreInt32(&skl.levels, lvl)
 	}
@@ -166,15 +173,15 @@ func (skl *xComSkl[K, V]) Insert(key K, val V) error {
 	newNode := newXComSklNode[K, V](lvl, key, val)
 	// Insert new node and update the new node levels metadata.
 	for i := int32(0); i < lvl; i++ {
-		next := traverse[i].levels()[i].forward()
+		next := aux[i].levels()[i].forward()
 		newNode.levels()[i].setForward(next)
 		// May pre-append to adjust 2 elements' order
-		traverse[i].levels()[i].setForward(newNode)
+		aux[i].levels()[i].setForward(newNode)
 	}
-	if traverse[0] == skl.head {
+	if aux[0] == skl.head {
 		newNode.setBackward(nil)
 	} else {
-		newNode.setBackward(traverse[0])
+		newNode.setBackward(aux[0])
 	}
 	if newNode.levels()[0].forward() == nil {
 		skl.tail = newNode
@@ -188,7 +195,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V) error {
 func (skl *xComSkl[K, V]) LoadFirst(key K) (SkipListElement[K, V], bool) {
 	e, traverse := skl.findPredecessor0(key)
 	defer func() {
-		skl.putTraverse(traverse)
+		skl.putAux(traverse)
 	}()
 	if e.levels() == nil {
 		return nil, false
@@ -200,7 +207,7 @@ func (skl *xComSkl[K, V]) LoadFirst(key K) (SkipListElement[K, V], bool) {
 func (skl *xComSkl[K, V]) RemoveFirst(key K) (SkipListElement[K, V], error) {
 	predecessor, traverse := skl.findPredecessor0(key)
 	defer func() {
-		skl.putTraverse(traverse)
+		skl.putAux(traverse)
 	}()
 	if predecessor == nil {
 		return nil, errors.New("not found")
@@ -261,7 +268,7 @@ func (skl *xComSkl[K, V]) PopHead() (element SkipListElement[K, V], err error) {
 func (skl *xComSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
 	predecessor, traverse := skl.findPredecessor0(key)
 	defer func() {
-		skl.putTraverse(traverse)
+		skl.putAux(traverse)
 	}()
 	if predecessor == nil {
 		return nil, errors.New("not found")
@@ -279,7 +286,7 @@ func (skl *xComSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]Ski
 func (skl *xComSkl[K, V]) LoadAll(key K) ([]SkipListElement[K, V], error) {
 	predecessor, traverse := skl.findPredecessor0(key)
 	defer func() {
-		skl.putTraverse(traverse)
+		skl.putAux(traverse)
 	}()
 	if predecessor == nil {
 		return nil, errors.New("not found")
@@ -295,7 +302,7 @@ func (skl *xComSkl[K, V]) LoadAll(key K) ([]SkipListElement[K, V], error) {
 func (skl *xComSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
 	predecessor, traverse := skl.findPredecessor0(key)
 	defer func() {
-		skl.putTraverse(traverse)
+		skl.putAux(traverse)
 	}()
 	if predecessor == nil {
 		return nil, errors.New("not found")
@@ -323,7 +330,7 @@ func (skl *xComSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]S
 func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SkipListElement[K, V], error) {
 	predecessor, traverse := skl.findPredecessor0(key)
 	defer func() {
-		skl.putTraverse(traverse)
+		skl.putAux(traverse)
 	}()
 	if predecessor == nil {
 		return nil, errors.New("not found")

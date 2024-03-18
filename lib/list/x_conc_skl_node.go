@@ -204,28 +204,30 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	level   uint32
 }
 
-func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, ifNotPresent ...bool) (isAppend bool, err error) {
 	switch mode := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits)); mode {
 	case unique:
-		// Replace
+		if ifNotPresent[0] {
+			return false, errors.New("unable to insert a duplicate element")
+		}
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
 	case linkedList:
 		// pred
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		isAppend = node.llInsert(val)
+		isAppend, err = node.llInsert(val, ifNotPresent...)
 		node.mu.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	case rbtree:
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		isAppend = node.rbInsert(val)
+		isAppend, err = node.rbInsert(val)
 		node.mu.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
 		return false, errors.New("[x-conc-skl] unknown x-node type")
 	}
-	return isAppend, nil
+	return isAppend, err
 }
 
 func (node *xConcSklNode[K, V]) atomicLoadRoot() *xNode[V] {
@@ -250,20 +252,21 @@ func (node *xConcSklNode[K, V]) atomicStoreNextNode(i int32, next *xConcSklNode[
 
 /* linked-list operation implementation */
 
-func (node *xConcSklNode[K, V]) llInsert(val V) (isAppend bool) {
+func (node *xConcSklNode[K, V]) llInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
 	for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
 		res := node.vcmp(val, *n.vptr)
-		if res == 0 {
-			// Replace
+		if /* replace */ res == 0 {
+			if /* disabled */ ifNotPresent[0] {
+				return false, errors.New("unable to insert a duplicate element")
+			}
 			pred = n
 			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.vptr)), unsafe.Pointer(&val))
 			break
-		} else if res > 0 {
+		} else /* append */ if res > 0 {
 			pred = n
 			if next := n.parent; next != nil {
 				continue
 			}
-			// Append
 			vn := &xNode[V]{
 				vptr:   &val,
 				parent: n.parent,
@@ -272,8 +275,7 @@ func (node *xConcSklNode[K, V]) llInsert(val V) (isAppend bool) {
 			atomic.AddInt64(&node.count, 1)
 			isAppend = true
 			break
-		} else {
-			// Prepend
+		} else /* prepend */ {
 			vn := &xNode[V]{
 				vptr:   &val,
 				parent: n,
@@ -284,7 +286,7 @@ func (node *xConcSklNode[K, V]) llInsert(val V) (isAppend bool) {
 			break
 		}
 	}
-	return
+	return isAppend, nil
 }
 
 /* rbtree operation implementation */
@@ -369,25 +371,25 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 }
 
 // i1: Empty rbtree, insert directly, but root node is painted to black.
-func (node *xConcSklNode[K, V]) rbInsert(val V) (isAppend bool) {
+func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
 
 	if /* i1 */ node.root.isNilLeaf() {
 		node.root = &xNode[V]{
 			vptr: &val,
 		}
 		atomic.AddInt64(&node.count, 1)
-		return true
+		return true, nil
 	}
 
 	var x, y *xNode[V] = node.root, nil
 	for !x.isNilLeaf() {
 		y = x
 		res := node.vcmp(val, *x.vptr)
-		if /* Equal */ res == 0 {
+		if /* equal */ res == 0 {
 			break
-		} else /* Less */ if res < 0 {
+		} else /* less */ if res < 0 {
 			x = x.left
-		} else /* Greater */ {
+		} else /* greater */ {
 			x = x.right
 		}
 	}
@@ -398,17 +400,20 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) (isAppend bool) {
 
 	var z *xNode[V]
 	res := node.vcmp(val, *y.vptr)
-	if /* Equal */ res == 0 {
+	if /* equal */ res == 0 {
+		if /* disabled */ ifNotPresent[0] {
+			return false, errors.New("unable to insert a duplicate element")
+		}
 		y.vptr = &val
-		return false
-	} else /* Less */ if res < 0 {
+		return false, nil
+	} else /* less */ if res < 0 {
 		z = &xNode[V]{
 			vptr:   &val,
 			color:  red,
 			parent: y,
 		}
 		y.left = z
-	} else /* Greater */ {
+	} else /* greater */ {
 		z = &xNode[V]{
 			vptr:   &val,
 			color:  red,
@@ -419,7 +424,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V) (isAppend bool) {
 
 	atomic.AddInt64(&node.count, 1)
 	node.rbInsertRebalance(z)
-	return true
+	return true, nil
 }
 
 /*

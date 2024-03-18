@@ -84,7 +84,7 @@ type SkipList[K infra.OrderedKey, V comparable] interface {
 	Levels() int32
 	Len() int64
 	IndexCount() uint64
-	Insert(key K, val V) error
+	Insert(key K, val V, ifNotPresent ...bool) error
 	LoadFirst(key K) (SkipListElement[K, V], bool)
 	RemoveFirst(key K) (SkipListElement[K, V], error)
 	Foreach(action func(i int64, item SkipListIterationItem[K, V]) bool)
