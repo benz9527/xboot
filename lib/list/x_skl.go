@@ -17,6 +17,7 @@ package list
 // https://github.com/andy-kimball/arenaskl
 // https://github.com/dgraph-io/badger/tree/master/skl
 // https://github.com/BazookaMusic/goskiplist/blob/master/skiplist.go
+// https://github.com/boltdb/bolt/blob/master/freelist.go
 //
 // test:
 // https://github.com/chen3feng/skiplist-survey
