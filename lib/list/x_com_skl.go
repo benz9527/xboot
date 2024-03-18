@@ -69,30 +69,35 @@ func (skl *xComSkl[K, V]) Levels() int32 {
 // @return value 2: the query traverse path (nodes)
 func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSklNode[K, V]) {
 	var (
-		pred *xComSklNode[K, V]
+		forward *xComSklNode[K, V]
 		aux  = skl.loadAux()
 	)
-	pred = skl.head
+	forward = skl.head
 	for /* vertical */ i := skl.Levels() - 1; i >= 0; i-- {
-		for /* horizontal */ pred.levels()[i].forward() != nil {
-			cur := pred.levels()[i].forward()
+		for /* horizontal */ forward.levels()[i].forward() != nil {
+			cur := forward.levels()[i].forward()
 			res := skl.kcmp(key, cur.Element().Key())
-			if /* find pred node */ res > 0 {
-				pred = cur
+			if /* forward next */ res > 0 {
+				forward = cur
 			} else /* downward to next level */ {
 				break
 			}
 		}
-		aux[i] = pred
+		aux[i] = forward
 	}
 
-	if /* not found */ pred == nil {
+	if /* not found */ forward == nil {
 		return nil, aux
 	}
 
-	target := pred.levels()[0].forward()
+	target := forward.levels()[0].forward()
 	if /* found */ target != nil && skl.kcmp(key, target.Element().Key()) == 0 {
-		return pred, aux
+		for p := target.pred; p != nil && skl.kcmp(key, p.Element().Key()) == 0; p = p.pred {
+			for i := 0; i < len(p.levels()); i++ {
+				aux[i] = p
+			}
+		}
+		return forward, aux
 	}
 	return /* not found */ nil, aux
 }
@@ -130,7 +135,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		ifNotPresent = insertReplaceDisabled
 	}
 
-	for /* vertical */ i := atomic.LoadInt32(&skl.levels) - 1; i >= 0; i-- { // move down level
+	for /* vertical */ i := atomic.LoadInt32(&skl.levels) - 1; i >= 0; i-- {
 		for /* horizontal */ pred.levels()[i].forward() != nil {
 			cur := pred.levels()[i].forward()
 			res := skl.kcmp(key, cur.Element().Key())
