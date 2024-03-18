@@ -68,10 +68,10 @@ func TestXConcSkipList_SerialProcessing(t *testing.T) {
 	testcases := []testcase{
 		{
 			name: "go native sync mutex",
-			me:   goNativeMutex,
+			me:   xSklGoMutex,
 		}, {
 			name: "skl lock free mutex",
-			me:   xSklLockFree,
+			me:   xSklSpinMutex,
 		},
 	}
 	t.Parallel()
@@ -159,10 +159,10 @@ func TestXConcSkipList_DataRace(t *testing.T) {
 	testcases := []testcase{
 		{
 			name: "go native sync mutex data race -- unique",
-			mu:   goNativeMutex,
+			mu:   xSklGoMutex,
 		}, {
 			name: "skl lock free mutex data race -- unique",
-			mu:   xSklLockFree,
+			mu:   xSklSpinMutex,
 		},
 	}
 	t.Parallel()
@@ -175,7 +175,7 @@ func TestXConcSkipList_DataRace(t *testing.T) {
 
 func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSkipListObject]{
-		head:    newXConcSklHead[uint64, *xSkipListObject](goNativeMutex, linkedList),
+		head:    newXConcSklHead[uint64, *xSkipListObject](xSklGoMutex, linkedList),
 		pool:    newXConcSklPool[uint64, *xSkipListObject](),
 		levels:  1,
 		nodeLen: 0,
@@ -203,7 +203,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
-	skl.flags.setBitsAs(sklMutexImplBits, uint32(goNativeMutex))
+	skl.flags.setBitsAs(sklMutexImplBits, uint32(xSklGoMutex))
 	skl.flags.setBitsAs(sklXNodeModeBits, uint32(linkedList))
 
 	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
@@ -376,33 +376,33 @@ func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
 	testcases := []testcase{
 		{
 			name: "go native sync mutex data race - linkedlist",
-			mu:   goNativeMutex,
+			mu:   xSklGoMutex,
 			typ:  linkedList,
 		},
 		{
 			name: "skl lock free mutex data race - linkedlist",
-			mu:   xSklLockFree,
+			mu:   xSklSpinMutex,
 			typ:  linkedList,
 		},
 		{
 			name: "go native sync mutex data race - rbtree",
-			mu:   goNativeMutex,
+			mu:   xSklGoMutex,
 			typ:  rbtree,
 		},
 		{
 			name: "skl lock free mutex data race - rbtree",
-			mu:   xSklLockFree,
+			mu:   xSklSpinMutex,
 			typ:  rbtree,
 		},
 		{
 			name:       "go native sync mutex data race - rbtree (succ)",
-			mu:         goNativeMutex,
+			mu:         xSklGoMutex,
 			typ:        rbtree,
 			rbRmBySucc: true,
 		},
 		{
 			name:       "skl lock free mutex data race - rbtree (succ)",
-			mu:         xSklLockFree,
+			mu:         xSklSpinMutex,
 			typ:        rbtree,
 			rbRmBySucc: true,
 		},
@@ -517,42 +517,42 @@ func TestXConcSklPeekAndPopHead(t *testing.T) {
 	testcases := []testcase{
 		{
 			name: "go native sync mutex data race - unique",
-			mu:   goNativeMutex,
+			mu:   xSklGoMutex,
 			typ:  unique,
 		},
 		{
 			name: "skl lock free mutex data race - unique",
-			mu:   xSklLockFree,
+			mu:   xSklSpinMutex,
 			typ:  unique,
 		},
 		{
 			name: "go native sync mutex data race - linkedlist",
-			mu:   goNativeMutex,
+			mu:   xSklGoMutex,
 			typ:  linkedList,
 		},
 		{
 			name: "skl lock free mutex data race - linkedlist",
-			mu:   xSklLockFree,
+			mu:   xSklSpinMutex,
 			typ:  linkedList,
 		},
 		{
 			name: "go native sync mutex data race - rbtree",
-			mu:   goNativeMutex,
+			mu:   xSklGoMutex,
 			typ:  rbtree,
 		},
 		{
 			name: "skl lock free mutex data race - rbtree",
-			mu:   xSklLockFree,
+			mu:   xSklSpinMutex,
 			typ:  rbtree,
 		},
 		{
 			name: "go native sync mutex data race - rbtree (succ)",
-			mu:   goNativeMutex,
+			mu:   xSklGoMutex,
 			typ:  rbtree,
 		},
 		{
 			name: "skl lock free mutex data race - rbtree (succ)",
-			mu:   xSklLockFree,
+			mu:   xSklSpinMutex,
 			typ:  rbtree,
 		},
 	}

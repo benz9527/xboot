@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSpinLock(t *testing.T) {
-	lock := mutexFactory(xSklLockFree)
+func TestOptimisticLock(t *testing.T) {
+	lock := mutexFactory(xSklSpinMutex)
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {

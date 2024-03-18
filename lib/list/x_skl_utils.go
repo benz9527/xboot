@@ -187,15 +187,15 @@ type segmentedMutex interface {
 type mutexImpl uint8
 
 const (
-	xSklLockFree mutexImpl = iota
-	goNativeMutex
+	xSklSpinMutex mutexImpl = iota // Lock-free, spin-lock, optimistic-lock
+	xSklGoMutex
 )
 
 func mutexFactory(e mutexImpl) segmentedMutex {
 	switch e {
-	case goNativeMutex:
+	case xSklGoMutex:
 		return new(goSyncMutex)
-	case xSklLockFree:
+	case xSklSpinMutex:
 		fallthrough
 	default:
 		return new(spinMutex)
