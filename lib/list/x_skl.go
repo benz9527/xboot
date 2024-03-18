@@ -13,6 +13,10 @@ package list
 // https://github.com/zhangyunhao116/skipmap
 // https://github.com/liyue201/gostl
 // https://github.com/chen3feng/stl4go
+// https://github.com/slclub/skiplist/blob/master/skipList.go
+// https://github.com/andy-kimball/arenaskl
+// https://github.com/dgraph-io/badger/tree/master/skl
+// https://github.com/BazookaMusic/goskiplist/blob/master/skiplist.go
 //
 // test:
 // https://github.com/chen3feng/skiplist-survey
