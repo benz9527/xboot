@@ -2,11 +2,11 @@ package list
 
 import (
 	"cmp"
-	"github.com/stretchr/testify/require"
 	"hash/fnv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type HashObject interface {
@@ -63,18 +63,19 @@ func TestStringHash_FNV(t *testing.T) {
 func TestXSkipList_SimpleCRUD(t *testing.T) {
 	type element struct {
 		w  int
-		id string
+		id int
 	}
 	orders := []element{
-		{1, "3"}, {1, "2"}, {1, "1"},
-		{2, "4"}, {2, "2"},
-		{3, "9"}, {3, "8"}, {3, "7"}, {3, "1"},
-		{4, "9"}, {4, "6"}, {4, "3"},
-		{5, "7"}, {5, "6"}, {5, "2"},
-		{6, "8"}, {6, "100"},
-		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
+		{1, 9}, {1, 8}, {1, 7}, {1, 6}, {1, 5}, {1, 4}, {1, 3}, {1, 2}, {1, 1},
+		{2, 19}, {2, 18}, {2, 17}, {2, 16}, {2, 15}, {2, 14}, {2, 13}, {2, 12}, {2, 11},
+		{4, 29}, {4, 28}, {4, 27}, {4, 26}, {4, 25}, {4, 24}, {4, 23}, {4, 22}, {4, 21},
+		{8, 39}, {8, 38}, {8, 37}, {8, 36}, {8, 35}, {8, 34}, {8, 33}, {8, 32}, {8, 31},
+		{16, 49}, {16, 48}, {16, 47}, {16, 46}, {16, 45}, {16, 44}, {16, 43}, {16, 42}, {16, 41},
+		{32, 59}, {32, 58}, {32, 57}, {32, 56}, {32, 55}, {32, 54}, {32, 53}, {32, 52}, {32, 51},
+		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
+		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
 	}
-	xsl := newXComSkl[int, *xSkipListObject](
+	xsl := newXComSkl[int, int](
 		func(i, j int) int64 {
 			if i == j {
 				return 0
@@ -83,11 +84,10 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 			}
 			return 1
 		},
-		func(i, j *xSkipListObject) int64 {
-			_i, _j := i.Hash(), j.Hash()
-			if _i == _j {
+		func(i, j int) int64 {
+			if i == j {
 				return 0
-			} else if _i < _j {
+			} else if i > j {
 				return -1
 			}
 			return 1
@@ -95,76 +95,80 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		randomLevelV2,
 	)
 	for _, o := range orders {
-		_ = xsl.Insert(o.w, &xSkipListObject{id: o.id})
+		_ = xsl.Insert(o.w, o.id)
 	}
 
-	err := xsl.Insert(1, &xSkipListObject{id: "2"})
+	err := xsl.Insert(1, 2)
 	require.NoError(t, err)
-	xsl.Foreach(func(i int64, item SkipListIterationItem[int, *xSkipListObject]) bool {
+	xsl.Foreach(func(i int64, item SkipListIterationItem[int, int]) bool {
 		require.Equal(t, orders[i].w, item.Key())
-		require.Equal(t, orders[i].id, item.Val().id)
+		require.Equal(t, orders[i].id, item.Val())
+		t.Logf("key: %d, levels: %d\n", item.Key(), item.NodeLevel())
 		return true
 	})
 	assert.Equal(t, int64(len(orders)), xsl.Len())
 
 	expectedFirstList := []element{
-		{1, "3"},
-		{2, "4"},
-		{3, "9"},
-		{4, "9"},
-		{5, "7"},
-		{6, "8"},
-		{7, "8"},
+		{1, 9},
+		{2, 19},
+		{4, 29},
+		{8, 39},
+		{16, 49},
+		{32, 59},
+		{64, 69},
+		{128, 79},
 	}
 	for _, first := range expectedFirstList {
 		ele, ok := xsl.LoadFirst(first.w)
 		require.True(t, ok)
 		assert.NotNil(t, ele)
 		assert.Equal(t, first.w, ele.Key())
-		assert.Equal(t, first.id, ele.Val().id)
+		assert.Equal(t, first.id, ele.Val())
 	}
 
-	var ele SkipListElement[int, *xSkipListObject]
+	var ele SkipListElement[int, int]
 	ele, err = xsl.RemoveFirst(4)
 	require.NoError(t, err)
 	assert.NotNil(t, ele)
 	assert.Equal(t, 4, ele.Key())
-	assert.Equal(t, "9", ele.Val().id)
+	assert.Equal(t, 29, ele.Val())
 
-	var eleList []SkipListElement[int, *xSkipListObject]
+	var eleList []SkipListElement[int, int]
 	eleList, err = xsl.RemoveAll(4)
 	assert.NotNil(t, eleList)
 	expectedRemoveList := []element{
-		{4, "6"}, {4, "3"},
+		{4, 28}, {4, 27}, {4, 26}, {4, 25}, {4, 24}, {4, 23}, {4, 22}, {4, 21},
 	}
 	assert.Equal(t, len(expectedRemoveList), len(eleList))
 	for i, e := range expectedRemoveList {
 		assert.Equal(t, e.w, eleList[i].Key())
-		assert.Equal(t, e.id, eleList[i].Val().id)
+		assert.Equal(t, e.id, eleList[i].Val())
 	}
 
 	orders = []element{
-		{1, "3"}, {1, "2"}, {1, "1"},
-		{2, "4"}, {2, "2"},
-		{3, "9"}, {3, "8"}, {3, "7"}, {3, "1"},
-		{5, "7"}, {5, "6"}, {5, "2"},
-		{6, "8"}, {6, "100"},
-		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
+		{1, 9}, {1, 8}, {1, 7}, {1, 6}, {1, 5}, {1, 4}, {1, 3}, {1, 2}, {1, 1},
+		{2, 19}, {2, 18}, {2, 17}, {2, 16}, {2, 15}, {2, 14}, {2, 13}, {2, 12}, {2, 11},
+		{8, 39}, {8, 38}, {8, 37}, {8, 36}, {8, 35}, {8, 34}, {8, 33}, {8, 32}, {8, 31},
+		{16, 49}, {16, 48}, {16, 47}, {16, 46}, {16, 45}, {16, 44}, {16, 43}, {16, 42}, {16, 41},
+		{32, 59}, {32, 58}, {32, 57}, {32, 56}, {32, 55}, {32, 54}, {32, 53}, {32, 52}, {32, 51},
+		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
+		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
 	}
-	xsl.Foreach(func(i int64, item SkipListIterationItem[int, *xSkipListObject]) bool {
+	xsl.Foreach(func(i int64, item SkipListIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
-		assert.Equal(t, orders[i].id, item.Val().id)
+		assert.Equal(t, orders[i].id, item.Val())
 		return true
 	})
-	assert.Equal(t, int32(len(orders)), xsl.Len())
+	assert.Equal(t, int64(len(orders)), xsl.Len())
 
 	expectedFirstList = []element{
-		{1, "3"},
-		{2, "4"},
-		{3, "9"},
-		{5, "7"},
-		{6, "8"},
-		{7, "8"},
+		{1, 9},
+		{2, 19},
+		{8, 39},
+		{16, 49},
+		{32, 59},
+		{64, 69},
+		{128, 79},
 	}
 	for _, first := range expectedFirstList {
 		var ok bool
@@ -172,71 +176,80 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		require.True(t, ok)
 		assert.NotNil(t, ele)
 		assert.Equal(t, first.w, ele.Key())
-		assert.Equal(t, first.id, ele.Val().id)
+		assert.Equal(t, first.id, ele.Val())
 	}
 
 	expectedRemoveList = []element{
-		{7, "2"}, {5, "6"}, {3, "8"},
+		{16, 47}, {8, 35}, {128, 71},
 	}
 	for _, e := range expectedRemoveList {
-		eleList, err = xsl.RemoveIfMatched(e.w, func(that *xSkipListObject) bool {
-			return that.id == e.id
+		eleList, err = xsl.RemoveIfMatched(e.w, func(that int) bool {
+			return that == e.id
 		})
 		assert.NotNil(t, eleList)
 		assert.Equal(t, 1, len(eleList))
 		assert.Equal(t, e.w, eleList[0].Key())
-		assert.Equal(t, e.id, eleList[0].Val().id)
+		assert.Equal(t, e.id, eleList[0].Val())
 	}
 
 	orders = []element{
-		{1, "3"}, {1, "2"}, {1, "1"},
-		{2, "4"}, {2, "2"},
-		{3, "9"}, {3, "7"}, {3, "1"},
-		{5, "7"}, {5, "2"},
-		{6, "8"}, {6, "100"},
-		{7, "8"}, {7, "7"}, {7, "1"},
+		{1, 9}, {1, 8}, {1, 7}, {1, 6}, {1, 5}, {1, 4}, {1, 3}, {1, 2}, {1, 1},
+		{2, 19}, {2, 18}, {2, 17}, {2, 16}, {2, 15}, {2, 14}, {2, 13}, {2, 12}, {2, 11},
+		{8, 39}, {8, 38}, {8, 37}, {8, 36}, {8, 34}, {8, 33}, {8, 32}, {8, 31},
+		{16, 49}, {16, 48}, {16, 46}, {16, 45}, {16, 44}, {16, 43}, {16, 42}, {16, 41},
+		{32, 59}, {32, 58}, {32, 57}, {32, 56}, {32, 55}, {32, 54}, {32, 53}, {32, 52}, {32, 51},
+		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
+		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72},
 	}
-	xsl.Foreach(func(i int64, item SkipListIterationItem[int, *xSkipListObject]) bool {
+	xsl.Foreach(func(i int64, item SkipListIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
-		assert.Equal(t, orders[i].id, item.Val().id)
+		assert.Equal(t, orders[i].id, item.Val())
 		return true
 	})
-	assert.Equal(t, int32(len(orders)), xsl.Len())
+	assert.Equal(t, int64(len(orders)), xsl.Len())
 
 	expectedFindList := []element{
-		{7, "7"}, {6, "100"}, {3, "7"},
+		{1, 9},
+		{2, 19},
+		{8, 39},
+		{16, 49},
+		{32, 59},
+		{64, 69},
+		{128, 79},
 	}
 	for _, e := range expectedFindList {
-		eleList, err = xsl.LoadIfMatched(e.w, func(obj *xSkipListObject) bool {
-			return obj.id == e.id
+		eleList, err = xsl.LoadIfMatched(e.w, func(obj int) bool {
+			return obj == e.id
 		})
 		require.NoError(t, err)
 		assert.NotNil(t, eleList)
 		assert.Equal(t, 1, len(eleList))
 		assert.Equal(t, e.w, eleList[0].Key())
-		assert.Equal(t, e.id, eleList[0].Val().id)
+		assert.Equal(t, e.id, eleList[0].Val())
 	}
 
 	expectedFindList = []element{
-		{7, "2"}, {5, "6"}, {3, "8"},
+		{4, 20},
+		{100, 100},
+		{129, 77},
 	}
 	for _, e := range expectedFindList {
-		eleList, err = xsl.LoadIfMatched(e.w, func(obj *xSkipListObject) bool {
-			return obj.id == e.id
+		eleList, err = xsl.LoadIfMatched(e.w, func(obj int) bool {
+			return obj == e.id
 		})
-		require.NoError(t, err)
+		require.Error(t, err)
 		assert.Zero(t, len(eleList))
 	}
 
 	expectedFindList = []element{
-		{3, "9"}, {3, "7"}, {3, "1"},
+		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
 	}
-	eleList, err = xsl.LoadAll(3)
+	eleList, err = xsl.LoadAll(64)
 	require.NoError(t, err)
 	assert.NotZero(t, len(eleList))
 	for i, e := range eleList {
 		assert.Equal(t, expectedFindList[i].w, e.Key())
-		assert.Equal(t, expectedFindList[i].id, e.Val().id)
+		assert.Equal(t, expectedFindList[i].id, e.Val())
 	}
 
 }

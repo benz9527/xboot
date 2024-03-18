@@ -51,18 +51,6 @@ func (skl *xComSkl[K, V]) putAux(aux []*xComSklNode[K, V]) {
 	skl.pool.Put(aux)
 }
 
-func (skl *xComSkl[K, V]) Len() int64 {
-	return atomic.LoadInt64(&skl.nodeLen)
-}
-
-func (skl *xComSkl[K, V]) IndexCount() uint64 {
-	return atomic.LoadUint64(&skl.indexCount)
-}
-
-func (skl *xComSkl[K, V]) Levels() int32 {
-	return atomic.LoadInt32(&skl.levels)
-}
-
 // findPredecessor0 is used to find the (succ) first element whose key value equals to target key value.
 // Preparing for linear probing. O(N)
 // @return value 1: the pred node
@@ -76,10 +64,9 @@ func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSk
 	for /* vertical */ i := skl.Levels() - 1; i >= 0; i-- {
 		for /* horizontal */ forward.levels()[i].forward() != nil {
 			cur := forward.levels()[i].forward()
-			res := skl.kcmp(key, cur.Element().Key())
-			if /* forward next */ res > 0 {
+			if /* greater, forward next */ cur != nil && skl.kcmp(key, cur.Element().Key()) > 0 {
 				forward = cur
-			} else /* downward to next level */ {
+			} else /* lower or equal, downward to next level */ {
 				break
 			}
 		}
@@ -122,6 +109,18 @@ func (skl *xComSkl[K, V]) removeNode(x *xComSklNode[K, V], aux []*xComSklNode[K,
 
 // Classic Skip-List basic APIs
 
+func (skl *xComSkl[K, V]) Len() int64 {
+	return atomic.LoadInt64(&skl.nodeLen)
+}
+
+func (skl *xComSkl[K, V]) IndexCount() uint64 {
+	return atomic.LoadUint64(&skl.indexCount)
+}
+
+func (skl *xComSkl[K, V]) Levels() int32 {
+	return atomic.LoadInt32(&skl.levels)
+}
+
 func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	var (
 		pred = skl.head
@@ -139,8 +138,8 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		for /* horizontal */ pred.levels()[i].forward() != nil {
 			cur := pred.levels()[i].forward()
 			res := skl.kcmp(key, cur.Element().Key())
-			if /* next insert position */ res < 0 || (res == 0 && skl.vcmp(val, cur.Element().Val()) > 0) {
-				pred = cur // Changes the node iteration path to locate different node.
+			if /* next insert position */ res > 0 || (res == 0 && skl.vcmp(val, cur.Element().Val()) > 0) {
+				pred = cur
 			} else /* replace */ if res == 0 && skl.vcmp(val, cur.Element().Val()) == 0 {
 				if /* disabled */ ifNotPresent[0] {
 					return errors.New("unable to insert a duplicate element")
@@ -173,6 +172,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		}
 		atomic.StoreInt32(&skl.levels, lvl)
 	}
+	atomic.AddUint64(&skl.indexCount, uint64(lvl))
 
 	newNode := newXComSklNode[K, V](lvl, key, val)
 	for i := int32(0); i < lvl; i++ {
@@ -234,6 +234,12 @@ func (skl *xComSkl[K, V]) Foreach(action func(i int64, item SkipListIterationIte
 		next := x.levels()[0].forward()
 		item.keyFn = x.element.Key
 		item.valFn = x.element.Val
+		item.nodeLevelFn = func() uint32 {
+			return uint32(len(x.levels()))
+		}
+		item.nodeItemCountFn = func() int64 {
+			return 1
+		}
 		if !action(i, item) {
 			break
 		}
