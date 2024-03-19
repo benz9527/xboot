@@ -2,6 +2,7 @@ package list
 
 import (
 	"cmp"
+	"errors"
 	"hash/fnv"
 	"testing"
 
@@ -94,11 +95,15 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		},
 		randomLevelV2,
 	)
+
+	_, err := xsl.RemoveAll(1)
+	require.True(t, errors.Is(err, ErrXSklIsEmpty))
+
 	for _, o := range orders {
 		_ = xsl.Insert(o.w, o.id)
 	}
 
-	err := xsl.Insert(1, 2)
+	err = xsl.Insert(1, 2)
 	require.NoError(t, err)
 	xsl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		require.Equal(t, orders[i].w, item.Key())
@@ -119,8 +124,8 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{128, 79},
 	}
 	for _, first := range expectedFirstList {
-		ele, ok := xsl.LoadFirst(first.w)
-		require.True(t, ok)
+		ele, err := xsl.LoadFirst(first.w)
+		require.NoError(t, err)
 		assert.NotNil(t, ele)
 		assert.Equal(t, first.w, ele.Key())
 		assert.Equal(t, first.id, ele.Val())
@@ -171,9 +176,9 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{128, 79},
 	}
 	for _, first := range expectedFirstList {
-		var ok bool
-		ele, ok = xsl.LoadFirst(first.w)
-		require.True(t, ok)
+		var err error
+		ele, err = xsl.LoadFirst(first.w)
+		require.NoError(t, err)
 		assert.NotNil(t, ele)
 		assert.Equal(t, first.w, ele.Key())
 		assert.Equal(t, first.id, ele.Val())
@@ -251,7 +256,6 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		assert.Equal(t, expectedFindList[i].w, e.Key())
 		assert.Equal(t, expectedFindList[i].id, e.Val())
 	}
-
 }
 
 //
