@@ -1,0 +1,14 @@
+{
+  "go.lintOnSave": "off",
+  "go.goroot": "E:\\Env\\Go\\go1.22.0",
+  "go.gopath": "E:\\Env\\Go\\Path",
+  "go.delveConfig": {
+    "debugAdapter": "dlv-dap"
+  },
+  "go.buildTags": "windows",
+  "go.buildFlags": [],
+  "go.showWelcome": true,
+  "gopls": {
+    "build.buildFlags": ["-tags=windows"]
+  }
+}

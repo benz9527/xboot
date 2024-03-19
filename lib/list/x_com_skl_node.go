@@ -13,19 +13,19 @@ type xComSklNode[K infra.OrderedKey, V comparable] struct {
 	// If a node is a level node, the cache is from levels[0], but it is differed
 	// to the sentinel's levels[0].
 	indices []*xComSklIndex[K, V] // The cache level array.
-	element SkipListElement[K, V]
+	element SklElement[K, V]
 	// Works for a backward iteration direction.
 	pred *xComSklNode[K, V]
 }
 
-func (node *xComSklNode[K, V]) Element() SkipListElement[K, V] {
+func (node *xComSklNode[K, V]) Element() SklElement[K, V] {
 	if node == nil {
 		return nil
 	}
 	return node.element
 }
 
-func (node *xComSklNode[K, V]) setElement(e SkipListElement[K, V]) {
+func (node *xComSklNode[K, V]) setElement(e SklElement[K, V]) {
 	if node == nil {
 		return
 	}

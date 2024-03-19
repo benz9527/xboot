@@ -100,7 +100,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 
 	err := xsl.Insert(1, 2)
 	require.NoError(t, err)
-	xsl.Foreach(func(i int64, item SkipListIterationItem[int, int]) bool {
+	xsl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		require.Equal(t, orders[i].w, item.Key())
 		require.Equal(t, orders[i].id, item.Val())
 		t.Logf("key: %d, levels: %d\n", item.Key(), item.NodeLevel())
@@ -126,14 +126,14 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		assert.Equal(t, first.id, ele.Val())
 	}
 
-	var ele SkipListElement[int, int]
+	var ele SklElement[int, int]
 	ele, err = xsl.RemoveFirst(4)
 	require.NoError(t, err)
 	assert.NotNil(t, ele)
 	assert.Equal(t, 4, ele.Key())
 	assert.Equal(t, 29, ele.Val())
 
-	var eleList []SkipListElement[int, int]
+	var eleList []SklElement[int, int]
 	eleList, err = xsl.RemoveAll(4)
 	assert.NotNil(t, eleList)
 	expectedRemoveList := []element{
@@ -154,7 +154,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
 		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
 	}
-	xsl.Foreach(func(i int64, item SkipListIterationItem[int, int]) bool {
+	xsl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
 		assert.Equal(t, orders[i].id, item.Val())
 		return true
@@ -201,7 +201,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
 		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72},
 	}
-	xsl.Foreach(func(i int64, item SkipListIterationItem[int, int]) bool {
+	xsl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
 		assert.Equal(t, orders[i].id, item.Val())
 		return true

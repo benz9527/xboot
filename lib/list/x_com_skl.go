@@ -1,16 +1,10 @@
 package list
 
 import (
-	"errors"
 	"sync"
 	"sync/atomic"
 
 	"github.com/benz9527/xboot/lib/infra"
-)
-
-const (
-	xSkipListMaxLevel    = 32   // 2^32 - 1 elements
-	xSkipListProbability = 0.25 // P = 1/4, a skip list node element has 1/4 probability to have a level
 )
 
 var (
@@ -37,7 +31,7 @@ type xComSkl[K infra.OrderedKey, V comparable] struct {
 // loadAux is to load auxiliary array for traversal.
 func (skl *xComSkl[K, V]) loadAux() []*xComSklNode[K, V] {
 	aux, ok := skl.pool.Get().([]*xComSklNode[K, V])
-	if !ok {
+	if /* dead code */ !ok {
 		panic("[x-com-skl] load unknown traverse elements from pool")
 	}
 	return aux
@@ -58,13 +52,14 @@ func (skl *xComSkl[K, V]) putAux(aux []*xComSklNode[K, V]) {
 func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSklNode[K, V]) {
 	var (
 		forward *xComSklNode[K, V]
-		aux  = skl.loadAux()
+		aux     = skl.loadAux()
 	)
 	forward = skl.head
 	for /* vertical */ i := skl.Levels() - 1; i >= 0; i-- {
 		for /* horizontal */ forward.levels()[i].forward() != nil {
 			cur := forward.levels()[i].forward()
 			if /* greater, forward next */ cur != nil && skl.kcmp(key, cur.Element().Key()) > 0 {
+				// Linear probing (forward next) at level 0 most likely.
 				forward = cur
 			} else /* lower or equal, downward to next level */ {
 				break
@@ -79,11 +74,6 @@ func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSk
 
 	target := forward.levels()[0].forward()
 	if /* found */ target != nil && skl.kcmp(key, target.Element().Key()) == 0 {
-		for p := target.pred; p != nil && skl.kcmp(key, p.Element().Key()) == 0; p = p.pred {
-			for i := 0; i < len(p.levels()); i++ {
-				aux[i] = p
-			}
-		}
 		return forward, aux
 	}
 	return /* not found */ nil, aux
@@ -122,6 +112,10 @@ func (skl *xComSkl[K, V]) Levels() int32 {
 }
 
 func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
+	if skl.Len() >= XSkipListMaxSize {
+		return ErrXSklIsFull
+	}
+
 	var (
 		pred = skl.head
 		aux  = skl.loadAux()
@@ -142,7 +136,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 				pred = cur
 			} else /* replace */ if res == 0 && skl.vcmp(val, cur.Element().Val()) == 0 {
 				if /* disabled */ ifNotPresent[0] {
-					return errors.New("unable to insert a duplicate element")
+					return ErrXSklDisabledValReplace
 				}
 				cur.element = &xSklElement[K, V]{
 					key: key,
@@ -194,25 +188,33 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	return nil
 }
 
-func (skl *xComSkl[K, V]) LoadFirst(key K) (SkipListElement[K, V], bool) {
+func (skl *xComSkl[K, V]) LoadFirst(key K) (SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	e, traverse := skl.findPredecessor0(key)
 	defer func() {
 		skl.putAux(traverse)
 	}()
 
 	if e.levels() == nil {
-		return nil, false
+		return nil, ErrXSklKeyNotFound
 	}
-	return e.levels()[0].forward().Element(), true
+	return e.levels()[0].forward().Element(), nil
 }
 
-func (skl *xComSkl[K, V]) RemoveFirst(key K) (SkipListElement[K, V], error) {
+func (skl *xComSkl[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	pred, aux := skl.findPredecessor0(key)
 	defer func() {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, errors.New("not found")
+		return nil, ErrXSklKeyNotFound
 	}
 
 	target := pred.levels()[0].forward()
@@ -220,10 +222,14 @@ func (skl *xComSkl[K, V]) RemoveFirst(key K) (SkipListElement[K, V], error) {
 		skl.removeNode(target, aux)
 		return target.Element(), nil
 	}
-	return nil, errors.New("not found")
+	return nil, ErrXSklKeyNotFound
 }
 
-func (skl *xComSkl[K, V]) Foreach(action func(i int64, item SkipListIterationItem[K, V]) bool) {
+func (skl *xComSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K, V]) bool) {
+	if skl.Len() <= 0 {
+		return
+	}
+
 	var (
 		x    *xComSklNode[K, V]
 		i    int64
@@ -248,7 +254,7 @@ func (skl *xComSkl[K, V]) Foreach(action func(i int64, item SkipListIterationIte
 	}
 }
 
-func (skl *xComSkl[K, V]) PeekHead() SkipListElement[K, V] {
+func (skl *xComSkl[K, V]) PeekHead() SklElement[K, V] {
 	target := skl.head
 	if target == nil || skl.Len() <= 0 {
 		return nil
@@ -259,13 +265,13 @@ func (skl *xComSkl[K, V]) PeekHead() SkipListElement[K, V] {
 	return target.Element()
 }
 
-func (skl *xComSkl[K, V]) PopHead() (element SkipListElement[K, V], err error) {
+func (skl *xComSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 	target := skl.head
-	if target == nil || skl.Len() <= 0 {
-		return nil, errors.New("")
+	if skl.Len() <= 0 || target == nil {
+		return nil, ErrXSklIsEmpty
 	}
 	if target = target.levels()[0].forward(); target == nil {
-		return nil, errors.New("")
+		return nil, ErrXSklIsEmpty
 	}
 	element = target.Element()
 	return skl.RemoveFirst(element.Key())
@@ -273,16 +279,20 @@ func (skl *xComSkl[K, V]) PopHead() (element SkipListElement[K, V], err error) {
 
 // Duplicated element Skip-List basic APIs
 
-func (skl *xComSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
+func (skl *xComSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	pred, aux := skl.findPredecessor0(key)
 	defer func() {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, errors.New("not found")
+		return nil, ErrXSklKeyNotFound
 	}
 
-	elements := make([]SkipListElement[K, V], 0, 16)
+	elements := make([]SklElement[K, V], 0, 16)
 	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; cur = cur.levels()[0].forward() {
 		if matcher(cur.Element().Val()) {
 			elements = append(elements, cur.Element())
@@ -291,32 +301,40 @@ func (skl *xComSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]Ski
 	return elements, nil
 }
 
-func (skl *xComSkl[K, V]) LoadAll(key K) ([]SkipListElement[K, V], error) {
+func (skl *xComSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	pred, aux := skl.findPredecessor0(key)
 	defer func() {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, errors.New("not found")
+		return nil, ErrXSklKeyNotFound
 	}
 
-	elements := make([]SkipListElement[K, V], 0, 16)
+	elements := make([]SklElement[K, V], 0, 16)
 	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; cur = cur.levels()[0].forward() {
 		elements = append(elements, cur.Element())
 	}
 	return elements, nil
 }
 
-func (skl *xComSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
+func (skl *xComSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	pred, aux := skl.findPredecessor0(key)
 	defer func() {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, errors.New("not found")
+		return nil, ErrXSklKeyNotFound
 	}
 
-	elements := make([]SkipListElement[K, V], 0, 16)
+	elements := make([]SklElement[K, V], 0, 16)
 	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; {
 		if matcher(cur.Element().Val()) {
 			skl.removeNode(cur, aux)
@@ -335,16 +353,20 @@ func (skl *xComSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]S
 	return elements, nil
 }
 
-func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SkipListElement[K, V], error) {
+func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	pred, aux := skl.findPredecessor0(key)
 	defer func() {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, errors.New("not found")
+		return nil, ErrXSklKeyNotFound
 	}
 
-	elements := make([]SkipListElement[K, V], 0, 16)
+	elements := make([]SklElement[K, V], 0, 16)
 	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; {
 		skl.removeNode(cur, aux)
 		elements = append(elements, cur.Element())
@@ -355,7 +377,7 @@ func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SkipListElement[K, V], error) {
 	return elements, nil
 }
 
-func (skl *xComSkl[K, V]) Free() {
+func (skl *xComSkl[K, V]) Release() {
 	var (
 		x, next *xComSklNode[K, V]
 		idx     int

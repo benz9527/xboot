@@ -1,7 +1,6 @@
 package list
 
 import (
-	"errors"
 	"sync/atomic"
 	"unsafe"
 
@@ -33,20 +32,6 @@ type xConcSkl[K infra.OrderedKey, V comparable] struct {
 	nodeLen    int64  // skip-list's node count.
 	indexCount uint64 // skip-list's index count.
 	levels     int32  // skip-list's max height value inside the indexCount.
-}
-
-// Len skip-list's node count.
-func (skl *xConcSkl[K, V]) Len() int64 {
-	return atomic.LoadInt64(&skl.nodeLen)
-}
-
-func (skl *xConcSkl[K, V]) IndexCount() uint64 {
-	return atomic.LoadUint64(&skl.indexCount)
-}
-
-// Levels skip-list's max height value inside the indexCount.
-func (skl *xConcSkl[K, V]) Levels() int32 {
-	return atomic.LoadInt32(&skl.levels)
 }
 
 func (skl *xConcSkl[K, V]) loadMutex() mutexImpl {
@@ -116,17 +101,32 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 
 // Classic Skip-List basic APIs
 
+// Len skip-list's node count.
+func (skl *xConcSkl[K, V]) Len() int64 {
+	return atomic.LoadInt64(&skl.nodeLen)
+}
+
+func (skl *xConcSkl[K, V]) IndexCount() uint64 {
+	return atomic.LoadUint64(&skl.indexCount)
+}
+
+// Levels skip-list's max height value inside the indexCount.
+func (skl *xConcSkl[K, V]) Levels() int32 {
+	return atomic.LoadInt32(&skl.levels)
+}
+
 // Insert add the val by a key into skip-list.
 // Only works for unique element skip-list.
 func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
+	if skl.Len() >= XSkipListMaxSize {
+		return ErrXSklIsFull
+	}
+
 	var (
 		aux     = skl.pool.loadAux()
 		oldLvls = skl.Levels()
-		newLvls = /* avoid loop call */ skl.rand(
-			int(oldLvls),
-			atomic.LoadInt64(&skl.nodeLen),
-		)
-		ver = skl.idGen.NumberUUID()
+		newLvls = skl.rand(int(oldLvls), skl.Len()) // avoid loop call
+		ver     = skl.idGen.NumberUUID()
 	)
 	defer func() {
 		skl.pool.releaseAux(aux)
@@ -204,7 +204,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 // Once the function return false, the iteration should be stopped.
 // This function doesn't guarantee correctness in the case of concurrent
 // reads and writes.
-func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SkipListIterationItem[K, V]) bool) {
+func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K, V]) bool) {
 	i := int64(0)
 	item := &xSklIter[K, V]{}
 	switch forward, mode := skl.atomicLoadHead().atomicLoadNextNode(0), skl.loadXNodeMode(); mode {
@@ -296,8 +296,7 @@ func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SkipListIterationIt
 
 // LoadFirst returns the first value stored in the skip-list for a key,
 // or nil if no val is present.
-// The ok result indicates whether the value was found in the skip-list.
-func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SkipListElement[K, V], ok bool) {
+func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err error) {
 	forward := skl.atomicLoadHead()
 	mode := skl.loadXNodeMode()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
@@ -309,40 +308,53 @@ func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SkipListElement[K, V], ok b
 
 		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
-				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
-					return nil, false
+				if /* conc rw empty */ atomic.LoadInt64(&nIdx.count) <= 0 {
+					return nil, ErrXSklConcRWLoadEmpty
 				}
 				switch mode {
 				case unique:
-					x := nIdx.atomicLoadRoot()
-					return &xSklElement[K, V]{
-						key: key,
-						val: *x.vptr,
-					}, true
+					if x := nIdx.atomicLoadRoot(); x == nil {
+						return nil, ErrXSklConcRWLoadEmpty
+					} else {
+						return &xSklElement[K, V]{
+							key: key,
+							val: *x.vptr,
+						}, nil
+					}
 				case linkedList:
-					x := nIdx.atomicLoadRoot()
-					return &xSklElement[K, V]{
-						key: key,
-						val: *x.parent.vptr,
-					}, true
+					if x := nIdx.atomicLoadRoot(); x == nil {
+						return nil, ErrXSklConcRWLoadEmpty
+					} else {
+						return &xSklElement[K, V]{
+							key: key,
+							val: *x.parent.vptr,
+						}, nil
+					}
 				case rbtree:
-					x := nIdx.root.minimum()
-					return &xSklElement[K, V]{
-						key: key,
-						val: *x.vptr,
-					}, true
+					if x := nIdx.root.minimum(); x == nil {
+						return nil, ErrXSklConcRWLoadEmpty
+					} else {
+						return &xSklElement[K, V]{
+							key: key,
+							val: *x.vptr,
+						}, nil
+					}
 				default:
 					panic("[x-conc-skl] unknown x-node type")
 				}
 			}
-			return
+			return nil, ErrXSklConcRWLoadFailed
 		}
 	}
-	return
+	return nil, ErrXSklKeyNotFound
 }
 
 // RemoveFirst deletes the val for a key, only the first value.
-func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SkipListElement[K, V], err error) {
+func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	var (
 		aux      = skl.pool.loadAux()
 		rmNode   *xConcSklNode[K, V]
@@ -368,7 +380,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SkipListElement[K, V], er
 					topLevel = foundAt
 					if !rmNode.mu.tryLock(ver) {
 						if /* d-check */ rmNode.flags.atomicIsSet(nodeRemovingFlagBit) {
-							return nil, errors.New("remove lock acquire failed and node (x-node) has been marked as removing")
+							return nil, ErrXSklConcRemoveTryLock
 						}
 						isMarked = false
 						continue
@@ -376,7 +388,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SkipListElement[K, V], er
 
 					if /* node locked, d-check */ rmNode.flags.atomicIsSet(nodeRemovingFlagBit) {
 						rmNode.mu.unlock(ver)
-						return nil, errors.New("node (x-node) has been marked as removing")
+						return nil, ErrXSklConcRemoving
 					}
 
 					rmNode.flags.atomicSet(nodeRemovingFlagBit)
@@ -523,12 +535,12 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SkipListElement[K, V], er
 	}
 
 	if foundAt == -1 {
-		return nil, errors.New("not found remove target")
+		return nil, ErrXSklKeyNotFound
 	}
-	return nil, errors.New("others unknown reasons")
+	return nil, ErrXSklUnknownReason
 }
 
-func (skl *xConcSkl[K, V]) PeekHead() (element SkipListElement[K, V]) {
+func (skl *xConcSkl[K, V]) PeekHead() (element SklElement[K, V]) {
 	switch forward, mode := skl.atomicLoadHead().atomicLoadNextNode(0), skl.loadXNodeMode(); mode {
 	case unique:
 		for {
@@ -584,18 +596,25 @@ func (skl *xConcSkl[K, V]) PeekHead() (element SkipListElement[K, V]) {
 	return element
 }
 
-func (skl *xConcSkl[K, V]) PopHead() (element SkipListElement[K, V], err error) {
+func (skl *xConcSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 	forward := skl.atomicLoadHead().atomicLoadNextNode(0)
+	if forward == nil {
+		return nil, ErrXSklIsEmpty
+	}
 	return skl.RemoveFirst(forward.key)
 }
 
 // Duplicated element Skip-List basic APIs
 
-func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
+func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	var (
 		forward  = skl.atomicLoadHead()
 		mode     = skl.loadXNodeMode()
-		elements = make([]SkipListElement[K, V], 0, 32)
+		elements = make([]SklElement[K, V], 0, 32)
 	)
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
@@ -607,7 +626,7 @@ func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]Sk
 		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
-					return nil, errors.New("empty elements associate to the key")
+					return nil, ErrXSklConcRWLoadEmpty
 				}
 				switch mode {
 				case unique:
@@ -638,17 +657,21 @@ func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]Sk
 					panic("[x-conc-skl] unknown x-node type")
 				}
 			}
-			return nil, errors.New("skl concurrent read-write")
+			return nil, ErrXSklConcRWLoadFailed
 		}
 	}
-	return nil, errors.New("key not found in skip-list")
+	return nil, ErrXSklKeyNotFound
 }
 
-func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SkipListElement[K, V], error) {
+func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	var (
 		forward  = skl.atomicLoadHead()
 		mode     = skl.loadXNodeMode()
-		elements = make([]SkipListElement[K, V], 0, 32)
+		elements = make([]SklElement[K, V], 0, 32)
 	)
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
@@ -660,15 +683,11 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SkipListElement[K, V], error) {
 		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
-					return nil, errors.New("empty elements associate to the key")
+					return nil, ErrXSklConcRWLoadEmpty
 				}
 				switch mode {
 				case unique:
-					elements = append(elements, &xSklElement[K, V]{
-						key: key,
-						val: *nIdx.atomicLoadRoot().vptr,
-					})
-					return elements, nil
+					panic("[x-conc-skl] unique mode skip-list not implement the load all method")
 				case linkedList:
 					for x := nIdx.atomicLoadRoot().parent.linkedListNext(); x != nil; x = x.linkedListNext() {
 						elements = append(elements, &xSklElement[K, V]{
@@ -690,13 +709,17 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SkipListElement[K, V], error) {
 					panic("[x-conc-skl] unknown x-node type")
 				}
 			}
-			return nil, errors.New("skl concurrent read-write")
+			return nil, ErrXSklConcRWLoadFailed
 		}
 	}
-	return nil, errors.New("key not found in skip-list")
+	return nil, ErrXSklKeyNotFound
 }
 
-func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error) {
+func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	var (
 		aux      = skl.pool.loadAux()
 		rmNode   *xConcSklNode[K, V]
@@ -704,7 +727,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]
 		topLevel = int32(-1)
 		ver      = skl.idGen.NumberUUID()
 		foundAt  = int32(-1)
-		elements = make([]SkipListElement[K, V], 0, 32)
+		elements = make([]SklElement[K, V], 0, 32)
 	)
 	defer func() {
 		skl.pool.releaseAux(aux)
@@ -829,12 +852,16 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]
 	}
 
 	if foundAt == -1 {
-		return nil, errors.New("not found remove target")
+		return nil, ErrXSklKeyNotFound
 	}
-	return nil, errors.New("others unknown reasons")
+	return nil, ErrXSklUnknownReason
 }
 
-func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SkipListElement[K, V], error) {
+func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
+	if skl.Len() <= 0 {
+		return nil, ErrXSklIsEmpty
+	}
+
 	var (
 		aux      = skl.pool.loadAux()
 		rmNode   *xConcSklNode[K, V]
@@ -842,7 +869,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SkipListElement[K, V], error) {
 		topLevel = int32(-1)
 		ver      = skl.idGen.NumberUUID()
 		foundAt  = int32(-1)
-		elements = make([]SkipListElement[K, V], 0, 32)
+		elements = make([]SklElement[K, V], 0, 32)
 	)
 	defer func() {
 		skl.pool.releaseAux(aux)
@@ -953,7 +980,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SkipListElement[K, V], error) {
 	}
 
 	if foundAt == -1 {
-		return nil, errors.New("not found remove target")
+		return nil, ErrXSklKeyNotFound
 	}
-	return nil, errors.New("others unknown reasons")
+	return nil, ErrXSklUnknownReason
 }

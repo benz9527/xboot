@@ -200,7 +200,7 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	indices xConcSklIndices[K, V]
 	mu      segmentedMutex
 	flags   flagBits
-	count   int64 // Duplicated elements' count
+	count   int64 // The number of duplicate elements
 	level   uint32
 }
 

@@ -1,9 +1,5 @@
 package list
 
-import (
-	"github.com/benz9527/xboot/lib/infra"
-)
-
 // Note that the singly linked list is not thread safe.
 // And the singly linked list could be implemented by using the doubly linked list.
 // So it is a meaningless exercise to implement the singly linked list.
@@ -68,36 +64,3 @@ type LinkedList[T comparable] interface {
 	// PushBackList inserts a copy of another linked list at the back of list l.
 	PushBackList(srcList LinkedList[T])
 }
-
-type SkipListElement[K infra.OrderedKey, V comparable] interface {
-	Key() K
-	Val() V
-}
-
-type SkipListIterationItem[K infra.OrderedKey, V comparable] interface {
-	SkipListElement[K, V]
-	NodeLevel() uint32
-	NodeItemCount() int64
-}
-
-type SkipList[K infra.OrderedKey, V comparable] interface {
-	Levels() int32
-	Len() int64
-	IndexCount() uint64
-	Insert(key K, val V, ifNotPresent ...bool) error
-	LoadFirst(key K) (SkipListElement[K, V], bool)
-	RemoveFirst(key K) (SkipListElement[K, V], error)
-	Foreach(action func(i int64, item SkipListIterationItem[K, V]) bool)
-	PopHead() (SkipListElement[K, V], error)
-	PeekHead() SkipListElement[K, V]
-}
-
-type XSkipList[K infra.OrderedKey, V comparable] interface {
-	SkipList[K, V]
-	LoadIfMatched(weight K, matcher func(that V) bool) ([]SkipListElement[K, V], error)
-	LoadAll(weight K) ([]SkipListElement[K, V], error)
-	RemoveIfMatched(key K, matcher func(that V) bool) ([]SkipListElement[K, V], error)
-	RemoveAll(key K) ([]SkipListElement[K, V], error)
-}
-
-type SklValComparator[V comparable] func(i, j V) int64

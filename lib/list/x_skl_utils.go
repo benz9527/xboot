@@ -14,8 +14,8 @@ var (
 )
 
 var (
-	_ SkipListElement[uint8, uint8]       = (*xSklElement[uint8, uint8])(nil)
-	_ SkipListIterationItem[uint8, uint8] = (*xSklIter[uint8, uint8])(nil)
+	_ SklElement[uint8, uint8]       = (*xSklElement[uint8, uint8])(nil)
+	_ SklIterationItem[uint8, uint8] = (*xSklIter[uint8, uint8])(nil)
 )
 
 type xSklElement[K infra.OrderedKey, V comparable] struct {

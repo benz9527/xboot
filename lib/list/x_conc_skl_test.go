@@ -41,13 +41,13 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 	}
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
-	skl.Foreach(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSkipListObject]) bool {
 		//t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
 		return true
 	})
 
-	obj, ok := skl.LoadFirst(401)
-	require.True(t, ok)
+	obj, err := skl.LoadFirst(401)
+	require.NoError(t, err)
 	require.Equal(t, "401", obj.Val().id)
 
 	for i := uint64(0); i < uint64(size); i++ {
@@ -131,8 +131,8 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	wg.Wait()
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
-	obj, ok := skl.LoadFirst(401)
-	require.True(t, ok)
+	obj, err := skl.LoadFirst(401)
+	require.NoError(t, err)
 	require.Equal(t, "401", obj.Val().id)
 
 	wg.Add(size * size2)
@@ -231,7 +231,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
-	skl.Foreach(func(idx int64, item SkipListIterationItem[uint64, *xSkipListObject]) bool {
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSkipListObject]) bool {
 		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
 		return true
 	})
@@ -342,7 +342,7 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNod
 	wg.Wait()
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
-	skl.Foreach(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, int64]) bool {
 		require.Equalf(t, expected[idx].w, item.Key(), "exp: %d; actual: %d\n", expected[idx].w, item.Key())
 		require.Equalf(t, expected[idx].id, item.Val(), "exp: %d; actual: %d\n", expected[idx].id, item.Val())
 		return true
@@ -477,13 +477,13 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
 	if mode == unique {
-		skl.Foreach(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
+		skl.Foreach(func(idx int64, item SklIterationItem[uint64, int64]) bool {
 			require.Equalf(t, expected[idx*int64(size2)+9].w, item.Key(), "idx: %d; exp: %d; actual: %d\n", idx, expected[idx*int64(size2)+9].w, item.Key())
 			require.Equalf(t, expected[idx*int64(size2)+9].id, item.Val(), "idx: %d; exp: %d; actual: %d\n", idx, expected[idx*int64(size2)+9].id, item.Val())
 			return true
 		})
 	} else {
-		skl.Foreach(func(idx int64, item SkipListIterationItem[uint64, int64]) bool {
+		skl.Foreach(func(idx int64, item SklIterationItem[uint64, int64]) bool {
 			require.Equalf(t, expected[idx].w, item.Key(), "exp: %d; actual: %d\n", expected[idx].w, item.Key())
 			require.Equalf(t, expected[idx].id, item.Val(), "exp: %d; actual: %d\n", expected[idx].id, item.Val())
 			return true
