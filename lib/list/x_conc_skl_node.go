@@ -574,7 +574,6 @@ r3: (1) Current node X is a red leaf node, remove directly.
 
 r3: (2) Current node X is a black leaf node, we have to rebalance after remove.
 (black-violation)
-If node X without sibling, after repainted X'parent into red, then finish.
 
 r4: Current node X is not a leaf node but contains a not nil child node.
 The child node must be a red node. (See conclusion. Otherwise, black-violation)
@@ -867,7 +866,7 @@ func (node *xConcSklNode[K, V]) rbSearch(x *xNode[V], fn func(*xNode[V]) int64) 
 	return nil
 }
 
-func (node *xConcSklNode[K, V]) rbPreorderTraversal(fn func(idx int64, color color, val V) bool) {
+func (node *xConcSklNode[K, V]) rbPreorderTraversal(action func(idx int64, color color, val V) bool) {
 	size := atomic.LoadInt64(&node.count)
 	aux := node.root
 	if size < 0 || aux == nil {
@@ -886,7 +885,7 @@ func (node *xConcSklNode[K, V]) rbPreorderTraversal(fn func(idx int64, color col
 	idx := int64(0)
 	size = int64(len(stack))
 	for size > 0 {
-		if aux = stack[size-1]; !fn(idx, aux.color, *aux.vptr) {
+		if aux = stack[size-1]; !action(idx, aux.color, *aux.vptr) {
 			return
 		}
 		idx++
@@ -990,3 +989,7 @@ func unlockNodes[K infra.OrderedKey, V comparable](version uint64, num int32, no
 		}
 	}
 }
+
+// rbtree rule validation
+// References:
+// https://github1s.com/minghu6/rust-minghu6/blob/master/coll_st/src/bst/rb.rs
