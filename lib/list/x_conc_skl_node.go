@@ -866,7 +866,7 @@ func (node *xConcSklNode[K, V]) rbSearch(x *xNode[V], fn func(*xNode[V]) int64) 
 	return nil
 }
 
-func (node *xConcSklNode[K, V]) rbPreorderTraversal(action func(idx int64, color color, val V) bool) {
+func (node *xConcSklNode[K, V]) rbDFS(action func(idx int64, color color, val V) bool) {
 	size := atomic.LoadInt64(&node.count)
 	aux := node.root
 	if size < 0 || aux == nil {
@@ -932,6 +932,18 @@ func (node *xConcSklNode[K, V]) rbRelease() {
 	}
 }
 
+// rbtree rule validation
+// References:
+// https://github1s.com/minghu6/rust-minghu6/blob/master/coll_st/src/bst/rb.rs
+
+// Inorder traversal to validate the rbtree properties.
+func (node *xConcSklNode[K, V]) rbRuleValidate(x *xNode[V]) error {
+	if x.isNilLeaf() {
+		return nil
+	}
+	return nil
+}
+
 func newXConcSklNode[K infra.OrderedKey, V comparable](
 	key K,
 	val V,
@@ -989,7 +1001,3 @@ func unlockNodes[K infra.OrderedKey, V comparable](version uint64, num int32, no
 		}
 	}
 }
-
-// rbtree rule validation
-// References:
-// https://github1s.com/minghu6/rust-minghu6/blob/master/coll_st/src/bst/rb.rs

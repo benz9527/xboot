@@ -203,7 +203,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	expected := []checkData{
 		{black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -213,7 +213,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	expected = []checkData{
 		{red, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -223,7 +223,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	expected = []checkData{
 		{red, 3}, {black, 47}, {red, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -234,7 +234,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		{black, 3}, {red, 35},
 		{black, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -245,7 +245,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		{red, 3}, {black, 24}, {red, 35},
 		{black, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -260,7 +260,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		{black, 3}, {red, 35},
 		{black, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -273,7 +273,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		{black, 3}, {black, 35},
 		{black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -285,7 +285,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	expected = []checkData{
 		{red, 3}, {black, 35},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -297,7 +297,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	expected = []checkData{
 		{black, 35},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -334,7 +334,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		{red, 3}, {black, 24}, {red, 35},
 		{black, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -349,7 +349,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		{black, 24}, {red, 35},
 		{black, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -362,7 +362,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		{black, 35},
 		{black, 47}, {black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -374,7 +374,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	expected = []checkData{
 		{black, 47}, {red, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -386,7 +386,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	expected = []checkData{
 		{black, 52},
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].val, val)
 		return true
@@ -421,14 +421,14 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 		node.rbInsert(i)
 	}
 
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		node.rbInsert(i)
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
@@ -445,7 +445,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 		require.Equal(t, i, *x.vptr)
 	}
 
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
@@ -489,7 +489,7 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
 	for i := uint64(0); i < insertTotal; i++ {
 		node.rbInsert(i)
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
@@ -518,14 +518,14 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 		node.rbInsert(i)
 	}
 
-	node.rbPreorderTraversal(func(idx int64, color color, val int64) bool {
+	node.rbDFS(func(idx int64, color color, val int64) bool {
 		require.Equal(t, int64(idx), val)
 		return true
 	})
 	for i := removeTotal + insertTotal - 1; i >= insertTotal; i-- {
 		node.rbInsert(i)
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val int64) bool {
+	node.rbDFS(func(idx int64, color color, val int64) bool {
 		require.Equal(t, int64(idx), val)
 		return true
 	})
@@ -541,7 +541,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, i, *x.vptr)
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val int64) bool {
+	node.rbDFS(func(idx int64, color color, val int64) bool {
 		require.Equal(t, int64(idx), val)
 		return true
 	})
@@ -604,7 +604,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 	sort.Slice(insertElements, func(i, j int) bool {
 		return insertElements[i] < insertElements[j]
 	})
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, insertElements[idx], val)
 		return true
 	})
@@ -616,7 +616,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 		require.NoError(t, err)
 		require.Equalf(t, removeElements[i], *x.vptr, "value exp: %d, real: %d\n", removeElements[i], *x.vptr)
 	}
-	node.rbPreorderTraversal(func(idx int64, color color, val uint64) bool {
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, insertElements[idx], val)
 		return true
 	})

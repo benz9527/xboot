@@ -285,7 +285,7 @@ func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K,
 			item.keyFn = func() K {
 				return forward.key
 			}
-			forward.rbPreorderTraversal(func(idx int64, color color, val V) bool {
+			forward.rbDFS(func(idx int64, color color, val V) bool {
 				item.valFn = func() V {
 					return val
 				}
@@ -655,7 +655,7 @@ func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]Sk
 					}
 					return elements, nil
 				case rbtree:
-					nIdx.rbPreorderTraversal(func(idx int64, color color, v V) bool {
+					nIdx.rbDFS(func(idx int64, color color, v V) bool {
 						if matcher(v) {
 							elements = append(elements, &xSklElement[K, V]{
 								key: key,
@@ -709,7 +709,7 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 					}
 					return elements, nil
 				case rbtree:
-					nIdx.rbPreorderTraversal(func(idx int64, color color, v V) bool {
+					nIdx.rbDFS(func(idx int64, color color, v V) bool {
 						elements = append(elements, &xSklElement[K, V]{
 							key: key,
 							val: v,
@@ -826,7 +826,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]
 					}
 				case rbtree:
 					// TODO fix bad efficiency
-					rmNode.rbPreorderTraversal( /* locked */ func(idx int64, color color, v V) bool {
+					rmNode.rbDFS( /* locked */ func(idx int64, color color, v V) bool {
 						if matcher(v) {
 							elements = append(elements, &xSklElement[K, V]{
 								key: key,
@@ -959,7 +959,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 						atomic.AddInt64(&skl.nodeLen, -atomic.LoadInt64(&rmNode.count))
 					}
 				case rbtree:
-					rmNode.rbPreorderTraversal( /* locked */ func(idx int64, color color, v V) bool {
+					rmNode.rbDFS( /* locked */ func(idx int64, color color, v V) bool {
 						elements = append(elements, &xSklElement[K, V]{
 							key: key,
 							val: v,
