@@ -937,9 +937,39 @@ func (node *xConcSklNode[K, V]) rbRelease() {
 // https://github1s.com/minghu6/rust-minghu6/blob/master/coll_st/src/bst/rb.rs
 
 // Inorder traversal to validate the rbtree properties.
-func (node *xConcSklNode[K, V]) rbRuleValidate(x *xNode[V]) error {
-	if x.isNilLeaf() {
+func (node *xConcSklNode[K, V]) rbRuleValidate() error {
+	size := atomic.LoadInt64(&node.count)
+	aux := node.root
+	if size < 0 || aux == nil {
 		return nil
+	}
+
+	stack := make([]*xNode[V], 0, size>>1)
+	defer func() {
+		clear(stack)
+	}()
+
+	for ; !aux.isNilLeaf(); aux = aux.left {
+		stack = append(stack, aux)
+	}
+
+	idx := int64(0)
+	size = int64(len(stack))
+	for size > 0 {
+		if aux.isRed() {
+			if aux.left.isRed() || aux.right.isRed() {
+				return errXsklRbtreeRedViolation
+			}
+		}
+
+		idx++
+		stack = stack[:size-1]
+		if aux.right != nil {
+			for aux = aux.right; aux != nil; aux = aux.left {
+				stack = append(stack, aux)
+			}
+		}
+		size = int64(len(stack))
 	}
 	return nil
 }

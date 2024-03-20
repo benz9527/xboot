@@ -59,4 +59,5 @@ var (
 	ErrXSklUnknownReason      = errors.New("[x-skl] unknown reason error")
 	ErrXSklIsFull             = errors.New("[x-skl] is full")
 	ErrXSklIsEmpty            = errors.New("[x-skl] there is no element")
+	errXsklRbtreeRedViolation = errors.New("[x-skl] red-black tree violation")
 )
