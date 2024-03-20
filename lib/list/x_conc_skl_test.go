@@ -304,7 +304,7 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNod
 	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
 	skl.flags.setBitsAs(sklXNodeModeBits, uint32(mode))
 	if mode == rbtree && rmBySucc {
-		skl.flags.set(sklRbtreeRmReplaceFnFlagBit)
+		skl.flags.set(sklRbtreeRmBorrowFlagBit)
 	}
 
 	size := 10

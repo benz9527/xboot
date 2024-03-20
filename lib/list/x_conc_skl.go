@@ -13,8 +13,8 @@ const (
 	sklMutexImplBits = 0x00FF
 	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
 	sklXNodeModeBits = 0x0300
-	// Indicating that the skip-list data node in rbtree mode and 0 is rm by pred and 1 is rm by succ
-	sklRbtreeRmReplaceFnFlagBit = 0x0400
+	// Indicating that the skip-list data node mode is rbtree and do delete operation will borrow pred(0) or succ node(1).
+	sklRbtreeRmBorrowFlagBit = 0x0400
 )
 
 var (

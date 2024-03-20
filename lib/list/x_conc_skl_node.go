@@ -175,9 +175,9 @@ const (
 	nodeInsertedFlagBit = 1 << iota
 	nodeRemovingFlagBit
 	nodeIsHeadFlagBit
-	nodeIsSetFlagBit         /* 0: unique; 1: enable linked-list or rbtree */
-	nodeSetModeFlagBit       /* 0: linked-list; 1: rbtree */
-	nodeRbRmReplaceFnFlagBit /* 0: pred; 1: succ */
+	nodeIsSetFlagBit      /* 0: unique; 1: enable linked-list or rbtree */
+	nodeSetModeFlagBit    /* 0: linked-list; 1: rbtree */
+	nodeRbRmBorrowFlagBit /* 0: pred; 1: succ */
 
 	insertFullyLinked = nodeInsertedFlagBit
 	xNodeModeFlagBits = nodeIsSetFlagBit | nodeSetModeFlagBit
@@ -577,7 +577,7 @@ func (node *xConcSklNode[K, V]) rbRemoveNode(z *xNode[V]) (res *xNode[V], err er
 
 	y := z
 	if /* r2 */ !y.left.isNilLeaf() && !y.right.isNilLeaf() {
-		if node.flags.isSet(nodeRbRmReplaceFnFlagBit) {
+		if node.flags.isSet(nodeRbRmBorrowFlagBit) {
 			y = z.succ() // enter r3-r4
 		} else {
 			y = z.pred() // enter r3-r4

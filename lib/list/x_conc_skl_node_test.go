@@ -1,7 +1,6 @@
 package list
 
 import (
-	"github.com/benz9527/xboot/lib/id"
 	"runtime"
 	"sort"
 	"strconv"
@@ -12,6 +11,8 @@ import (
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/benz9527/xboot/lib/id"
 )
 
 type vNode[W SkipListWeight, O HashObject] struct {
@@ -413,7 +414,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 		},
 	}
 	if rbRmBySucc {
-		node.flags.set(nodeRbRmReplaceFnFlagBit)
+		node.flags.set(nodeRbRmBorrowFlagBit)
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {
@@ -594,7 +595,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 		},
 	}
 	if rbRmBySucc {
-		node.flags.set(nodeRbRmReplaceFnFlagBit)
+		node.flags.set(nodeRbRmBorrowFlagBit)
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {
