@@ -466,59 +466,62 @@ im5: Handle im4 scenario, current node is the same direction as parent.
 	<X>                         [U]               [U]
 */
 func (node *xConcSklNode[K, V]) rbInsertRebalance(x *xNode[V]) {
-	if x.isRoot() {
-		if x.isRed() {
-			x.color = black
-		}
-		return
-	}
-
-	if x.parent.isBlack() {
-		return
-	}
-
-	if x.parent.isRoot() {
-		if /* im1 */ x.parent.isBlack() {
+	for /* replace tail recursive */ !x.isNilLeaf() {
+		if x.isRoot() {
+			if x.isRed() {
+				x.color = black
+			}
 			return
-		} else /* im2 */ {
-			x.parent.color = black
 		}
-	}
 
-	if /* im3 */ x.hasUncle() && x.uncle().isRed() {
-		x.parent.color = black
-		x.uncle().color = black
-		gp := x.grandpa()
-		gp.color = red
-		node.rbInsertRebalance(gp) // tail recursive?
-	} else {
-		if !x.hasUncle() || x.uncle().isBlack() {
-			dir := x.direction()
-			if /* im4 */ dir != x.parent.direction() {
-				p := x.parent
-				switch dir {
-				case left:
-					node.rbRightRotate(p)
-				case right:
-					node.rbLeftRotate(p)
-				default:
-					panic("[x-conc-skl] rbtree insert violate (im4)")
+		if x.parent.isBlack() {
+			return
+		}
+
+		if x.parent.isRoot() {
+			if /* im1 */ x.parent.isBlack() {
+				return
+			} else /* im2 */ {
+				x.parent.color = black
+			}
+		}
+
+		if /* im3 */ x.hasUncle() && x.uncle().isRed() {
+			x.parent.color = black
+			x.uncle().color = black
+			gp := x.grandpa()
+			gp.color = red
+			x = gp
+			continue
+		} else {
+			if !x.hasUncle() || x.uncle().isBlack() {
+				dir := x.direction()
+				if /* im4 */ dir != x.parent.direction() {
+					p := x.parent
+					switch dir {
+					case left:
+						node.rbRightRotate(p)
+					case right:
+						node.rbLeftRotate(p)
+					default:
+						panic("[x-conc-skl] rbtree insert violate (im4)")
+					}
+					x = p // enter im5 to fix
 				}
-				x = p // enter im5 to fix
-			}
 
-			switch /* im5 */ dir = x.parent.direction(); dir {
-			case left:
-				node.rbRightRotate(x.grandpa())
-			case right:
-				node.rbLeftRotate(x.grandpa())
-			default:
-				panic("[x-conc-skl] rbtree insert violate (im5)")
-			}
+				switch /* im5 */ dir = x.parent.direction(); dir {
+				case left:
+					node.rbRightRotate(x.grandpa())
+				case right:
+					node.rbLeftRotate(x.grandpa())
+				default:
+					panic("[x-conc-skl] rbtree insert violate (im5)")
+				}
 
-			x.parent.color = black
-			x.sibling().color = red
-			return
+				x.parent.color = black
+				x.sibling().color = red
+				return
+			}
 		}
 	}
 }
