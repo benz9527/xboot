@@ -1,6 +1,7 @@
 package list
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -114,6 +115,10 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	skl.idGen = idGen
 	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
 
+	ele, err := skl.PopHead()
+	require.Nil(t, ele)
+	require.True(t, errors.Is(err, ErrXSklIsEmpty))
+
 	size := 5
 	size2 := 10
 	var wg sync.WaitGroup
@@ -205,6 +210,10 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	skl.idGen = idGen
 	skl.flags.setBitsAs(sklMutexImplBits, uint32(xSklGoMutex))
 	skl.flags.setBitsAs(sklXNodeModeBits, uint32(linkedList))
+
+	ele, err := skl.PopHead()
+	require.Nil(t, ele)
+	require.True(t, errors.Is(err, ErrXSklIsEmpty))
 
 	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
 	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
@@ -306,6 +315,10 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNod
 	if mode == rbtree && rmBySucc {
 		skl.flags.set(sklRbtreeRmBorrowFlagBit)
 	}
+
+	ele, err := skl.PopHead()
+	require.Nil(t, ele)
+	require.True(t, errors.Is(err, ErrXSklIsEmpty))
 
 	size := 10
 	size2 := 10
@@ -448,6 +461,10 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
 		skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
 		skl.flags.setBitsAs(sklXNodeModeBits, uint32(mode))
 	}
+
+	ele, err := skl.PopHead()
+	require.Nil(t, ele)
+	require.True(t, errors.Is(err, ErrXSklIsEmpty))
 
 	size := 10
 	size2 := 10

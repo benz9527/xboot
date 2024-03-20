@@ -199,7 +199,7 @@ func (skl *xComSkl[K, V]) LoadFirst(key K) (SklElement[K, V], error) {
 	}()
 
 	if e.levels() == nil {
-		return nil, ErrXSklKeyNotFound
+		return nil, ErrXSklNotFound
 	}
 	return e.levels()[0].forward().Element(), nil
 }
@@ -214,7 +214,7 @@ func (skl *xComSkl[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, ErrXSklKeyNotFound
+		return nil, ErrXSklNotFound
 	}
 
 	target := pred.levels()[0].forward()
@@ -222,7 +222,7 @@ func (skl *xComSkl[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 		skl.removeNode(target, aux)
 		return target.Element(), nil
 	}
-	return nil, ErrXSklKeyNotFound
+	return nil, ErrXSklNotFound
 }
 
 func (skl *xComSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K, V]) bool) {
@@ -289,7 +289,7 @@ func (skl *xComSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]Skl
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, ErrXSklKeyNotFound
+		return nil, ErrXSklNotFound
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
@@ -311,7 +311,7 @@ func (skl *xComSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, ErrXSklKeyNotFound
+		return nil, ErrXSklNotFound
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
@@ -331,7 +331,7 @@ func (skl *xComSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]S
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, ErrXSklKeyNotFound
+		return nil, ErrXSklNotFound
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
@@ -363,7 +363,7 @@ func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		skl.putAux(aux)
 	}()
 	if pred == nil {
-		return nil, ErrXSklKeyNotFound
+		return nil, ErrXSklNotFound
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)

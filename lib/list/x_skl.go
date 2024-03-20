@@ -49,7 +49,7 @@ const (
 )
 
 var (
-	ErrXSklKeyNotFound        = errors.New("[x-skl] key not found")
+	ErrXSklNotFound           = errors.New("[x-skl] key or value not found")
 	ErrXSklDisabledValReplace = errors.New("[x-skl] value replace is disabled")
 	ErrXSklConcRWLoadFailed   = errors.New("[x-skl] concurrent read-write causes load failed")
 	ErrXSklConcRWLoadEmpty    = errors.New("[x-skl] concurrent read-write causes load empty")

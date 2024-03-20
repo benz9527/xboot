@@ -1,7 +1,6 @@
 package list
 
 import (
-	"errors"
 	"sync/atomic"
 	"unsafe"
 
@@ -208,7 +207,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, ifNotPresent ...bool
 	switch mode := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits)); mode {
 	case unique:
 		if ifNotPresent[0] {
-			return false, errors.New("unable to insert a duplicate element")
+			return false, ErrXSklDisabledValReplace
 		}
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
 	case linkedList:
@@ -225,7 +224,8 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, ifNotPresent ...bool
 		node.mu.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
-		return false, errors.New("[x-conc-skl] unknown x-node type")
+		// impossible run to here
+		panic("[x-conc-skl] unknown x-node type")
 	}
 	return isAppend, err
 }
@@ -254,12 +254,10 @@ func (node *xConcSklNode[K, V]) atomicStoreNextNode(i int32, next *xConcSklNode[
 
 func (node *xConcSklNode[K, V]) llInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
 	for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
-		res := node.vcmp(val, *n.vptr)
-		if /* replace */ res == 0 {
+		if /* replace */ res := node.vcmp(val, *n.vptr); res == 0 {
 			if /* disabled */ ifNotPresent[0] {
-				return false, errors.New("unable to insert a duplicate element")
+				return false, ErrXSklDisabledValReplace
 			}
-			pred = n
 			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.vptr)), unsafe.Pointer(&val))
 			break
 		} else /* append */ if res > 0 {
@@ -267,20 +265,20 @@ func (node *xConcSklNode[K, V]) llInsert(val V, ifNotPresent ...bool) (isAppend 
 			if next := n.parent; next != nil {
 				continue
 			}
-			vn := &xNode[V]{
+			x := &xNode[V]{
 				vptr:   &val,
 				parent: n.parent,
 			}
-			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.parent)), unsafe.Pointer(vn))
+			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.parent)), unsafe.Pointer(x))
 			atomic.AddInt64(&node.count, 1)
 			isAppend = true
 			break
 		} else /* prepend */ {
-			vn := &xNode[V]{
+			x := &xNode[V]{
 				vptr:   &val,
 				parent: n,
 			}
-			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.parent)), unsafe.Pointer(vn))
+			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&pred.parent)), unsafe.Pointer(x))
 			atomic.AddInt64(&node.count, 1)
 			isAppend = true
 			break
@@ -402,7 +400,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend 
 	res := node.vcmp(val, *y.vptr)
 	if /* equal */ res == 0 {
 		if /* disabled */ ifNotPresent[0] {
-			return false, errors.New("unable to insert a duplicate element")
+			return false, ErrXSklDisabledValReplace
 		}
 		y.vptr = &val
 		return false, nil
@@ -650,13 +648,13 @@ func (node *xConcSklNode[K, V]) rbRemoveNode(z *xNode[V]) (res *xNode[V], err er
 
 func (node *xConcSklNode[K, V]) rbRemove(val V) (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
-		return nil, errors.New("empty rbtree")
+		return nil, ErrXSklNotFound
 	}
 	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
 		return node.vcmp(val, *vn.vptr)
 	})
 	if z == nil {
-		return nil, errors.New("not found")
+		return nil, ErrXSklNotFound
 	}
 	defer func() {
 		atomic.AddInt64(&node.count, -1)
@@ -667,11 +665,11 @@ func (node *xConcSklNode[K, V]) rbRemove(val V) (*xNode[V], error) {
 
 func (node *xConcSklNode[K, V]) rbRemoveMin() (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
-		return nil, errors.New("empty rbtree")
+		return nil, ErrXSklNotFound
 	}
 	_min := node.root.minimum()
 	if _min.isNilLeaf() {
-		return nil, errors.New("not found")
+		return nil, ErrXSklNotFound
 	}
 	defer func() {
 		atomic.AddInt64(&node.count, -1)
