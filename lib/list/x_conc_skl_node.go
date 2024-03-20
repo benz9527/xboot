@@ -788,10 +788,6 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 			sibling = x.sibling()
 		}
 
-		if /* loop nil gaurd*/ sibling.isNilLeaf() {
-			return
-		}
-
 		var sc, sd *xNode[V]
 		switch /* rm2 */ dir {
 		case left:
@@ -806,10 +802,11 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 			if /* rm2 */ x.parent.isRed() {
 				sibling.color = red
 				x.parent.color = black
+				break
 			} else /* rm3 */ {
 				sibling.color = red
 				x = x.parent
-				// node.rbRemoveRebalance(x.parent) // tail recursive?
+				continue
 			}
 		} else {
 			if /* rm 4 */ !sc.isNilLeaf() && sc.isRed() {
@@ -847,6 +844,7 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 			if !sd.isNilLeaf() {
 				sd.color = black
 			}
+			break
 		}
 	}
 }
