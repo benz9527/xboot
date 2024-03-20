@@ -208,6 +208,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	node.rbInsert(47)
 	expected = []checkData{
@@ -218,6 +220,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
 
 	node.rbInsert(3)
 	expected = []checkData{
@@ -228,6 +231,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	node.rbInsert(35)
 	expected = []checkData{
@@ -239,6 +244,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	node.rbInsert(24)
 	expected = []checkData{
@@ -250,6 +257,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	// remove
 
@@ -265,6 +274,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemove(47)
 	require.NoError(t, err)
@@ -278,6 +289,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemove(52)
 	require.NoError(t, err)
@@ -290,6 +303,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemove(3)
 	require.NoError(t, err)
@@ -302,6 +317,8 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemove(35)
 	require.NoError(t, err)
@@ -354,6 +371,8 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemoveMin()
 	require.NoError(t, err)
@@ -367,6 +386,8 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemoveMin()
 	require.NoError(t, err)
@@ -379,6 +400,8 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemoveMin()
 	require.NoError(t, err)
@@ -391,6 +414,8 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		require.Equal(t, expected[idx].val, val)
 		return true
 	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
 
 	x, err = node.rbRemoveMin()
 	require.NoError(t, err)
@@ -399,7 +424,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 }
 
 func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T, rbRmBySucc bool) {
-	total := uint64(100)
+	total := uint64(1000)
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
@@ -419,14 +444,18 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 
 	for i := uint64(0); i < insertTotal; i++ {
 		node.rbInsert(i)
+		require.NoError(t, node.rbRedViolationValidate())
+		require.NoError(t, node.rbBlackViolationValidate())
 	}
-
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
 	})
+
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		node.rbInsert(i)
+		require.NoError(t, node.rbRedViolationValidate())
+		require.NoError(t, node.rbBlackViolationValidate())
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
@@ -443,8 +472,9 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 		x, err := node.rbRemove(i)
 		require.NoError(t, err)
 		require.Equal(t, i, *x.vptr)
+		require.NoError(t, node.rbRedViolationValidate())
+		require.NoError(t, node.rbBlackViolationValidate())
 	}
-
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
 		return true
@@ -486,8 +516,13 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
 		},
 	}
 
+	rand := uint64(cryptoRandUint32() % 1000)
 	for i := uint64(0); i < insertTotal; i++ {
 		node.rbInsert(i)
+		if i%1000 == rand {
+			require.NoError(t, node.rbRedViolationValidate())
+			require.NoError(t, node.rbBlackViolationValidate())
+		}
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, uint64(idx), val)
@@ -499,7 +534,7 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
 }
 
 func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
-	total := int64(100)
+	total := int64(10000)
 	insertTotal := int64(float64(total) * 0.8)
 	removeTotal := int64(float64(total) * 0.2)
 
@@ -514,14 +549,19 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 		},
 	}
 
+	rand := int64(cryptoRandUint32() % 1000)
 	for i := insertTotal - 1; i >= 0; i-- {
 		node.rbInsert(i)
+		if i%1000 == rand {
+			require.NoError(t, node.rbRedViolationValidate())
+			require.NoError(t, node.rbBlackViolationValidate())
+		}
 	}
-
 	node.rbDFS(func(idx int64, color color, val int64) bool {
 		require.Equal(t, int64(idx), val)
 		return true
 	})
+
 	for i := removeTotal + insertTotal - 1; i >= insertTotal; i-- {
 		node.rbInsert(i)
 	}
@@ -547,7 +587,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	})
 }
 
-func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T, total uint64, rbRmBySucc bool) {
+func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T, total uint64, rbRmBySucc bool, violationCheck bool) {
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
@@ -600,6 +640,10 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 
 	for i := uint64(0); i < insertTotal; i++ {
 		node.rbInsert(insertElements[i])
+		if violationCheck {
+			require.NoError(t, node.rbRedViolationValidate())
+			require.NoError(t, node.rbBlackViolationValidate())
+		}
 	}
 	sort.Slice(insertElements, func(i, j int) bool {
 		return insertElements[i] < insertElements[j]
@@ -608,13 +652,25 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 		require.Equal(t, insertElements[idx], val)
 		return true
 	})
+
 	for i := uint64(0); i < removeTotal; i++ {
 		node.rbInsert(removeElements[i])
+		if violationCheck {
+			require.NoError(t, node.rbRedViolationValidate())
+			require.NoError(t, node.rbBlackViolationValidate())
+		}
 	}
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
+
 	for i := uint64(0); i < removeTotal; i++ {
 		x, err := node.rbRemove(removeElements[i])
 		require.NoError(t, err)
 		require.Equalf(t, removeElements[i], *x.vptr, "value exp: %d, real: %d\n", removeElements[i], *x.vptr)
+		if violationCheck {
+			require.NoError(t, node.rbRedViolationValidate())
+			require.NoError(t, node.rbBlackViolationValidate())
+		}
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, insertElements[idx], val)
@@ -627,6 +683,7 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		name       string
 		rbRmBySucc bool
 		total      uint64
+		violationCheck bool
 	}
 	testcases := []testcase{
 		{
@@ -638,11 +695,33 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 			rbRmBySucc: true,
 			total:      1000000,
 		},
+		{
+			name:  "violation check rm by pred 10000",
+			total: 10000,
+			violationCheck: true,
+		},
+		{
+			name:       "violation check rm by succ 10000",
+			rbRmBySucc: true,
+			total:      10000,
+			violationCheck: true,
+		},
+		{
+			name:  "violation check rm by pred 20000",
+			total: 20000,
+			violationCheck: true,
+		},
+		{
+			name:       "violation check rm by succ 20000",
+			rbRmBySucc: true,
+			total:      20000,
+			violationCheck: true,
+		},
 	}
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(tt, tc.total, tc.rbRmBySucc)
+			xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(tt, tc.total, tc.rbRmBySucc, tc.violationCheck)
 		})
 	}
 }

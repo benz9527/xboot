@@ -60,4 +60,5 @@ var (
 	ErrXSklIsFull             = errors.New("[x-skl] is full")
 	ErrXSklIsEmpty            = errors.New("[x-skl] there is no element")
 	errXsklRbtreeRedViolation = errors.New("[x-skl] red-black tree violation")
+	errXsklRbtreeBlackViolation = errors.New("[x-skl] red-black tree violation")
 )

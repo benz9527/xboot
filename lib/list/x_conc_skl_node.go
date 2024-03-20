@@ -65,6 +65,16 @@ func (n *xNode[V]) loadRight() *xNode[V] {
 	return n.right
 }
 
+func (n *xNode[V]) blackDepth(root *xNode[V]) int {
+	depth := 0
+	for aux := n; aux != root; aux = aux.parent {
+		if aux.isBlack() {
+			depth++
+		}
+	}
+	return depth
+}
+
 type rbDirection int8
 
 const (
@@ -866,6 +876,7 @@ func (node *xConcSklNode[K, V]) rbSearch(x *xNode[V], fn func(*xNode[V]) int64) 
 	return nil
 }
 
+// Inorder traversal to implement the DFS.
 func (node *xConcSklNode[K, V]) rbDFS(action func(idx int64, color color, val V) bool) {
 	size := atomic.LoadInt64(&node.count)
 	aux := node.root
@@ -932,7 +943,8 @@ func (node *xConcSklNode[K, V]) rbRelease() {
 	}
 }
 
-// rbtree rule validation
+// rbtree rule validation untilities
+
 // References:
 // https://github1s.com/minghu6/rust-minghu6/blob/master/coll_st/src/bst/rb.rs
 
@@ -953,16 +965,15 @@ func (node *xConcSklNode[K, V]) rbRedViolationValidate() error {
 		stack = append(stack, aux)
 	}
 
-	idx := int64(0)
 	size = int64(len(stack))
 	for size > 0 {
-		if aux.isRed() {
-			if aux.left.isRed() || aux.right.isRed() {
+		if aux = stack[size-1]; aux.isRed() {
+			if (!aux.parent.isRoot() && aux.parent.isRed()) ||
+				(aux.left.isRed() || aux.right.isRed()) {
 				return errXsklRbtreeRedViolation
 			}
 		}
 
-		idx++
 		stack = stack[:size-1]
 		if aux.right != nil {
 			for aux = aux.right; aux != nil; aux = aux.left {
@@ -970,6 +981,66 @@ func (node *xConcSklNode[K, V]) rbRedViolationValidate() error {
 			}
 		}
 		size = int64(len(stack))
+	}
+	return nil
+}
+
+func (node *xConcSklNode[K, V]) rbBFSLeaves() []*xNode[V] {
+	size := atomic.LoadInt64(&node.count)
+	aux := node.root
+	if size < 0 || aux.isNilLeaf() {
+		return nil
+	}
+
+	leaves := make([]*xNode[V], 0, size>>1+1)
+	stack := make([]*xNode[V], 0, size>>1)
+	defer func() {
+		clear(stack)
+	}()
+	stack = append(stack, aux)
+
+	for len(stack) > 0 {
+		aux = stack[0]
+		l, r := aux.left, aux.right
+		if /* nil leaves, keep one */ l.isNilLeaf() || r.isNilLeaf() {
+			leaves = append(leaves, aux)
+		}
+		if !l.isNilLeaf() {
+			stack = append(stack, l)
+		}
+		if !r.isNilLeaf() {
+			stack = append(stack, r)
+		}
+		stack = stack[1:]
+	}
+	return leaves
+}
+
+/*
+<X> is a RED node.
+[X] is a BLACK node (or NIL).
+
+	        [13]
+			/  \
+		 <8>    [17]
+		/ \      /
+	  [1] [11] <15>
+	    \
+		<6>
+
+Each leaf node to root node black depth are equal.
+*/
+func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
+	leaves := node.rbBFSLeaves()
+	if leaves == nil {
+		return nil
+	}
+
+	blackDepth := leaves[0].blackDepth(node.root)
+	for i := 1; i < len(leaves); i++ {
+		if leaves[i].blackDepth(node.root) != blackDepth {
+			return errXsklRbtreeBlackViolation
+		}
 	}
 	return nil
 }
