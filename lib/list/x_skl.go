@@ -259,7 +259,7 @@ func (skl *sklDelegator[K, V]) IndexCount() uint64 { return skl.impl.IndexCount(
 func (skl *sklDelegator[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
-		defer skl.rwmu.Lock()
+		defer skl.rwmu.Unlock()
 	}
 	return skl.impl.Insert(key, val, ifNotPresent...)
 }
@@ -359,7 +359,7 @@ func (skl *xSklDelegator[K, V]) IndexCount() uint64 { return skl.impl.IndexCount
 func (skl *xSklDelegator[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
-		defer skl.rwmu.Lock()
+		defer skl.rwmu.Unlock()
 	}
 	return skl.impl.Insert(key, val, ifNotPresent...)
 }
@@ -381,14 +381,14 @@ func (skl *xSklDelegator[K, V]) PeekHead() SklElement[K, V] { return skl.impl.Pe
 func (skl *xSklDelegator[K, V]) PopHead() (SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
-		defer skl.rwmu.Lock()
+		defer skl.rwmu.Unlock()
 	}
 	return skl.impl.PopHead()
 }
 func (skl *xSklDelegator[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
-		defer skl.rwmu.Lock()
+		defer skl.rwmu.Unlock()
 	}
 	return skl.impl.RemoveFirst(key)
 }
@@ -409,14 +409,14 @@ func (skl *xSklDelegator[K, V]) LoadIfMatched(weight K, matcher func(V) bool) ([
 func (skl *xSklDelegator[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
-		defer skl.rwmu.Lock()
+		defer skl.rwmu.Unlock()
 	}
 	return skl.impl.RemoveAll(key)
 }
 func (skl *xSklDelegator[K, V]) RemoveIfMatched(key K, matcher func(V) bool) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
-		defer skl.rwmu.Lock()
+		defer skl.rwmu.Unlock()
 	}
 	return skl.impl.RemoveIfMatched(key, matcher)
 }

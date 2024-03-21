@@ -86,11 +86,12 @@ func (skl *xComSkl[K, V]) removeNode(x *xComSklNode[K, V], aux []*xComSklNode[K,
 			aux[i].levels()[i].setForward(x.levels()[i].forward())
 		}
 	}
-	if next := x.levels()[0].forward(); next != nil {
+	if /* unlink */ next := x.levels()[0].forward(); next != nil {
 		next.setBackward(x.backward())
 	} else {
 		skl.tail = x.backward()
 	}
+	atomic.AddUint64(&skl.indexCount, ^uint64(len(x.indices)-1))
 	for /* reduce levels */ skl.Levels() > 1 && skl.head.levels()[skl.Levels()-1].forward() == nil {
 		atomic.AddInt32(&skl.levels, -1)
 	}

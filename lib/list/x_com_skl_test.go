@@ -6,7 +6,9 @@ import (
 	"hash/fnv"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -368,4 +370,97 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 			return true
 		})
 	}
+}
+
+func TestXComSklDuplicateDataRace(t *testing.T) {
+	opts := []SklOption[uint64, int64]{
+		WithSklRandLevelGen[uint64, int64](randomLevelV3),
+		WithXComSklEnableConc[uint64, int64](),
+		WithXComSklValComparator[uint64, int64](
+			func(i, j int64) int64 {
+				// avoid calculation overflow
+				if i == j {
+					return 0
+				} else if i > j {
+					return 1
+				}
+				return -1
+			},
+		),
+	}
+	skl := NewXSkl[uint64, int64](
+		XComSkl,
+		func(i, j uint64) int64 {
+			// avoid calculation overflow
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		},
+		opts...,
+	)
+
+	ele, err := skl.PopHead()
+	require.Nil(t, ele)
+	require.True(t, errors.Is(err, ErrXSklIsEmpty))
+
+	size := 10
+	size2 := 10
+	unorderedWeights := make([]int64, 0, size2)
+	for i := 0; i < size2; i++ {
+		unorderedWeights = append(unorderedWeights, int64(cryptoRandUint64()))
+	}
+	orderedWeights := make([]int64, 0, size2)
+	orderedWeights = append(orderedWeights, unorderedWeights...)
+	sort.Slice(orderedWeights, func(i, j int) bool {
+		return orderedWeights[i] < orderedWeights[j]
+	})
+
+	var wg sync.WaitGroup
+	wg.Add(size * size2)
+
+	type answer struct {
+		w  uint64
+		id int64
+	}
+	expected := make([]*answer, 0, size*size2)
+
+	for i := uint64(0); i < uint64(size); i++ {
+		for j := uint64(0); j < uint64(size2); j++ {
+			go func(_i, _j uint64) {
+				w := (_i + 1) * 100
+				time.Sleep(time.Duration(cryptoRandUint32()%5) * time.Millisecond)
+				_ = skl.Insert(w, unorderedWeights[_j])
+				wg.Done()
+			}(i, j)
+			expected = append(expected, &answer{w: (i + 1) * 100, id: orderedWeights[j]})
+		}
+	}
+	wg.Wait()
+	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
+
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, int64]) bool {
+		require.Equalf(t, expected[idx].w, item.Key(), "exp: %d; actual: %d\n", expected[idx].w, item.Key())
+		require.Equalf(t, expected[idx].id, item.Val(), "exp: %d; actual: %d\n", expected[idx].id, item.Val())
+		return true
+	})
+
+	wg.Add(size * size2)
+	for i := uint64(0); i < uint64(size); i++ {
+		for j := uint64(0); j < uint64(size2); j++ {
+			go func(_i, _j uint64) {
+				w := (_i + 1) * 100
+				time.Sleep(time.Duration(cryptoRandUint32()%5) * time.Millisecond)
+				if _, err := skl.RemoveFirst(w); err != nil {
+					t.Logf("remove failed, key: %d, err: %v\n", w, err)
+				}
+				wg.Done()
+			}(i, j)
+		}
+	}
+	wg.Wait()
+	require.Equal(t, int64(0), skl.Len())
+	require.Equal(t, uint64(0), skl.IndexCount())
 }
