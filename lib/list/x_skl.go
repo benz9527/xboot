@@ -136,12 +136,12 @@ func WithXComSklEnableConc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XConcSkl:
-			panic("[x-skl] classic skl is disabled")
+			panic("[x-skl] x-conc-skl is disabled")
 		default:
 
 		}
 		if opts.comRWMutex != nil {
-			panic("[x-skl] classic skl conc has been enabled")
+			panic("[x-skl] x-com-skl conc has been enabled")
 		}
 		opts.comRWMutex = &sync.RWMutex{}
 	}
