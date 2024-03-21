@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestXConcSkipList_Indexes(t *testing.T) {
-	idx := make(xConcSklIndices[uint8, *xSkipListObject], 2)
-	idx[0] = &xConcSklIndex[uint8, *xSkipListObject]{
+func TestXConcSkl_Indexes(t *testing.T) {
+	idx := make(xConcSklIndices[uint8, *xSklObject], 2)
+	idx[0] = &xConcSklIndex[uint8, *xSklObject]{
 		forward: nil,
 	}
-	idx[0].forward = &xConcSklNode[uint8, *xSkipListObject]{}
-	idx[0] = &xConcSklIndex[uint8, *xSkipListObject]{
+	idx[0].forward = &xConcSklNode[uint8, *xSklObject]{}
+	idx[0] = &xConcSklIndex[uint8, *xSklObject]{
 		forward: nil,
 	}
 	ptr := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&idx[0].forward)))

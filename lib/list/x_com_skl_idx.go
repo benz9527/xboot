@@ -24,7 +24,7 @@ func (idx *xComSklIndex[K, V]) setForward(succ *xComSklNode[K, V]) {
 	idx.succ = succ
 }
 
-func newSkipListLevel[K infra.OrderedKey, V comparable](succ *xComSklNode[K, V]) *xComSklIndex[K, V] {
+func newXComSklIndex[K infra.OrderedKey, V comparable](succ *xComSklNode[K, V]) *xComSklIndex[K, V] {
 	return &xComSklIndex[K, V]{
 		succ: succ,
 	}

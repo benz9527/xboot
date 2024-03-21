@@ -28,11 +28,11 @@ type SkipListWeight interface {
 	// ~uint8 == byte
 }
 
-type xSkipListObject struct {
+type xSklObject struct {
 	id string
 }
 
-func (o *xSkipListObject) Hash() uint64 {
+func (o *xSklObject) Hash() uint64 {
 	if o == nil {
 		return 0
 	}
@@ -65,7 +65,7 @@ func TestStringHash_FNV(t *testing.T) {
 	assert.Greater(t, v1, v2)
 }
 
-func TestXSkipList_SimpleCRUD(t *testing.T) {
+func TestXComSkl_SimpleCRUD(t *testing.T) {
 	type element struct {
 		w  int
 		id int
@@ -278,7 +278,7 @@ func TestXComSkl_PopHead(t *testing.T) {
 		elements = append(elements, element{w: w, id: strconv.Itoa(w)})
 	}
 
-	skl := NewSkl[int, *xSkipListObject](
+	skl := NewSkl[int, *xSklObject](
 		XComSkl,
 		func(i, j int) int64 {
 			if i == j {
@@ -288,11 +288,11 @@ func TestXComSkl_PopHead(t *testing.T) {
 			}
 			return 1
 		},
-		WithSklRandLevelGen[int, *xSkipListObject](randomLevelV2),
+		WithSklRandLevelGen[int, *xSklObject](randomLevelV2),
 	)
 
 	for _, o := range elements {
-		skl.Insert(o.w, &xSkipListObject{id: o.id})
+		skl.Insert(o.w, &xSklObject{id: o.id})
 	}
 
 	sort.Slice(elements, func(i, j int) bool {
@@ -306,7 +306,7 @@ func TestXComSkl_PopHead(t *testing.T) {
 		assert.Equal(t, elements[i].id, ele.Val().id)
 		restOrders := elements[i+1:]
 		ii := 0
-		skl.Foreach(func(i int64, item SklIterationItem[int, *xSkipListObject]) bool {
+		skl.Foreach(func(i int64, item SklIterationItem[int, *xSklObject]) bool {
 			assert.Equal(t, restOrders[ii].w, item.Key())
 			assert.Equal(t, restOrders[ii].id, item.Val().id)
 			ii++
@@ -330,7 +330,7 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
 	}
 
-	skl := NewXSkl[int, *xSkipListObject](
+	skl := NewXSkl[int, *xSklObject](
 		XComSkl,
 		func(i, j int) int64 {
 			if i == j {
@@ -340,8 +340,8 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 			}
 			return 1
 		},
-		WithXComSklValComparator[int, *xSkipListObject](
-			func(i, j *xSkipListObject) int64 {
+		WithXComSklValComparator[int, *xSklObject](
+			func(i, j *xSklObject) int64 {
 				_i, _j := i.Hash(), j.Hash()
 				if _i == _j {
 					return 0
@@ -350,11 +350,11 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 				}
 				return 1
 			}),
-		WithSklRandLevelGen[int, *xSkipListObject](randomLevelV3),
+		WithSklRandLevelGen[int, *xSklObject](randomLevelV3),
 	)
 
 	for _, o := range orders {
-		skl.Insert(o.w, &xSkipListObject{id: o.id})
+		skl.Insert(o.w, &xSklObject{id: o.id})
 	}
 	for i := 0; i < len(orders); i++ {
 		ele, err := skl.PopHead()
@@ -363,7 +363,7 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 		assert.Equal(t, orders[i].id, ele.Val().id)
 		restOrders := orders[i+1:]
 		ii := 0
-		skl.Foreach(func(i int64, item SklIterationItem[int, *xSkipListObject]) bool {
+		skl.Foreach(func(i int64, item SklIterationItem[int, *xSklObject]) bool {
 			assert.Equal(t, restOrders[ii].w, item.Key())
 			assert.Equal(t, restOrders[ii].id, item.Val().id)
 			ii++

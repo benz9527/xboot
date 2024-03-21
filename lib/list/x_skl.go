@@ -119,7 +119,7 @@ func WithXComSklValComparator[K infra.OrderedKey, V comparable](cmp SklValCompar
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XConcSkl:
-			panic("[x-skl] x-com-skl is disabled")
+			panic("[x-skl] x-conc-skl is disabled")
 		default:
 
 		}
@@ -136,7 +136,7 @@ func WithXConcSklOptimisticVersionGen[K infra.OrderedKey, V comparable](verGen i
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
-			panic("[x-skl] x-conc-skl is disabled")
+			panic("[x-skl] x-com-skl is disabled")
 		default:
 
 		}
@@ -153,7 +153,7 @@ func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable]() SklOptio
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
-			panic("[x-skl] x-conc-skl is disabled")
+			panic("[x-skl] x-com-skl is disabled")
 		default:
 
 		}
@@ -171,7 +171,7 @@ func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V comparable](cmp Sk
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
-			panic("[x-skl] x-conc-skl is disabled")
+			panic("[x-skl] x-com-skl is disabled")
 		default:
 
 		}
@@ -193,7 +193,7 @@ func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V comparable](cmp SklVal
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
-			panic("[x-skl] x-conc-skl is disabled")
+			panic("[x-skl] x-com-skl is disabled")
 		default:
 
 		}
@@ -216,7 +216,7 @@ func WithSklConcBySpin[K infra.OrderedKey, V comparable]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
-			panic("[x-skl] x-conc-skl is disabled")
+			panic("[x-skl] x-com-skl is disabled")
 		default:
 
 		}
@@ -232,7 +232,7 @@ func WithSklConcByGoNative[K infra.OrderedKey, V comparable]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
-			panic("[x-skl] x-conc-skl is disabled")
+			panic("[x-skl] x-com-skl is disabled")
 		default:
 
 		}
@@ -336,7 +336,7 @@ func NewSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyC
 	}
 
 	d := &sklDelegator[K, V]{
-		impl: skipListFactory(sklOpts),
+		impl: sklFactory(sklOpts),
 	}
 	if typ == XComSkl && sklOpts.comRWMutex != nil {
 		d.rwmu = sklOpts.comRWMutex
@@ -468,7 +468,7 @@ func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKey
 	}
 
 	d := &xSklDelegator[K, V]{
-		impl: skipListFactory(sklOpts),
+		impl: sklFactory(sklOpts),
 	}
 	if typ == XComSkl && sklOpts.comRWMutex != nil {
 		d.rwmu = sklOpts.comRWMutex
@@ -476,7 +476,7 @@ func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKey
 	return d
 }
 
-func skipListFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) XSkipList[K, V] {
+func sklFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) XSkipList[K, V] {
 	var impl XSkipList[K, V]
 	switch opts.sklType {
 	case XComSkl:
@@ -490,7 +490,7 @@ func skipListFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) X
 		}
 		skl.head = newXComSklNode[K, V](sklMaxLevel, *new(K), *new(V))
 		// Initialization.
-		// The head must be initialized with array element size with xSkipListMaxLevel.
+		// The head must be initialized with array element size with sklMaxLevel.
 		for i := 0; i < sklMaxLevel; i++ {
 			skl.head.levels()[i].setForward(nil)
 		}
@@ -504,7 +504,7 @@ func skipListFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) X
 		impl = skl
 	case XConcSkl:
 		skl := &xConcSkl[K, V]{
-			// Start from 1 means the x-com-skl cache levels at least a one level is fixed
+			// Start from 1 means the x-conc-skl cache levels at least a one level is fixed
 			levels:  1,
 			nodeLen: 0,
 			head:    newXConcSklHead[K, V](*opts.concSegMutexImpl, unique),

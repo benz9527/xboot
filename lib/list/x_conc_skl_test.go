@@ -14,17 +14,17 @@ import (
 )
 
 func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
-	opts := make([]SklOption[uint64, *xSkipListObject], 0, 2)
-	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSkipListObject]())
+	opts := make([]SklOption[uint64, *xSklObject], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
 	switch mu {
 	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, *xSkipListObject]())
+		opts = append(opts, WithSklConcByGoNative[uint64, *xSklObject]())
 	case xSklSpinMutex:
-		opts = append(opts, WithSklConcBySpin[uint64, *xSkipListObject]())
+		opts = append(opts, WithSklConcBySpin[uint64, *xSklObject]())
 	default:
 	}
 
-	skl := NewSkl[uint64, *xSkipListObject](
+	skl := NewSkl[uint64, *xSklObject](
 		XConcSkl,
 		func(i, j uint64) int64 {
 			if i == j {
@@ -41,7 +41,7 @@ func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
 	for i := uint64(0); i < uint64(size); i++ {
 		for j := uint64(0); j < 10; j++ {
 			w := (i+1)*100 + j
-			_ = skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
+			_ = skl.Insert(w, &xSklObject{id: fmt.Sprintf("%d", w)})
 		}
 	}
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
@@ -83,17 +83,17 @@ func TestXConcSkl_SerialProcessing(t *testing.T) {
 }
 
 func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
-	opts := make([]SklOption[uint64, *xSkipListObject], 0, 2)
-	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSkipListObject]())
+	opts := make([]SklOption[uint64, *xSklObject], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
 	switch mu {
 	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, *xSkipListObject]())
+		opts = append(opts, WithSklConcByGoNative[uint64, *xSklObject]())
 	case xSklSpinMutex:
-		opts = append(opts, WithSklConcBySpin[uint64, *xSkipListObject]())
+		opts = append(opts, WithSklConcBySpin[uint64, *xSklObject]())
 	default:
 	}
 
-	skl := NewSkl[uint64, *xSkipListObject](
+	skl := NewSkl[uint64, *xSklObject](
 		XConcSkl,
 		func(i, j uint64) int64 {
 			if i == j {
@@ -119,7 +119,7 @@ func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
 			go func(idx uint64) {
 				w := idx
 				time.Sleep(time.Duration(cryptoRandUint32()%5) * time.Millisecond)
-				_ = skl.Insert(w, &xSkipListObject{id: fmt.Sprintf("%d", w)})
+				_ = skl.Insert(w, &xSklObject{id: fmt.Sprintf("%d", w)})
 				wg.Done()
 			}((i+1)*100 + j)
 		}
@@ -170,9 +170,9 @@ func TestXConcSkl_DataRace(t *testing.T) {
 }
 
 func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
-	skl := &xConcSkl[uint64, *xSkipListObject]{
-		head:    newXConcSklHead[uint64, *xSkipListObject](xSklGoMutex, linkedList),
-		pool:    newXConcSklPool[uint64, *xSkipListObject](),
+	skl := &xConcSkl[uint64, *xSklObject]{
+		head:    newXConcSklHead[uint64, *xSklObject](xSklGoMutex, linkedList),
+		pool:    newXConcSklPool[uint64, *xSklObject](),
 		levels:  1,
 		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
@@ -184,7 +184,7 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 			}
 			return -1
 		},
-		vcmp: func(i, j *xSkipListObject) int64 {
+		vcmp: func(i, j *xSklObject) int64 {
 			// avoid calculation overflow
 			_i, _j := i.Hash(), j.Hash()
 			if _i == _j {
@@ -206,37 +206,37 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	require.Nil(t, ele)
 	require.True(t, errors.Is(err, ErrXSklIsEmpty))
 
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 8)})
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 7)})
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 1)})
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 4)})
-	skl.Insert(4, &xSkipListObject{id: fmt.Sprintf("%d", 6)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 5)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 8)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 7)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 1)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 4)})
-	skl.Insert(2, &xSkipListObject{id: fmt.Sprintf("%d", 6)})
-	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 100)})
-	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
-	skl.Insert(3, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
-	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 9)})
-	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 200)})
-	skl.Insert(1, &xSkipListObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 5)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 8)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 7)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 1)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 4)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 6)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 5)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 8)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 7)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 1)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 4)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 6)})
+	skl.Insert(3, &xSklObject{id: fmt.Sprintf("%d", 100)})
+	skl.Insert(3, &xSklObject{id: fmt.Sprintf("%d", 200)})
+	skl.Insert(3, &xSklObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(1, &xSklObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(1, &xSklObject{id: fmt.Sprintf("%d", 200)})
+	skl.Insert(1, &xSklObject{id: fmt.Sprintf("%d", 2)})
 
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
 
-	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSkipListObject]) bool {
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSklObject]) bool {
 		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
 		return true
 	})
 
-	aux := make(xConcSklAux[uint64, *xSkipListObject], 2*sklMaxLevel)
+	aux := make(xConcSklAux[uint64, *xSklObject], 2*sklMaxLevel)
 	foundResult := skl.rmTraverse(1, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.True(t, aux.loadPred(0).flags.isSet(nodeIsHeadFlagBit))
@@ -286,25 +286,25 @@ func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode
 	case linkedList:
 		opts = append(opts, WithXConcSklDataNodeLinkedListMode[uint64, int64](
 			func(i, j int64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		}))
-		case rbtree:
-			opts = append(opts, WithXConcSklDataNodeRbtreeMode[uint64, int64](
+				// avoid calculation overflow
+				if i == j {
+					return 0
+				} else if i > j {
+					return 1
+				}
+				return -1
+			}))
+	case rbtree:
+		opts = append(opts, WithXConcSklDataNodeRbtreeMode[uint64, int64](
 			func(i, j int64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		}, rmBySucc))
+				// avoid calculation overflow
+				if i == j {
+					return 0
+				} else if i > j {
+					return 1
+				}
+				return -1
+			}, rmBySucc))
 	}
 
 	skl := NewXSkl[uint64, int64](

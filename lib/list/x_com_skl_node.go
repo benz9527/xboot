@@ -68,7 +68,7 @@ func newXComSklNode[K infra.OrderedKey, V comparable](level int32, key K, obj V)
 		indices: make([]*xComSklIndex[K, V], level),
 	}
 	for i := int32(0); i < level; i++ {
-		e.indices[i] = newSkipListLevel[K, V](nil)
+		e.indices[i] = newXComSklIndex[K, V](nil)
 	}
 	return e
 }
