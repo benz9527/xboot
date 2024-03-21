@@ -182,7 +182,7 @@ func (f *flagBits) areEqual(bits, expect uint32) bool {
 	return f.loadBits(bits) == expect
 }
 
-type segmentedMutex interface {
+type segmentMutex interface {
 	lock(version uint64)
 	tryLock(version uint64) bool
 	unlock(version uint64) bool
@@ -195,7 +195,7 @@ const (
 	xSklGoMutex
 )
 
-func mutexFactory(e mutexImpl) segmentedMutex {
+func mutexFactory(e mutexImpl) segmentMutex {
 	switch e {
 	case xSklGoMutex:
 		return new(goSyncMutex)

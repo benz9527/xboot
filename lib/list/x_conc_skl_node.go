@@ -207,7 +207,7 @@ type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	key     K
 	vcmp    SklValComparator[V]
 	indices xConcSklIndices[K, V]
-	mu      segmentedMutex
+	mu      segmentMutex
 	flags   flagBits
 	count   int64 // The number of duplicate elements
 	level   uint32
@@ -959,7 +959,7 @@ func (node *xConcSklNode[K, V]) rbRedViolationValidate() error {
 		if aux = stack[size-1]; aux.isRed() {
 			if (!aux.parent.isRoot() && aux.parent.isRed()) ||
 				(aux.left.isRed() || aux.right.isRed()) {
-				return errXsklRbtreeRedViolation
+				return errXSklRbtreeRedViolation
 			}
 		}
 
@@ -1035,7 +1035,7 @@ func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
 	blackDepth := leaves[0].blackDepthTo(node.root)
 	for i := 1; i < len(leaves); i++ {
 		if leaves[i].blackDepthTo(node.root) != blackDepth {
-			return errXsklRbtreeBlackViolation
+			return errXSklRbtreeBlackViolation
 		}
 	}
 	return nil

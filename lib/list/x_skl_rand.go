@@ -3,6 +3,13 @@ package list
 // References:
 // https://gitee.com/bombel/cdf_skiplist
 // http://snap.stanford.edu/data/index.html
+//
+// Goland math random (math.Float64()) contains global mutex lock
+// Ref
+// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
+// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
+// 1. Avoid using global mutex lock
+// 2. Avoid generating random number each time
 
 import (
 	crand "crypto/rand"
@@ -26,12 +33,6 @@ func maxLevels(totalElements int64, P float64) int {
 
 func randomLevel(maxLevel int, currentElements int32) int32 {
 	level := 1
-	// Goland math random (math.Float64()) contains global mutex lock
-	// Ref
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
-	// 1. Avoid using global mutex lock
-	// 2. Avoid generating random number each time
 	for float64(randv2.Int64()&0xFFFF) < sklProbability*0xFFFF {
 		level += 1
 	}
@@ -52,19 +53,13 @@ func randomLevelV2(maxLevel int, currentElements int64) int32 {
 	} else {
 		total = uint64(1)<<maxLevel - 1
 	}
-	// Goland math random (math.Float64()) contains global mutex lock
-	// Ref
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
-	// 1. Avoid using global mutex lock
-	// 2. Avoid generating random number each time
 	rest := randv2.Uint64() & total
 	// Bits right shift equal to manipulate a high-level bit
 	// Calculate the minimum bits of the random number
 	tmp := bits.Len64(rest) // Lookup table.
 	level := maxLevel - tmp + 1
 	// Avoid the value of randomly generated level deviates
-	//   far from the number of elements within the skip-list.
+	// far from the number of elements within the skip-list.
 	// Level should be greater than but approximate to log(currentElements)
 	for level > 1 && uint64(1)<<(level-1) > uint64(currentElements) {
 		level--
@@ -84,12 +79,7 @@ func randomLevelV3(maxLevel int, currentElements int64) int32 {
 	} else {
 		total = uint64(1)<<maxLevel - 1
 	}
-	// Goland math random (math.Float64()) contains global mutex lock
-	// Ref
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
-	// 1. Avoid using global mutex lock
-	// 2. Avoid generating random number each time
+
 	num := cryptoRandUint64()
 	rest := num & total
 	// Bits right shift equal to manipulate a high-level bit
@@ -97,7 +87,7 @@ func randomLevelV3(maxLevel int, currentElements int64) int32 {
 	tmp := bits.Len64(rest) // Lookup table.
 	level := maxLevel - tmp + 1
 	// Avoid the value of randomly generated level deviates
-	//   far from the number of elements within the skip-list.
+	// far from the number of elements within the skip-list.
 	// level should be greater than but approximate to log(currentElements)
 	for level > 1 && uint64(1)<<(level-1) > uint64(currentElements) {
 		level--

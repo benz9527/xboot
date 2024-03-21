@@ -62,9 +62,9 @@ var (
 	ErrXSklConcRemoveTryLock    = errors.New("[x-skl] concurrent remove acquires segmented lock failed")
 	ErrXSklUnknownReason        = errors.New("[x-skl] unknown reason error")
 	ErrXSklIsFull               = errors.New("[x-skl] is full")
-	ErrXSklIsEmpty              = errors.New("[x-skl] there is no element")
-	errXsklRbtreeRedViolation   = errors.New("[x-skl] red-black tree violation")
-	errXsklRbtreeBlackViolation = errors.New("[x-skl] red-black tree violation")
+	ErrXSklIsEmpty              = errors.New("[x-skl] is empty")
+	errXSklRbtreeRedViolation   = errors.New("[x-skl] red-black tree violation")
+	errXSklRbtreeBlackViolation = errors.New("[x-skl] red-black tree violation")
 )
 
 type SklType uint8
