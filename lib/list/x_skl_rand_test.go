@@ -14,7 +14,7 @@ func randomLevelV1(maxLevel int, currentElements int32) int32 {
 	// Call function maxLevels to get total?
 	// maxLevel => n, 2^n -1, there will be 2^n-1 elements in the skip list
 	var total uint64
-	if maxLevel == xSkipListMaxLevel {
+	if maxLevel == sklMaxLevel {
 		total = uint64(math.MaxUint32)
 	} else {
 		total = uint64(1)<<maxLevel - 1
@@ -53,7 +53,7 @@ func TestMaxLevel(t *testing.T) {
 func TestRandomLevel(t *testing.T) {
 	loop := 10
 	for i := 0; i < loop; i++ {
-		t.Log(randomLevel(xSkipListMaxLevel, int32(i)))
+		t.Log(randomLevel(sklMaxLevel, int32(i)))
 	}
 }
 
@@ -64,7 +64,7 @@ func TestRandomLevelV1(t *testing.T) {
 		go func(id int) {
 			loop := 1000
 			for j := 0; j < loop; j++ {
-				t.Logf("randv1 id: %d; rand: %d\n", id, randomLevelV1(xSkipListMaxLevel, int32(j)))
+				t.Logf("randv1 id: %d; rand: %d\n", id, randomLevelV1(sklMaxLevel, int32(j)))
 			}
 			wg.Done()
 		}(i)
@@ -79,7 +79,7 @@ func TestRandomLevelV2(t *testing.T) {
 		go func(id int) {
 			loop := 1000
 			for j := 0; j < loop; j++ {
-				t.Logf("randv2 id: %d; rand: %d\n", id, randomLevelV2(xSkipListMaxLevel, int32(j)))
+				t.Logf("randv2 id: %d; rand: %d\n", id, randomLevelV2(sklMaxLevel, int64(j)))
 			}
 			wg.Done()
 		}(i)
@@ -94,7 +94,7 @@ func TestRandomLevelV3(t *testing.T) {
 		go func(id int) {
 			loop := 1000
 			for j := 0; j < loop; j++ {
-				t.Logf("randv3 id: %d; rand: %d\n", id, randomLevelV3(xSkipListMaxLevel, int32(j)))
+				t.Logf("randv3 id: %d; rand: %d\n", id, randomLevelV3(sklMaxLevel, int64(j)))
 			}
 			wg.Done()
 		}(i)
@@ -104,14 +104,14 @@ func TestRandomLevelV3(t *testing.T) {
 
 func BenchmarkRandomLevel(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		randomLevel(xSkipListMaxLevel, int32(i))
+		randomLevel(sklMaxLevel, int32(i))
 	}
 	b.ReportAllocs()
 }
 
 func BenchmarkRandomLevelV2(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		randomLevelV2(xSkipListMaxLevel, int32(i))
+		randomLevelV2(sklMaxLevel, int64(i))
 	}
 	b.ReportAllocs()
 }

@@ -230,12 +230,13 @@ luac.out
 *.hex
 
 ### VisualStudioCode template
+.vscode/
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/*.code-snippets
 
 # Local History for Visual Studio Code
 .history/

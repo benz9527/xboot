@@ -1,0 +1,35 @@
+linters:
+  enable-all: false
+  disable-all: true
+  fast: true
+  enable:
+    - gofmt
+    - goconst
+    - gocyclo
+    - wastedassign 
+    - errcheck
+    - ineffassign
+    - unused
+    - exportloopref
+linters-settings:
+  goconst:
+    min-len: 2
+    min-occurrences: 3
+  govet:
+    check-shadowing: true
+    enable:
+      - nilness
+      - fieldalignment
+run:
+  timeout: "5m"
+  concurrency: 4
+  issues-exit-code: 2
+  tests: true
+  skip-dirs-use-default: true
+  skip-files:
+    - ".*\\.md$"
+  allow-parallel-runners: true
+  allow-serial-runners: true
+  print-resources-usage: false
+  show-stats: true
+  go: "1.22"

@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 var (
@@ -58,9 +60,6 @@ type xCpuNoOpLoopBlockStrategy struct {
 	cycles uint32
 }
 
-//go:linkname procYield runtime.procyield
-func procYield(cycles uint32)
-
 func NewXCpuNoOpLoopBlockStrategy(cycles uint32) BlockStrategy {
 	return &xCpuNoOpLoopBlockStrategy{
 		cycles: cycles,
@@ -68,13 +67,10 @@ func NewXCpuNoOpLoopBlockStrategy(cycles uint32) BlockStrategy {
 }
 
 func (bs *xCpuNoOpLoopBlockStrategy) WaitFor(eqFn func() bool) {
-	procYield(bs.cycles)
+	infra.ProcYield(bs.cycles)
 }
 
 func (bs *xCpuNoOpLoopBlockStrategy) Done() {}
-
-//go:linkname osYield runtime.osyield
-func osYield()
 
 type xOsYieldBlockStrategy struct{}
 
@@ -83,7 +79,7 @@ func NewXOsYieldBlockStrategy() BlockStrategy {
 }
 
 func (bs *xOsYieldBlockStrategy) WaitFor(fn func() bool) {
-	osYield()
+	infra.OsYield()
 }
 
 func (bs *xOsYieldBlockStrategy) Done() {}

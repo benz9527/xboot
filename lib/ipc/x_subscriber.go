@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"sync/atomic"
 
+	"github.com/benz9527/xboot/lib/infra"
 	"github.com/benz9527/xboot/lib/queue"
 )
 
@@ -91,7 +92,7 @@ func (sub *xSubscriber[T]) eventsHandle() {
 				break
 			} else {
 				if spinCount < spin {
-					procYield(30)
+					infra.ProcYield(30)
 				} else if spinCount < spin+passiveSpin {
 					runtime.Gosched()
 				} else {

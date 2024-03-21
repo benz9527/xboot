@@ -30,13 +30,18 @@ const (
 	classicSnowflakeTsDiffMax       = int64(-1 ^ (-1 << classicSnowflakeTsDiffBits))
 )
 
+var (
+	errSFInvalidDatacenterID = fmt.Errorf("datacenter id invalid")
+	errSFInvalidMachineID    = fmt.Errorf("machine id invalid")
+)
+
 func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (Gen, error) {
 	if datacenterID < 0 || datacenterID > classicSnowflakeDIDMax {
-		return nil, fmt.Errorf("datacenter id invalid")
+		return nil, errSFInvalidDatacenterID
 	}
 
 	if machineID < 0 || machineID > classicSnowflakeMIDMax {
-		return nil, fmt.Errorf("machine id invalid")
+		return nil, errSFInvalidMachineID
 	}
 
 	var lock = sync.Mutex{}
@@ -62,7 +67,7 @@ func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (G
 			return 0
 		}
 		lastTs = now
-		id := ((diff) << classicSnowflakeTsDiffShiftLeft) |
+		id := (diff << classicSnowflakeTsDiffShiftLeft) |
 			(datacenterID << classicSnowflakeDIDShiftLeft) |
 			(machineID << classicSnowflakeMIDShiftLeft) |
 			sequence
@@ -70,18 +75,18 @@ func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (G
 	}, nil
 }
 
-func SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (Generator, error) {
+func SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (UUIDGen, error) {
 	if datacenterID < 0 || datacenterID > classicSnowflakeDIDMax {
-		return nil, fmt.Errorf("datacenter id invalid")
+		return nil, errSFInvalidDatacenterID
 	}
 
 	if machineID < 0 || machineID > classicSnowflakeMIDMax {
-		return nil, fmt.Errorf("machine id invalid")
+		return nil, errSFInvalidMachineID
 	}
 
 	var lock = sync.Mutex{}
 	lastTs, sequence := int64(0), int64(0)
-	id := new(defaultID)
+	id := new(uuidDelegator)
 	id.number = func() uint64 {
 		lock.Lock()
 		defer lock.Unlock()
@@ -103,7 +108,7 @@ func SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (Generator
 			return 0
 		}
 		lastTs = now
-		id := ((diff) << classicSnowflakeTsDiffShiftLeft) |
+		id := (diff << classicSnowflakeTsDiffShiftLeft) |
 			(datacenterID << classicSnowflakeDIDShiftLeft) |
 			(machineID << classicSnowflakeMIDShiftLeft) |
 			sequence

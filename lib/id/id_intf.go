@@ -3,15 +3,19 @@ package id
 // Gen generates the number uuid.
 type Gen func() uint64
 
-type Generator interface {
-	NumberUUID() uint64
-	StrUUID() string
+type UUIDGen interface {
+	Number() uint64
+	Str() string
 }
 
-type defaultID struct {
+var (
+	_ UUIDGen = (*uuidDelegator)(nil)
+)
+
+type uuidDelegator struct {
 	number func() uint64
 	str    func() string
 }
 
-func (id *defaultID) NumberUUID() uint64 { return id.number() }
-func (id *defaultID) StrUUID() string    { return id.str() }
+func (id *uuidDelegator) Number() uint64 { return id.number() }
+func (id *uuidDelegator) Str() string    { return id.str() }

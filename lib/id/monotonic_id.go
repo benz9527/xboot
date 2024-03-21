@@ -1,10 +1,11 @@
 package id
 
 import (
-	"golang.org/x/sys/cpu"
 	"strconv"
 	"sync/atomic"
 	"unsafe"
+
+	"golang.org/x/sys/cpu"
 )
 
 const cacheLinePadSize = unsafe.Sizeof(cpu.CacheLinePad{})
@@ -41,9 +42,9 @@ func (id *monotonicNonZeroID) next() uint64 {
 	return v
 }
 
-func MonotonicNonZeroID() (Generator, error) {
+func MonotonicNonZeroID() (UUIDGen, error) {
 	src := &monotonicNonZeroID{val: 0}
-	id := new(defaultID)
+	id := new(uuidDelegator)
 	id.number = func() uint64 {
 		return src.next()
 	}

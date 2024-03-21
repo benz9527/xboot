@@ -1,11 +1,12 @@
 package id
 
 import (
-	"github.com/benz9527/xboot/lib/hrtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/benz9527/xboot/lib/hrtime"
 )
 
 // go test -run none -bench Benchmark_standard_snow_flake_id_gen -benchtime 3s -benchmem
@@ -40,6 +41,6 @@ func TestSnowFlakeID(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	for i := 0; i < 1000; i++ {
-		t.Logf("%d, %s\n", gen.NumberUUID(), gen.StrUUID())
+		t.Logf("%d, %s\n", gen.Number(), gen.Str())
 	}
 }
