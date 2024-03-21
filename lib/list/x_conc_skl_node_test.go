@@ -597,7 +597,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 
 	ignore := uint32(0)
 	for {
-		num := idGen.NumberUUID()
+		num := idGen.Number()
 		if ignore > 0 {
 			ignore--
 			continue
@@ -680,9 +680,9 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 
 func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 	type testcase struct {
-		name       string
-		rbRmBySucc bool
-		total      uint64
+		name           string
+		rbRmBySucc     bool
+		total          uint64
 		violationCheck bool
 	}
 	testcases := []testcase{
@@ -696,25 +696,25 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 			total:      1000000,
 		},
 		{
-			name:  "violation check rm by pred 10000",
-			total: 10000,
+			name:           "violation check rm by pred 10000",
+			total:          10000,
 			violationCheck: true,
 		},
 		{
-			name:       "violation check rm by succ 10000",
-			rbRmBySucc: true,
-			total:      10000,
+			name:           "violation check rm by succ 10000",
+			rbRmBySucc:     true,
+			total:          10000,
 			violationCheck: true,
 		},
 		{
-			name:  "violation check rm by pred 20000",
-			total: 20000,
+			name:           "violation check rm by pred 20000",
+			total:          20000,
 			violationCheck: true,
 		},
 		{
-			name:       "violation check rm by succ 20000",
-			rbRmBySucc: true,
-			total:      20000,
+			name:           "violation check rm by succ 20000",
+			rbRmBySucc:     true,
+			total:          20000,
 			violationCheck: true,
 		},
 	}

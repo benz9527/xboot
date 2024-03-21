@@ -27,7 +27,7 @@ type xConcSkl[K infra.OrderedKey, V comparable] struct {
 	kcmp       infra.OrderedKeyComparator[K]
 	vcmp       SklValComparator[V]
 	rand       SklRand
-	idGen      id.Generator
+	idGen      id.UUIDGen
 	flags      flagBits
 	nodeLen    int64  // skip-list's node count.
 	indexCount uint64 // skip-list's index count.
@@ -126,7 +126,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		aux     = skl.pool.loadAux()
 		oldLvls = skl.Levels()
 		newLvls = skl.rand(int(oldLvls), skl.Len()) // avoid loop call
-		ver     = skl.idGen.NumberUUID()
+		ver     = skl.idGen.Number()
 	)
 	defer func() {
 		skl.pool.releaseAux(aux)
@@ -372,7 +372,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
-		ver      = skl.idGen.NumberUUID()
+		ver      = skl.idGen.Number()
 		foundAt  = int32(-1)
 	)
 	defer func() {
@@ -737,7 +737,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
-		ver      = skl.idGen.NumberUUID()
+		ver      = skl.idGen.Number()
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
 	)
@@ -879,7 +879,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
-		ver      = skl.idGen.NumberUUID()
+		ver      = skl.idGen.Number()
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
 	)
