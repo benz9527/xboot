@@ -32,13 +32,13 @@ func randomLevel(maxLevel int, currentElements int32) int32 {
 	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go
 	// 1. Avoid using global mutex lock
 	// 2. Avoid generating random number each time
-	for float64(randv2.Int64()&0xFFFF) < xSkipListProbability*0xFFFF {
+	for float64(randv2.Int64()&0xFFFF) < sklProbability*0xFFFF {
 		level += 1
 	}
-	if level < xSkipListMaxLevel {
+	if level < sklMaxLevel {
 		return int32(level)
 	}
-	return xSkipListMaxLevel
+	return sklMaxLevel
 }
 
 // randomLevelV2 is the skip list level element.
@@ -47,7 +47,7 @@ func randomLevelV2(maxLevel int, currentElements int64) int32 {
 	// Call function maxLevels to get total?
 	// maxLevel => n, 2^n-1, there will be 2^n-1 elements in the skip list
 	var total uint64
-	if maxLevel == xSkipListMaxLevel {
+	if maxLevel == sklMaxLevel {
 		total = uint64(math.MaxUint32)
 	} else {
 		total = uint64(1)<<maxLevel - 1
@@ -79,7 +79,7 @@ func randomLevelV3(maxLevel int, currentElements int64) int32 {
 	// Call function maxLevels to get total?
 	// maxLevel => n, 2^n-1, there will be 2^n-1 elements in the skip list
 	var total uint64
-	if maxLevel == xSkipListMaxLevel {
+	if maxLevel == sklMaxLevel {
 		total = uint64(math.MaxUint32)
 	} else {
 		total = uint64(1)<<maxLevel - 1

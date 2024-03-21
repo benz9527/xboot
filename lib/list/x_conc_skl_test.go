@@ -31,7 +31,7 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
-	skl.flags.setBitsAs(sklMutexImplBits, uint32(me))
+	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(me))
 
 	size := 5
 	for i := uint64(0); i < uint64(size); i++ {
@@ -113,7 +113,7 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
-	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
+	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
@@ -208,8 +208,8 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
-	skl.flags.setBitsAs(sklMutexImplBits, uint32(xSklGoMutex))
-	skl.flags.setBitsAs(sklXNodeModeBits, uint32(linkedList))
+	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(xSklGoMutex))
+	skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(linkedList))
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
@@ -245,7 +245,7 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 		return true
 	})
 
-	aux := make(xConcSklAux[uint64, *xSkipListObject], 2*xSkipListMaxLevel)
+	aux := make(xConcSklAux[uint64, *xSkipListObject], 2*sklMaxLevel)
 	foundResult := skl.rmTraverse(1, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.True(t, aux.loadPred(0).flags.isSet(nodeIsHeadFlagBit))
@@ -310,10 +310,10 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNod
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
-	skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
-	skl.flags.setBitsAs(sklXNodeModeBits, uint32(mode))
+	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
+	skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
 	if mode == rbtree && rmBySucc {
-		skl.flags.set(sklRbtreeRmBorrowFlagBit)
+		skl.flags.set(xConcSklRbtreeRmBorrowFlagBit)
 	}
 
 	ele, err := skl.PopHead()
@@ -458,8 +458,8 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.idGen = idGen
 	if mode != unique {
-		skl.flags.setBitsAs(sklMutexImplBits, uint32(mu))
-		skl.flags.setBitsAs(sklXNodeModeBits, uint32(mode))
+		skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
+		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
 	}
 
 	ele, err := skl.PopHead()

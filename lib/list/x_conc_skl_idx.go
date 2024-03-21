@@ -65,18 +65,18 @@ func (aux xConcSklAux[K, V]) storePred(i int32, pred *xConcSklNode[K, V]) {
 }
 
 func (aux xConcSklAux[K, V]) foreachPred(fn func(list ...*xConcSklNode[K, V])) {
-	fn(aux[0:xSkipListMaxLevel]...)
+	fn(aux[0:sklMaxLevel]...)
 }
 
 // Right part.
 func (aux xConcSklAux[K, V]) loadSucc(i int32) *xConcSklNode[K, V] {
-	return aux[xSkipListMaxLevel+i]
+	return aux[sklMaxLevel+i]
 }
 
 func (aux xConcSklAux[K, V]) storeSucc(i int32, succ *xConcSklNode[K, V]) {
-	aux[xSkipListMaxLevel+i] = succ
+	aux[sklMaxLevel+i] = succ
 }
 
 func (aux xConcSklAux[K, V]) foreachSucc(fn func(list ...*xConcSklNode[K, V])) {
-	fn(aux[xSkipListMaxLevel:]...)
+	fn(aux[sklMaxLevel:]...)
 }

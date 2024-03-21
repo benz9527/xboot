@@ -14,7 +14,7 @@ func newXConcSklPool[K infra.OrderedKey, V comparable]() *xConcSklPool[K, V] {
 	p := &xConcSklPool[K, V]{
 		auxPool: &sync.Pool{
 			New: func() any {
-				return make(xConcSklAux[K, V], 2*xSkipListMaxLevel)
+				return make(xConcSklAux[K, V], 2*sklMaxLevel)
 			},
 		},
 	}

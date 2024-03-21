@@ -39,7 +39,7 @@ func (skl *xComSkl[K, V]) loadAux() []*xComSklNode[K, V] {
 
 // putAux is to recycle auxiliary array after traversal.
 func (skl *xComSkl[K, V]) putAux(aux []*xComSklNode[K, V]) {
-	for i := 0; i < xSkipListMaxLevel; i++ {
+	for i := 0; i < sklMaxLevel; i++ {
 		aux[i] = nil
 	}
 	skl.pool.Put(aux)
@@ -112,7 +112,7 @@ func (skl *xComSkl[K, V]) Levels() int32 {
 }
 
 func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
-	if skl.Len() >= XSkipListMaxSize {
+	if skl.Len() >= sklMaxSize {
 		return ErrXSklIsFull
 	}
 
@@ -158,7 +158,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	// Each duplicated key element may contain its cache levels.
 	// It means that duplicated key elements query through the cache (O(logN))
 	// But duplicated elements query (linear probe) will be degraded into O(N)
-	lvl := skl.rand(xSkipListMaxLevel, skl.Len())
+	lvl := skl.rand(sklMaxLevel, skl.Len())
 	if lvl > skl.Levels() {
 		for i := skl.Levels(); i < lvl; i++ {
 			// Update the whole traverse path, from top to bottom.
@@ -386,10 +386,9 @@ func (skl *xComSkl[K, V]) Release() {
 	for x != nil {
 		next = x.levels()[0].forward()
 		x.Free()
-		x = nil
 		x = next
 	}
-	for idx = 0; idx < xSkipListMaxLevel; idx++ {
+	for idx = 0; idx < sklMaxLevel; idx++ {
 		skl.head.levels()[idx].setForward(nil)
 	}
 	skl.tail = nil
@@ -409,17 +408,17 @@ func newXComSkl[K infra.OrderedKey, V comparable](kcmp infra.OrderedKeyComparato
 		vcmp:    vcmp,
 		rand:    rand,
 	}
-	xsl.head = newXComSklNode[K, V](xSkipListMaxLevel, *new(K), *new(V))
+	xsl.head = newXComSklNode[K, V](sklMaxLevel, *new(K), *new(V))
 	// Initialization.
 	// The head must be initialized with array element size with xSkipListMaxLevel.
-	for i := 0; i < xSkipListMaxLevel; i++ {
+	for i := 0; i < sklMaxLevel; i++ {
 		xsl.head.levels()[i].setForward(nil)
 	}
 	xsl.head.setBackward(nil)
 	xsl.tail = nil
 	xsl.pool = &sync.Pool{
 		New: func() any {
-			return make([]*xComSklNode[K, V], xSkipListMaxLevel)
+			return make([]*xComSklNode[K, V], sklMaxLevel)
 		},
 	}
 	return xsl

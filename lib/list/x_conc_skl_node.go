@@ -1077,15 +1077,15 @@ func newXConcSklNode[K infra.OrderedKey, V comparable](
 	return node
 }
 
-func newXConcSklHead[K infra.OrderedKey, V comparable](e mutexImpl, mode xNodeMode) *xConcSklNode[K, V] {
+func newXConcSklHead[K infra.OrderedKey, V comparable](mu mutexImpl, mode xNodeMode) *xConcSklNode[K, V] {
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
-		level: xSkipListMaxLevel,
-		mu:    mutexFactory(e),
+		level: sklMaxLevel,
+		mu:    mutexFactory(mu),
 	}
 	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
 	head.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
-	head.indices = newXConcSklIndices[K, V](xSkipListMaxLevel)
+	head.indices = newXConcSklIndices[K, V](sklMaxLevel)
 	return head
 }
 

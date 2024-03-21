@@ -10,11 +10,11 @@ import (
 
 const (
 	// Indicating that the skip-list exclusive lock implementation type.
-	sklMutexImplBits = 0x00FF
+	xConcSklMutexImplBits = 0x00FF
 	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
-	sklXNodeModeBits = 0x0300
+	xConcSklXNodeModeBits = 0x0300
 	// Indicating that the skip-list data node mode is rbtree and do delete operation will borrow pred(0) or succ node(1).
-	sklRbtreeRmBorrowFlagBit = 0x0400
+	xConcSklRbtreeRmBorrowFlagBit = 0x0400
 )
 
 var (
@@ -35,11 +35,11 @@ type xConcSkl[K infra.OrderedKey, V comparable] struct {
 }
 
 func (skl *xConcSkl[K, V]) loadMutex() mutexImpl {
-	return mutexImpl(skl.flags.atomicLoadBits(sklMutexImplBits))
+	return mutexImpl(skl.flags.atomicLoadBits(xConcSklMutexImplBits))
 }
 
 func (skl *xConcSkl[K, V]) loadXNodeMode() xNodeMode {
-	return xNodeMode(skl.flags.atomicLoadBits(sklXNodeModeBits))
+	return xNodeMode(skl.flags.atomicLoadBits(xConcSklXNodeModeBits))
 }
 
 func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
@@ -118,7 +118,7 @@ func (skl *xConcSkl[K, V]) Levels() int32 {
 // Insert add the val by a key into skip-list.
 // Only works for unique element skip-list.
 func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
-	if skl.Len() >= XSkipListMaxSize {
+	if skl.Len() >= sklMaxSize {
 		return ErrXSklIsFull
 	}
 
@@ -140,7 +140,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		if node := skl.traverse(max(oldLvls, newLvls), key, aux); node != nil {
 			if /* conc rm */ node.flags.atomicIsSet(nodeRemovingFlagBit) {
 				continue
-			} else if /* conc d-check */ skl.Len() >= XSkipListMaxSize {
+			} else if /* conc d-check */ skl.Len() >= sklMaxSize {
 				return ErrXSklIsFull
 			}
 
@@ -179,7 +179,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 				unlockNodes(ver, lockedLevels, list...)
 			})
 			continue
-		} else if /* conc d-check */ skl.Len() >= XSkipListMaxSize {
+		} else if /* conc d-check */ skl.Len() >= sklMaxSize {
 			aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
 				unlockNodes(ver, lockedLevels, list...)
 			})

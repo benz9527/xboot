@@ -48,9 +48,9 @@ import (
 // +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+  +-+
 
 const (
-	xSkipListMaxLevel    = 32                           // level 0 is the data node level.
-	XSkipListMaxSize     = 1<<(xSkipListMaxLevel-1) - 1 //  2^31 - 1 elements
-	xSkipListProbability = 0.25                         // P = 1/4, a skip list node element has 1/4 probability to have a level
+	sklMaxLevel    = 32                     // level 0 is the data node level.
+	sklMaxSize     = 1<<(sklMaxLevel-1) - 1 //  2^31 - 1 elements
+	sklProbability = 0.25                   // P = 1/4, a skip list node element has 1/4 probability to have a level
 )
 
 var (
@@ -67,15 +67,205 @@ var (
 	errXsklRbtreeBlackViolation = errors.New("[x-skl] red-black tree violation")
 )
 
-type XSklOption[K infra.OrderedKey, V comparable] interface {
-	apply(*xSklOptions[K, V])
+type SklType uint8
+
+const (
+	XComSkl SklType = iota
+	XConcSkl
+)
+
+type sklOptions[K infra.OrderedKey, V comparable] struct {
+	keyComparator          infra.OrderedKeyComparator[K]
+	valComparator          SklValComparator[V]
+	optimisticLockVerGen   id.UUIDGen
+	randLevelGen           SklRand
+	comRWMutex             *sync.RWMutex
+	concDataNodeMode       *xNodeMode
+	concSegMutexImpl       *mutexImpl
+	sklType                SklType
+	isConcRbtreeBorrowSucc bool
 }
 
-type xSklOptions[K infra.OrderedKey, V comparable] struct {
-	keyComparator        infra.OrderedKeyComparator[K]
-	valComparator        SklValComparator[V]
-	optimisticLockVerGen id.UUIDGen
-	dataNodeMode         xNodeMode
+type SklOption[K infra.OrderedKey, V comparable] func(*sklOptions[K, V])
+
+func WithSklOrderedKeyAsc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		if opts.keyComparator != nil {
+			panic("[x-skl] key comparator has been set")
+		}
+		opts.keyComparator = func(i, j K) int64 {
+			if i == j {
+				return 1
+			} else if i < j {
+				return -1
+			}
+			return 1
+		}
+	}
+}
+
+func WithSklOrderedKeyDesc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		if opts.keyComparator != nil {
+			panic("[x-skl] key comparator has been set")
+		}
+		opts.keyComparator = func(i, j K) int64 {
+			if i == j {
+				return 1
+			} else if i > j {
+				return -1
+			}
+			return 1
+		}
+	}
+}
+
+func WithSklRandLevelGen[K infra.OrderedKey, V comparable](gen SklRand) SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		if opts.randLevelGen != nil {
+			panic("[x-skl] random level generator has been set")
+		}
+		if gen == nil {
+			panic("[x-skl] random level generator is nil")
+		}
+		opts.randLevelGen = gen
+	}
+}
+
+func WithXComSklEnableConc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XConcSkl:
+			panic("[x-skl] classic skl is disabled")
+		default:
+
+		}
+		if opts.comRWMutex != nil {
+			panic("[x-skl] classic skl conc has been enabled")
+		}
+		opts.comRWMutex = &sync.RWMutex{}
+	}
+}
+
+func WithXComSklValComparator[K infra.OrderedKey, V comparable](vcmp SklValComparator[V]) SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XConcSkl:
+			panic("[x-skl] x-com-skl is disabled")
+		default:
+
+		}
+		if opts.valComparator != nil {
+			panic("[x-skl] x-com-skl value comparator has been set")
+		} else if vcmp == nil {
+			panic("[x-skl] x-com-skl value comparator is nil")
+		}
+		opts.valComparator = vcmp
+	}
+}
+
+func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable](verGen id.UUIDGen) SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XComSkl:
+			panic("[x-skl] x-conc-skl is disabled")
+		default:
+
+		}
+		if opts.concDataNodeMode != nil {
+			panic("[x-skl] x-conc-skl data node mode has been set")
+		} else if opts.valComparator != nil {
+			panic("[x-skl] x-conc-skl value comparator should not be set")
+		} else if verGen == nil {
+			panic("[x-skl] x-conc-skl version generator is nil")
+		}
+		mode := unique
+		opts.concDataNodeMode = &mode
+		opts.optimisticLockVerGen = verGen
+	}
+}
+
+func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V comparable](vcmp SklValComparator[V], verGen id.UUIDGen) SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XComSkl:
+			panic("[x-skl] x-conc-skl is disabled")
+		default:
+
+		}
+		if opts.concDataNodeMode != nil {
+			panic("[x-skl] x-conc-skl data node mode has been set")
+		} else if opts.valComparator != nil {
+			panic("[x-skl] x-conc-skl value comparator has been set")
+		} else if vcmp == nil {
+			panic("[x-skl] x-conc-skl value comparator is nil")
+		} else if verGen == nil {
+			panic("[x-skl] x-conc-skl version generator is nil")
+		}
+
+		mode := linkedList
+		opts.concDataNodeMode = &mode
+		opts.valComparator = vcmp
+		opts.optimisticLockVerGen = verGen
+	}
+}
+
+func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V comparable](vcmp SklValComparator[V], verGen id.UUIDGen, borrowSucc ...bool) SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XComSkl:
+			panic("[x-skl] x-conc-skl is disabled")
+		default:
+
+		}
+		if opts.concDataNodeMode != nil {
+			panic("[x-skl] x-conc-skl data node mode has been set")
+		} else if opts.valComparator != nil {
+			panic("[x-skl] x-conc-skl value comparator has been set")
+		} else if vcmp == nil {
+			panic("[x-skl] x-conc-skl value comparator is nil")
+		} else if verGen == nil {
+			panic("[x-skl] x-conc-skl version generator is nil")
+		}
+
+		opts.isConcRbtreeBorrowSucc = len(borrowSucc) > 0 && borrowSucc[0]
+		mode := rbtree
+		opts.concDataNodeMode = &mode
+		opts.valComparator = vcmp
+		opts.optimisticLockVerGen = verGen
+	}
+}
+
+func WithSklConcBySpin[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XComSkl:
+			panic("[x-skl] x-conc-skl is disabled")
+		default:
+
+		}
+		if opts.concSegMutexImpl != nil {
+			panic("[x-skl] x-conc-skl segement mutex has been set")
+		}
+		impl := xSklSpinMutex
+		opts.concSegMutexImpl = &impl
+	}
+}
+
+func WithSklConcByGoNative[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XComSkl:
+			panic("[x-skl] x-conc-skl is disabled")
+		default:
+
+		}
+		if opts.concSegMutexImpl != nil {
+			panic("[x-skl] x-conc-skl segement mutex has been set")
+		}
+		impl := xSklGoMutex
+		opts.concSegMutexImpl = &impl
+	}
 }
 
 var (
@@ -127,8 +317,51 @@ func (skl *sklDelegator[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	return skl.impl.RemoveFirst(key)
 }
 
-func NewSkl[K infra.OrderedKey, V comparable]() SkipList[K, V] {
-	return nil
+func NewSkl[K infra.OrderedKey, V comparable](typ SklType, opts ...SklOption[K, V]) SkipList[K, V] {
+	sklOpts := &sklOptions[K, V]{
+		sklType: typ,
+	}
+	for _, o := range opts {
+		o(sklOpts)
+	}
+
+	if sklOpts.randLevelGen == nil {
+		sklOpts.randLevelGen = randomLevelV2
+	}
+	if sklOpts.keyComparator == nil {
+		WithSklOrderedKeyAsc[K, V]()(sklOpts)
+	}
+
+	switch typ {
+	case XComSkl:
+		// Do nothing.
+	case XConcSkl:
+		if *sklOpts.concDataNodeMode != unique || sklOpts.valComparator != nil {
+			panic("[x-skl] x-conc-skl init the unique data node mode with the wrong mode or value comparator is set")
+		}
+		if sklOpts.optimisticLockVerGen == nil {
+			gen, _ := id.MonotonicNonZeroID() // fallback to monotonic non-zero id
+			sklOpts.optimisticLockVerGen = gen
+		}
+		if sklOpts.concSegMutexImpl == nil {
+			impl := xSklSpinMutex // fallback to spin mutex
+			sklOpts.concSegMutexImpl = &impl
+		}
+		if sklOpts.concDataNodeMode == nil {
+			mode := unique // fallback to unique
+			sklOpts.concDataNodeMode = &mode
+		}
+	default:
+		panic("[x-skl] unknown skip list type")
+	}
+
+	d := &sklDelegator[K, V]{
+		impl: skipListFactory(sklOpts),
+	}
+	if typ == XComSkl && sklOpts.comRWMutex != nil {
+		d.rwmu = sklOpts.comRWMutex
+	}
+	return d
 }
 
 var (
@@ -208,6 +441,104 @@ func (skl *xSklDelegator[K, V]) RemoveIfMatched(key K, matcher func(V) bool) ([]
 	return skl.impl.RemoveIfMatched(key, matcher)
 }
 
-func NewXSkl[K infra.OrderedKey, V comparable]() XSkipList[K, V] {
-	return nil
+func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, opts ...SklOption[K, V]) XSkipList[K, V] {
+	sklOpts := &sklOptions[K, V]{
+		sklType: typ,
+	}
+	for _, o := range opts {
+		o(sklOpts)
+	}
+
+	if sklOpts.randLevelGen == nil {
+		sklOpts.randLevelGen = randomLevelV2
+	}
+	if sklOpts.keyComparator == nil {
+		WithSklOrderedKeyAsc[K, V]()(sklOpts)
+	}
+
+	switch typ {
+	case XComSkl:
+		if sklOpts.valComparator == nil {
+			panic("[x-skl] x-com-skl non-unique mode, the value comparator must be set")
+		}
+	case XConcSkl:
+		if sklOpts.concDataNodeMode == nil {
+			mode := rbtree // fallback to rbtree mode
+			sklOpts.concDataNodeMode = &mode
+		} else if *sklOpts.concDataNodeMode == unique {
+			panic("[x-skl] x-conc-skl init the non-unique data node mode with the wrong mode")
+		}
+
+		if sklOpts.valComparator == nil {
+			panic("[x-skl] x-conc-skl non-unique data node mode, the value comparator must be set")
+		}
+
+		if sklOpts.optimisticLockVerGen == nil {
+			gen, _ := id.MonotonicNonZeroID() // fallback to monotonic non-zero id
+			sklOpts.optimisticLockVerGen = gen
+		}
+		if sklOpts.concSegMutexImpl == nil {
+			impl := xSklSpinMutex // fallback to spin mutex
+			sklOpts.concSegMutexImpl = &impl
+		}
+	default:
+		panic("[x-skl] unknown skip list type")
+	}
+
+	d := &xSklDelegator[K, V]{
+		impl: skipListFactory(sklOpts),
+	}
+	if typ == XComSkl && sklOpts.comRWMutex != nil {
+		d.rwmu = sklOpts.comRWMutex
+	}
+	return d
+}
+
+func skipListFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) XSkipList[K, V] {
+	var impl XSkipList[K, V]
+	switch opts.sklType {
+	case XComSkl:
+		skl := &xComSkl[K, V]{
+			// Start from 1 means the x-com-skl cache levels at least a one level is fixed
+			levels:  1,
+			nodeLen: 0,
+			kcmp:    opts.keyComparator,
+			vcmp:    opts.valComparator,
+			rand:    opts.randLevelGen,
+		}
+		skl.head = newXComSklNode[K, V](sklMaxLevel, *new(K), *new(V))
+		// Initialization.
+		// The head must be initialized with array element size with xSkipListMaxLevel.
+		for i := 0; i < sklMaxLevel; i++ {
+			skl.head.levels()[i].setForward(nil)
+		}
+		skl.head.setBackward(nil)
+		skl.tail = nil
+		skl.pool = &sync.Pool{
+			New: func() any {
+				return make([]*xComSklNode[K, V], sklMaxLevel)
+			},
+		}
+		impl = skl
+	case XConcSkl:
+		skl := &xConcSkl[K, V]{
+			// Start from 1 means the x-com-skl cache levels at least a one level is fixed
+			levels:  1,
+			nodeLen: 0,
+			head:    newXConcSklHead[K, V](*opts.concSegMutexImpl, unique),
+			pool:    newXConcSklPool[K, V](),
+			kcmp:    opts.keyComparator,
+			vcmp:    opts.valComparator,
+			rand:    randomLevelV3,
+			flags:   flagBits{},
+		}
+		skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(*opts.concSegMutexImpl))
+		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(*opts.concDataNodeMode))
+		if *opts.concDataNodeMode == rbtree && opts.isConcRbtreeBorrowSucc {
+			skl.flags.set(xConcSklRbtreeRmBorrowFlagBit)
+		}
+		impl = skl
+	default:
+	}
+	return impl
 }
