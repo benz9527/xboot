@@ -88,38 +88,6 @@ type sklOptions[K infra.OrderedKey, V comparable] struct {
 
 type SklOption[K infra.OrderedKey, V comparable] func(*sklOptions[K, V])
 
-func WithSklOrderedKeyAsc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
-	return func(opts *sklOptions[K, V]) {
-		if opts.keyComparator != nil {
-			panic("[x-skl] key comparator has been set")
-		}
-		opts.keyComparator = func(i, j K) int64 {
-			if i == j {
-				return 1
-			} else if i < j {
-				return -1
-			}
-			return 1
-		}
-	}
-}
-
-func WithSklOrderedKeyDesc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
-	return func(opts *sklOptions[K, V]) {
-		if opts.keyComparator != nil {
-			panic("[x-skl] key comparator has been set")
-		}
-		opts.keyComparator = func(i, j K) int64 {
-			if i == j {
-				return 1
-			} else if i > j {
-				return -1
-			}
-			return 1
-		}
-	}
-}
-
 func WithSklRandLevelGen[K infra.OrderedKey, V comparable](gen SklRand) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		if opts.randLevelGen != nil {
@@ -147,7 +115,7 @@ func WithXComSklEnableConc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
 	}
 }
 
-func WithXComSklValComparator[K infra.OrderedKey, V comparable](vcmp SklValComparator[V]) SklOption[K, V] {
+func WithXComSklValComparator[K infra.OrderedKey, V comparable](cmp SklValComparator[V]) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XConcSkl:
@@ -157,10 +125,10 @@ func WithXComSklValComparator[K infra.OrderedKey, V comparable](vcmp SklValCompa
 		}
 		if opts.valComparator != nil {
 			panic("[x-skl] x-com-skl value comparator has been set")
-		} else if vcmp == nil {
+		} else if cmp == nil {
 			panic("[x-skl] x-com-skl value comparator is nil")
 		}
-		opts.valComparator = vcmp
+		opts.valComparator = cmp
 	}
 }
 
@@ -317,9 +285,14 @@ func (skl *sklDelegator[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	return skl.impl.RemoveFirst(key)
 }
 
-func NewSkl[K infra.OrderedKey, V comparable](typ SklType, opts ...SklOption[K, V]) SkipList[K, V] {
+func NewSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyComparator[K], opts ...SklOption[K, V]) SkipList[K, V] {
+	if cmp == nil {
+		panic("[x-skl] key comparator is nil")
+	}
+
 	sklOpts := &sklOptions[K, V]{
-		sklType: typ,
+		sklType:       typ,
+		keyComparator: cmp,
 	}
 	for _, o := range opts {
 		o(sklOpts)
@@ -328,13 +301,12 @@ func NewSkl[K infra.OrderedKey, V comparable](typ SklType, opts ...SklOption[K, 
 	if sklOpts.randLevelGen == nil {
 		sklOpts.randLevelGen = randomLevelV2
 	}
-	if sklOpts.keyComparator == nil {
-		WithSklOrderedKeyAsc[K, V]()(sklOpts)
-	}
 
 	switch typ {
 	case XComSkl:
-		// Do nothing.
+		if sklOpts.valComparator != nil {
+			panic("[x-skl] x-com-skl init the unique data node mode but value comparator is set")
+		}
 	case XConcSkl:
 		if *sklOpts.concDataNodeMode != unique || sklOpts.valComparator != nil {
 			panic("[x-skl] x-conc-skl init the unique data node mode with the wrong mode or value comparator is set")
@@ -441,9 +413,14 @@ func (skl *xSklDelegator[K, V]) RemoveIfMatched(key K, matcher func(V) bool) ([]
 	return skl.impl.RemoveIfMatched(key, matcher)
 }
 
-func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, opts ...SklOption[K, V]) XSkipList[K, V] {
+func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyComparator[K], opts ...SklOption[K, V]) XSkipList[K, V] {
+	if cmp == nil {
+		panic("[x-skl] key comparator is nil")
+	}
+
 	sklOpts := &sklOptions[K, V]{
 		sklType: typ,
+		keyComparator: cmp,
 	}
 	for _, o := range opts {
 		o(sklOpts)
@@ -451,9 +428,6 @@ func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, opts ...SklOption[K,
 
 	if sklOpts.randLevelGen == nil {
 		sklOpts.randLevelGen = randomLevelV2
-	}
-	if sklOpts.keyComparator == nil {
-		WithSklOrderedKeyAsc[K, V]()(sklOpts)
 	}
 
 	switch typ {
@@ -539,6 +513,7 @@ func skipListFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) X
 		}
 		impl = skl
 	default:
+		panic("[x-skl] unknown skip list type")
 	}
 	return impl
 }

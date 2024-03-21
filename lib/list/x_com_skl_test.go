@@ -76,7 +76,9 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
 		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
 	}
-	xsl := newXComSkl[int, int](
+
+	skl := NewXSkl[int, int](
+		XComSkl, 
 		func(i, j int) int64 {
 			if i == j {
 				return 0
@@ -85,33 +87,34 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 			}
 			return 1
 		},
-		func(i, j int) int64 {
+		WithXComSklValComparator[int, int](
+			func(i, j int) int64 {
 			if i == j {
 				return 0
 			} else if i > j {
 				return -1
 			}
 			return 1
-		},
-		randomLevelV2,
+		}),
+		WithSklRandLevelGen[int, int](randomLevelV2),
 	)
 
-	_, err := xsl.RemoveAll(1)
+	_, err := skl.RemoveAll(1)
 	require.True(t, errors.Is(err, ErrXSklIsEmpty))
 
 	for _, o := range orders {
-		_ = xsl.Insert(o.w, o.id)
+		_ = skl.Insert(o.w, o.id)
 	}
 
-	err = xsl.Insert(1, 2)
+	err = skl.Insert(1, 2)
 	require.NoError(t, err)
-	xsl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
+	skl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		require.Equal(t, orders[i].w, item.Key())
 		require.Equal(t, orders[i].id, item.Val())
 		t.Logf("key: %d, levels: %d\n", item.Key(), item.NodeLevel())
 		return true
 	})
-	assert.Equal(t, int64(len(orders)), xsl.Len())
+	assert.Equal(t, int64(len(orders)), skl.Len())
 
 	expectedFirstList := []element{
 		{1, 9},
@@ -124,7 +127,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{128, 79},
 	}
 	for _, first := range expectedFirstList {
-		ele, err := xsl.LoadFirst(first.w)
+		ele, err := skl.LoadFirst(first.w)
 		require.NoError(t, err)
 		assert.NotNil(t, ele)
 		assert.Equal(t, first.w, ele.Key())
@@ -132,14 +135,14 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	}
 
 	var ele SklElement[int, int]
-	ele, err = xsl.RemoveFirst(4)
+	ele, err = skl.RemoveFirst(4)
 	require.NoError(t, err)
 	assert.NotNil(t, ele)
 	assert.Equal(t, 4, ele.Key())
 	assert.Equal(t, 29, ele.Val())
 
 	var eleList []SklElement[int, int]
-	eleList, err = xsl.RemoveAll(4)
+	eleList, err = skl.RemoveAll(4)
 	assert.NotNil(t, eleList)
 	expectedRemoveList := []element{
 		{4, 28}, {4, 27}, {4, 26}, {4, 25}, {4, 24}, {4, 23}, {4, 22}, {4, 21},
@@ -159,12 +162,12 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
 		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
 	}
-	xsl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
+	skl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
 		assert.Equal(t, orders[i].id, item.Val())
 		return true
 	})
-	assert.Equal(t, int64(len(orders)), xsl.Len())
+	assert.Equal(t, int64(len(orders)), skl.Len())
 
 	expectedFirstList = []element{
 		{1, 9},
@@ -177,7 +180,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	}
 	for _, first := range expectedFirstList {
 		var err error
-		ele, err = xsl.LoadFirst(first.w)
+		ele, err = skl.LoadFirst(first.w)
 		require.NoError(t, err)
 		assert.NotNil(t, ele)
 		assert.Equal(t, first.w, ele.Key())
@@ -188,7 +191,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{16, 47}, {8, 35}, {128, 71},
 	}
 	for _, e := range expectedRemoveList {
-		eleList, err = xsl.RemoveIfMatched(e.w, func(that int) bool {
+		eleList, err = skl.RemoveIfMatched(e.w, func(that int) bool {
 			return that == e.id
 		})
 		assert.NotNil(t, eleList)
@@ -206,12 +209,12 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
 		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72},
 	}
-	xsl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
+	skl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
 		assert.Equal(t, orders[i].id, item.Val())
 		return true
 	})
-	assert.Equal(t, int64(len(orders)), xsl.Len())
+	assert.Equal(t, int64(len(orders)), skl.Len())
 
 	expectedFindList := []element{
 		{1, 9},
@@ -223,7 +226,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{128, 79},
 	}
 	for _, e := range expectedFindList {
-		eleList, err = xsl.LoadIfMatched(e.w, func(obj int) bool {
+		eleList, err = skl.LoadIfMatched(e.w, func(obj int) bool {
 			return obj == e.id
 		})
 		require.NoError(t, err)
@@ -239,7 +242,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		{129, 77},
 	}
 	for _, e := range expectedFindList {
-		eleList, err = xsl.LoadIfMatched(e.w, func(obj int) bool {
+		eleList, err = skl.LoadIfMatched(e.w, func(obj int) bool {
 			return obj == e.id
 		})
 		require.Error(t, err)
@@ -249,7 +252,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	expectedFindList = []element{
 		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
 	}
-	eleList, err = xsl.LoadAll(64)
+	eleList, err = skl.LoadAll(64)
 	require.NoError(t, err)
 	assert.NotZero(t, len(eleList))
 	for i, e := range eleList {
@@ -272,7 +275,9 @@ func TestNewXSkipList_PopHead(t *testing.T) {
 		{6, "8"}, {6, "100"},
 		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
 	}
-	xsl := newXComSkl[int, *xSkipListObject](
+
+	skl := NewXSkl[int, *xSkipListObject](
+		XComSkl, 
 		func(i, j int) int64 {
 			if i == j {
 				return 0
@@ -281,7 +286,8 @@ func TestNewXSkipList_PopHead(t *testing.T) {
 			}
 			return 1
 		},
-		func(i, j *xSkipListObject) int64 {
+		WithXComSklValComparator[int, *xSkipListObject](
+			func(i, j *xSkipListObject) int64 {
 			_i, _j := i.Hash(), j.Hash()
 			if _i == _j {
 				return 0
@@ -289,21 +295,21 @@ func TestNewXSkipList_PopHead(t *testing.T) {
 				return -1
 			}
 			return 1
-		},
-		randomLevelV3,
+		}),
+		WithSklRandLevelGen[int, *xSkipListObject](randomLevelV3),
 	)
 
 	for _, o := range orders {
-		xsl.Insert(o.w, &xSkipListObject{id: o.id})
+		skl.Insert(o.w, &xSkipListObject{id: o.id})
 	}
 	for i := 0; i < len(orders); i++ {
-		ele, err := xsl.PopHead()
+		ele, err := skl.PopHead()
 		require.NoError(t, err)
 		assert.Equal(t, orders[i].w, ele.Key())
 		assert.Equal(t, orders[i].id, ele.Val().id)
 		restOrders := orders[i+1:]
 		ii := 0
-		xsl.Foreach(func(i int64, item SklIterationItem[int, *xSkipListObject]) bool {
+		skl.Foreach(func(i int64, item SklIterationItem[int, *xSkipListObject]) bool {
 			assert.Equal(t, restOrders[ii].w, item.Key())
 			assert.Equal(t, restOrders[ii].id, item.Val().id)
 			ii++
