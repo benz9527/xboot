@@ -13,25 +13,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
-	skl := &xConcSkl[uint64, *xSkipListObject]{
-		head:    newXConcSklHead[uint64, *xSkipListObject](me, unique),
-		pool:    newXConcSklPool[uint64, *xSkipListObject](),
-		levels:  1,
-		nodeLen: 0,
-		kcmp: func(i, j uint64) int64 {
-			res := int64(i - j)
-			return res
-		},
-		vcmp: func(i, j *xSkipListObject) int64 {
-			return int64(i.Hash() - j.Hash())
-		},
-		rand:  randomLevelV3,
-		flags: flagBits{},
+func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
+	opts := make([]SklOption[uint64, *xSkipListObject], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSkipListObject]())
+	switch mu {
+	case xSklGoMutex:
+		opts = append(opts, WithSklConcByGoNative[uint64, *xSkipListObject]())
+	case xSklSpinMutex:
+		opts = append(opts, WithSklConcBySpin[uint64, *xSkipListObject]())
+	default:
 	}
-	idGen, _ := id.MonotonicNonZeroID()
-	skl.idGen = idGen
-	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(me))
+
+	skl := NewSkl[uint64, *xSkipListObject](
+		XConcSkl,
+		func(i, j uint64) int64 {
+			if i == j {
+				return 0
+			} else if i > j {
+				return -1
+			}
+			return 1
+		},
+		opts...,
+	)
 
 	size := 5
 	for i := uint64(0); i < uint64(size); i++ {
@@ -41,11 +45,6 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 		}
 	}
 	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
-
-	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSkipListObject]) bool {
-		//t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
-		return true
-	})
 
 	obj, err := skl.LoadFirst(401)
 	require.NoError(t, err)
@@ -61,7 +60,7 @@ func xConcSkipListSerialProcessingRunCore(t *testing.T, me mutexImpl) {
 	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
-func TestXConcSkipList_SerialProcessing(t *testing.T) {
+func TestXConcSkl_SerialProcessing(t *testing.T) {
 	type testcase struct {
 		name string
 		me   mutexImpl
@@ -78,42 +77,34 @@ func TestXConcSkipList_SerialProcessing(t *testing.T) {
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSkipListSerialProcessingRunCore(tt, tc.me)
+			xConcSklSerialProcessingRunCore(tt, tc.me)
 		})
 	}
 }
 
-func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
-	skl := &xConcSkl[uint64, *xSkipListObject]{
-		head:    newXConcSklHead[uint64, *xSkipListObject](mu, unique),
-		pool:    newXConcSklPool[uint64, *xSkipListObject](),
-		levels:  1,
-		nodeLen: 0,
-		kcmp: func(i, j uint64) int64 {
-			// avoid calculation overflow
+func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
+	opts := make([]SklOption[uint64, *xSkipListObject], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSkipListObject]())
+	switch mu {
+	case xSklGoMutex:
+		opts = append(opts, WithSklConcByGoNative[uint64, *xSkipListObject]())
+	case xSklSpinMutex:
+		opts = append(opts, WithSklConcBySpin[uint64, *xSkipListObject]())
+	default:
+	}
+
+	skl := NewSkl[uint64, *xSkipListObject](
+		XConcSkl,
+		func(i, j uint64) int64 {
 			if i == j {
 				return 0
 			} else if i > j {
-				return 1
+				return -1
 			}
-			return -1
+			return 1
 		},
-		vcmp: func(i, j *xSkipListObject) int64 {
-			// avoid calculation overflow
-			_i, _j := i.Hash(), j.Hash()
-			if _i == _j {
-				return 0
-			} else if _i > _j {
-				return 1
-			}
-			return -1
-		},
-		rand:  randomLevelV3,
-		flags: flagBits{},
-	}
-	idGen, _ := id.MonotonicNonZeroID()
-	skl.idGen = idGen
-	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
+		opts...,
+	)
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
@@ -156,7 +147,7 @@ func xConcSkipListDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
-func TestXConcSkipList_DataRace(t *testing.T) {
+func TestXConcSkl_DataRace(t *testing.T) {
 	type testcase struct {
 		name string
 		mu   mutexImpl
@@ -173,12 +164,12 @@ func TestXConcSkipList_DataRace(t *testing.T) {
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSkipListDataRaceRunCore(tt, tc.mu)
+			xConcSklDataRaceRunCore(tt, tc.mu)
 		})
 	}
 }
 
-func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
+func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSkipListObject]{
 		head:    newXConcSklHead[uint64, *xSkipListObject](xSklGoMutex, linkedList),
 		pool:    newXConcSklPool[uint64, *xSkipListObject](),
@@ -281,13 +272,44 @@ func TestXConcSkipListDuplicate_SerialProcessing(t *testing.T) {
 
 }
 
-func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode, rmBySucc bool) {
-	skl := &xConcSkl[uint64, int64]{
-		head:    newXConcSklHead[uint64, int64](mu, mode),
-		pool:    newXConcSklPool[uint64, int64](),
-		levels:  1,
-		nodeLen: 0,
-		kcmp: func(i, j uint64) int64 {
+func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode, rmBySucc bool) {
+	opts := []SklOption[uint64, int64]{
+		WithSklRandLevelGen[uint64, int64](randomLevelV3),
+	}
+	switch mu {
+	case xSklGoMutex:
+		opts = append(opts, WithSklConcByGoNative[uint64, int64]())
+	case xSklSpinMutex:
+		opts = append(opts, WithSklConcBySpin[uint64, int64]())
+	}
+	switch mode {
+	case linkedList:
+		opts = append(opts, WithXConcSklDataNodeLinkedListMode[uint64, int64](
+			func(i, j int64) int64 {
+			// avoid calculation overflow
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		}))
+		case rbtree:
+			opts = append(opts, WithXConcSklDataNodeRbtreeMode[uint64, int64](
+			func(i, j int64) int64 {
+			// avoid calculation overflow
+			if i == j {
+				return 0
+			} else if i > j {
+				return 1
+			}
+			return -1
+		}, rmBySucc))
+	}
+
+	skl := NewXSkl[uint64, int64](
+		XConcSkl,
+		func(i, j uint64) int64 {
 			// avoid calculation overflow
 			if i == j {
 				return 0
@@ -296,25 +318,8 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNod
 			}
 			return -1
 		},
-		vcmp: func(i, j int64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
-		rand:  randomLevelV3,
-		flags: flagBits{},
-	}
-	idGen, _ := id.MonotonicNonZeroID()
-	skl.idGen = idGen
-	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
-	skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
-	if mode == rbtree && rmBySucc {
-		skl.flags.set(xConcSklRbtreeRmBorrowFlagBit)
-	}
+		opts...,
+	)
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
@@ -379,7 +384,7 @@ func xConcSkipListDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNod
 	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
-func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
+func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 	type testcase struct {
 		name       string
 		mu         mutexImpl
@@ -423,7 +428,7 @@ func TestXConcSkipListDuplicate_DataRace(t *testing.T) {
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSkipListDuplicateDataRaceRunCore(tt, tc.mu, tc.typ, tc.rbRmBySucc)
+			xConcSklDuplicateDataRaceRunCore(tt, tc.mu, tc.typ, tc.rbRmBySucc)
 		})
 	}
 }

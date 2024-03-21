@@ -132,7 +132,24 @@ func WithXComSklValComparator[K infra.OrderedKey, V comparable](cmp SklValCompar
 	}
 }
 
-func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable](verGen id.UUIDGen) SklOption[K, V] {
+func WithXConcSklOptimisticVersionGen[K infra.OrderedKey, V comparable](verGen id.UUIDGen) SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) {
+		switch opts.sklType {
+		case XComSkl:
+			panic("[x-skl] x-conc-skl is disabled")
+		default:
+
+		}
+		if opts.optimisticLockVerGen != nil {
+			panic("[x-skl] x-conc-skl version generator has been set")
+		} else if verGen == nil {
+			panic("[x-skl] x-conc-skl version generator is nil")
+		}
+		opts.optimisticLockVerGen = verGen
+	}
+}
+
+func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
@@ -144,16 +161,13 @@ func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable](verGen id.
 			panic("[x-skl] x-conc-skl data node mode has been set")
 		} else if opts.valComparator != nil {
 			panic("[x-skl] x-conc-skl value comparator should not be set")
-		} else if verGen == nil {
-			panic("[x-skl] x-conc-skl version generator is nil")
 		}
 		mode := unique
 		opts.concDataNodeMode = &mode
-		opts.optimisticLockVerGen = verGen
 	}
 }
 
-func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V comparable](vcmp SklValComparator[V], verGen id.UUIDGen) SklOption[K, V] {
+func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V comparable](cmp SklValComparator[V]) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
@@ -165,20 +179,17 @@ func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V comparable](vcmp S
 			panic("[x-skl] x-conc-skl data node mode has been set")
 		} else if opts.valComparator != nil {
 			panic("[x-skl] x-conc-skl value comparator has been set")
-		} else if vcmp == nil {
+		} else if cmp == nil {
 			panic("[x-skl] x-conc-skl value comparator is nil")
-		} else if verGen == nil {
-			panic("[x-skl] x-conc-skl version generator is nil")
 		}
 
 		mode := linkedList
 		opts.concDataNodeMode = &mode
-		opts.valComparator = vcmp
-		opts.optimisticLockVerGen = verGen
+		opts.valComparator = cmp
 	}
 }
 
-func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V comparable](vcmp SklValComparator[V], verGen id.UUIDGen, borrowSucc ...bool) SklOption[K, V] {
+func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V comparable](cmp SklValComparator[V], borrowSucc ...bool) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) {
 		switch opts.sklType {
 		case XComSkl:
@@ -190,17 +201,14 @@ func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V comparable](vcmp SklVa
 			panic("[x-skl] x-conc-skl data node mode has been set")
 		} else if opts.valComparator != nil {
 			panic("[x-skl] x-conc-skl value comparator has been set")
-		} else if vcmp == nil {
+		} else if cmp == nil {
 			panic("[x-skl] x-conc-skl value comparator is nil")
-		} else if verGen == nil {
-			panic("[x-skl] x-conc-skl version generator is nil")
 		}
 
 		opts.isConcRbtreeBorrowSucc = len(borrowSucc) > 0 && borrowSucc[0]
 		mode := rbtree
 		opts.concDataNodeMode = &mode
-		opts.valComparator = vcmp
-		opts.optimisticLockVerGen = verGen
+		opts.valComparator = cmp
 	}
 }
 
@@ -419,7 +427,7 @@ func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKey
 	}
 
 	sklOpts := &sklOptions[K, V]{
-		sklType: typ,
+		sklType:       typ,
 		keyComparator: cmp,
 	}
 	for _, o := range opts {
@@ -503,6 +511,7 @@ func skipListFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) X
 			pool:    newXConcSklPool[K, V](),
 			kcmp:    opts.keyComparator,
 			vcmp:    opts.valComparator,
+			idGen:   opts.optimisticLockVerGen,
 			rand:    randomLevelV3,
 			flags:   flagBits{},
 		}

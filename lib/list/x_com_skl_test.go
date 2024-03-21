@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"errors"
 	"hash/fnv"
+	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,7 +80,7 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	}
 
 	skl := NewXSkl[int, int](
-		XComSkl, 
+		XComSkl,
 		func(i, j int) int64 {
 			if i == j {
 				return 0
@@ -89,13 +91,13 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 		},
 		WithXComSklValComparator[int, int](
 			func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return -1
-			}
-			return 1
-		}),
+				if i == j {
+					return 0
+				} else if i > j {
+					return -1
+				}
+				return 1
+			}),
 		WithSklRandLevelGen[int, int](randomLevelV2),
 	)
 
@@ -261,7 +263,57 @@ func TestXSkipList_SimpleCRUD(t *testing.T) {
 	}
 }
 
-func TestNewXSkipList_PopHead(t *testing.T) {
+func TestXComSkl_PopHead(t *testing.T) {
+	type element struct {
+		w  int
+		id string
+	}
+
+	count := 1000
+	elements := make([]element, 0, count)
+	for i := 0; i < count; i++ {
+		w := int(cryptoRandUint32())
+		elements = append(elements, element{w: w, id: strconv.Itoa(w)})
+	}
+
+	skl := NewSkl[int, *xSkipListObject](
+		XComSkl,
+		func(i, j int) int64 {
+			if i == j {
+				return 0
+			} else if i < j {
+				return -1
+			}
+			return 1
+		},
+		WithSklRandLevelGen[int, *xSkipListObject](randomLevelV2),
+	)
+
+	for _, o := range elements {
+		skl.Insert(o.w, &xSkipListObject{id: o.id})
+	}
+
+	sort.Slice(elements, func(i, j int) bool {
+		return elements[i].w < elements[j].w
+	})
+
+	for i := 0; i < len(elements); i++ {
+		ele, err := skl.PopHead()
+		require.NoError(t, err)
+		assert.Equal(t, elements[i].w, ele.Key())
+		assert.Equal(t, elements[i].id, ele.Val().id)
+		restOrders := elements[i+1:]
+		ii := 0
+		skl.Foreach(func(i int64, item SklIterationItem[int, *xSkipListObject]) bool {
+			assert.Equal(t, restOrders[ii].w, item.Key())
+			assert.Equal(t, restOrders[ii].id, item.Val().id)
+			ii++
+			return true
+		})
+	}
+}
+
+func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 	type element struct {
 		w  int
 		id string
@@ -277,7 +329,7 @@ func TestNewXSkipList_PopHead(t *testing.T) {
 	}
 
 	skl := NewXSkl[int, *xSkipListObject](
-		XComSkl, 
+		XComSkl,
 		func(i, j int) int64 {
 			if i == j {
 				return 0
@@ -288,14 +340,14 @@ func TestNewXSkipList_PopHead(t *testing.T) {
 		},
 		WithXComSklValComparator[int, *xSkipListObject](
 			func(i, j *xSkipListObject) int64 {
-			_i, _j := i.Hash(), j.Hash()
-			if _i == _j {
-				return 0
-			} else if _i < _j {
-				return -1
-			}
-			return 1
-		}),
+				_i, _j := i.Hash(), j.Hash()
+				if _i == _j {
+					return 0
+				} else if _i < _j {
+					return -1
+				}
+				return 1
+			}),
 		WithSklRandLevelGen[int, *xSkipListObject](randomLevelV3),
 	)
 

@@ -394,32 +394,3 @@ func (skl *xComSkl[K, V]) Release() {
 	skl.tail = nil
 	skl.pool = nil
 }
-
-func newXComSkl[K infra.OrderedKey, V comparable](kcmp infra.OrderedKeyComparator[K], vcmp SklValComparator[V], rand SklRand) *xComSkl[K, V] {
-	if kcmp == nil || vcmp == nil || rand == nil {
-		panic("[x-com-skl] empty internal core function")
-	}
-
-	xsl := &xComSkl[K, V]{
-		// Start from 1 means the x-com-skl cache levels at least a one level is fixed
-		levels:  1,
-		nodeLen: 0,
-		kcmp:    kcmp,
-		vcmp:    vcmp,
-		rand:    rand,
-	}
-	xsl.head = newXComSklNode[K, V](sklMaxLevel, *new(K), *new(V))
-	// Initialization.
-	// The head must be initialized with array element size with xSkipListMaxLevel.
-	for i := 0; i < sklMaxLevel; i++ {
-		xsl.head.levels()[i].setForward(nil)
-	}
-	xsl.head.setBackward(nil)
-	xsl.tail = nil
-	xsl.pool = &sync.Pool{
-		New: func() any {
-			return make([]*xComSklNode[K, V], sklMaxLevel)
-		},
-	}
-	return xsl
-}
