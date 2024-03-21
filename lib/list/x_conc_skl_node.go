@@ -51,21 +51,7 @@ func (n *xNode[V]) isRoot() bool {
 	return n != nil && n.parent == nil
 }
 
-func (n *xNode[V]) loadLeft() *xNode[V] {
-	if n.isNilLeaf() {
-		return nil
-	}
-	return n.left
-}
-
-func (n *xNode[V]) loadRight() *xNode[V] {
-	if n.isNilLeaf() {
-		return nil
-	}
-	return n.right
-}
-
-func (n *xNode[V]) blackDepth(root *xNode[V]) int {
+func (n *xNode[V]) blackDepthTo(root *xNode[V]) int {
 	depth := 0
 	for aux := n; aux != root; aux = aux.parent {
 		if aux.isBlack() {
@@ -357,6 +343,9 @@ func (node *xConcSklNode[K, V]) rbLeftRotate(x *xNode[V]) {
 		p.left = y
 	case right:
 		p.right = y
+	default:
+		// impossible run to here
+		panic("[x-conc-skl] unknown x-node type")
 	}
 	y.parent = p
 }
@@ -388,6 +377,9 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 		p.left = y
 	case right:
 		p.right = y
+	default:
+		// impossible run to here
+		panic("[x-conc-skl] unknown x-node type")
 	}
 	y.parent = p
 }
@@ -800,9 +792,9 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 		var sc, sd *xNode[V]
 		switch /* rm2 */ dir {
 		case left:
-			sc, sd = sibling.loadLeft(), sibling.loadRight()
+			sc, sd = sibling.left, sibling.right
 		case right:
-			sc, sd = sibling.loadRight(), sibling.loadLeft()
+			sc, sd = sibling.right, sibling.left
 		default:
 			panic("[x-conc-skl] rbtree remove violate (rm2)")
 		}
@@ -832,9 +824,9 @@ func (node *xConcSklNode[K, V]) rbRemoveRebalance(x *xNode[V]) {
 				sibling = x.sibling()
 				switch dir {
 				case left:
-					sd = sibling.loadRight()
+					sd = sibling.right
 				case right:
-					sd = sibling.loadLeft()
+					sd = sibling.left
 				default:
 					panic("[x-conc-skl] rbtree remove violate (rm4)")
 				}
@@ -894,8 +886,7 @@ func (node *xConcSklNode[K, V]) rbDFS(action func(idx int64, color color, val V)
 	}
 
 	idx := int64(0)
-	size = int64(len(stack))
-	for size > 0 {
+	for size = int64(len(stack)); size > 0; size = int64(len(stack)) {
 		if aux = stack[size-1]; !action(idx, aux.color, *aux.vptr) {
 			return
 		}
@@ -906,7 +897,6 @@ func (node *xConcSklNode[K, V]) rbDFS(action func(idx int64, color color, val V)
 				stack = append(stack, aux)
 			}
 		}
-		size = int64(len(stack))
 	}
 }
 
@@ -965,8 +955,7 @@ func (node *xConcSklNode[K, V]) rbRedViolationValidate() error {
 		stack = append(stack, aux)
 	}
 
-	size = int64(len(stack))
-	for size > 0 {
+	for size = int64(len(stack)); size > 0; size = int64(len(stack)) {
 		if aux = stack[size-1]; aux.isRed() {
 			if (!aux.parent.isRoot() && aux.parent.isRed()) ||
 				(aux.left.isRed() || aux.right.isRed()) {
@@ -980,11 +969,11 @@ func (node *xConcSklNode[K, V]) rbRedViolationValidate() error {
 				stack = append(stack, aux)
 			}
 		}
-		size = int64(len(stack))
 	}
 	return nil
 }
 
+// BFS traversal to load all leaves.
 func (node *xConcSklNode[K, V]) rbBFSLeaves() []*xNode[V] {
 	size := atomic.LoadInt64(&node.count)
 	aux := node.root
@@ -1023,10 +1012,17 @@ func (node *xConcSklNode[K, V]) rbBFSLeaves() []*xNode[V] {
 	        [13]
 			/  \
 		 <8>    [17]
-		/ \      /
+		 / \    /
 	  [1] [11] <15>
 	    \
 		<6>
+
+2-3-4 tree like:
+
+	       <8> --- [13]
+		  /   \       \
+		 /     \       \
+	  [1]-<6> [11] <15>-[17]
 
 Each leaf node to root node black depth are equal.
 */
@@ -1036,9 +1032,9 @@ func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
 		return nil
 	}
 
-	blackDepth := leaves[0].blackDepth(node.root)
+	blackDepth := leaves[0].blackDepthTo(node.root)
 	for i := 1; i < len(leaves); i++ {
-		if leaves[i].blackDepth(node.root) != blackDepth {
+		if leaves[i].blackDepthTo(node.root) != blackDepth {
 			return errXsklRbtreeBlackViolation
 		}
 	}
