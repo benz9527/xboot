@@ -77,7 +77,12 @@ var (
 type SklType uint8
 
 const (
+	// XComSkl is the classic skip list.
+	// It does not support duplicate keys and values.
+	// It is not thread-safe.
 	XComSkl SklType = iota
+	// XConcSkl is the concurrent skip list.
+	// It supports duplicate keys and values.
 	XConcSkl
 )
 
@@ -231,6 +236,9 @@ var (
 	_ SkipList[uint8, struct{}] = (*sklDelegator[uint8, struct{}])(nil)
 )
 
+// sklDelegator is the skip list delegator.
+// It does not support duplicate keys and values.
+// Concurrent read-write mode is supported if enabled.
 type sklDelegator[K infra.OrderedKey, V comparable] struct {
 	rwmu *sync.RWMutex
 	impl SkipList[K, V]
@@ -340,6 +348,9 @@ var (
 	_ XSkipList[uint8, struct{}] = (*xSklDelegator[uint8, struct{}])(nil)
 )
 
+// xSklDelegator is the skip list delegator.
+// It supports duplicate keys and values.
+// Concurrent read-write mode is supported if enabled.
 type xSklDelegator[K infra.OrderedKey, V comparable] struct {
 	rwmu *sync.RWMutex
 	impl XSkipList[K, V]
