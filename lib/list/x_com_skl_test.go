@@ -81,7 +81,7 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
 	}
 
-	skl := NewXSkl[int, int](
+	skl, err := NewXSkl[int, int](
 		XComSkl,
 		func(i, j int) int64 {
 			if i == j {
@@ -102,8 +102,9 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 			}),
 		WithSklRandLevelGen[int, int](randomLevelV2),
 	)
+	require.NoError(t, err)
 
-	_, err := skl.RemoveAll(1)
+	_, err = skl.RemoveAll(1)
 	require.True(t, errors.Is(err, ErrXSklIsEmpty))
 
 	for _, o := range orders {
@@ -278,7 +279,7 @@ func TestXComSkl_PopHead(t *testing.T) {
 		elements = append(elements, element{w: w, id: strconv.Itoa(w)})
 	}
 
-	skl := NewSkl[int, *xSklObject](
+	skl, err := NewSkl[int, *xSklObject](
 		XComSkl,
 		func(i, j int) int64 {
 			if i == j {
@@ -290,6 +291,7 @@ func TestXComSkl_PopHead(t *testing.T) {
 		},
 		WithSklRandLevelGen[int, *xSklObject](randomLevelV2),
 	)
+	require.NoError(t, err)
 
 	for _, o := range elements {
 		skl.Insert(o.w, &xSklObject{id: o.id})
@@ -330,7 +332,7 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
 	}
 
-	skl := NewXSkl[int, *xSklObject](
+	skl, err := NewXSkl[int, *xSklObject](
 		XComSkl,
 		func(i, j int) int64 {
 			if i == j {
@@ -352,6 +354,7 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 			}),
 		WithSklRandLevelGen[int, *xSklObject](randomLevelV3),
 	)
+	require.NoError(t, err)
 
 	for _, o := range orders {
 		skl.Insert(o.w, &xSklObject{id: o.id})
@@ -388,7 +391,7 @@ func TestXComSklDuplicateDataRace(t *testing.T) {
 			},
 		),
 	}
-	skl := NewXSkl[uint64, int64](
+	skl, err := NewXSkl[uint64, int64](
 		XComSkl,
 		func(i, j uint64) int64 {
 			// avoid calculation overflow
@@ -401,6 +404,7 @@ func TestXComSklDuplicateDataRace(t *testing.T) {
 		},
 		opts...,
 	)
+	require.NoError(t, err)
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)

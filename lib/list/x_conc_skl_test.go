@@ -24,7 +24,7 @@ func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
 	default:
 	}
 
-	skl := NewSkl[uint64, *xSklObject](
+	skl, err := NewSkl[uint64, *xSklObject](
 		XConcSkl,
 		func(i, j uint64) int64 {
 			if i == j {
@@ -36,6 +36,7 @@ func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
 		},
 		opts...,
 	)
+	require.NoError(t, err)
 
 	size := 5
 	for i := uint64(0); i < uint64(size); i++ {
@@ -93,7 +94,7 @@ func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	default:
 	}
 
-	skl := NewSkl[uint64, *xSklObject](
+	skl, err := NewSkl[uint64, *xSklObject](
 		XConcSkl,
 		func(i, j uint64) int64 {
 			if i == j {
@@ -105,6 +106,7 @@ func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
 		},
 		opts...,
 	)
+	require.NoError(t, err)
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
@@ -307,7 +309,7 @@ func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode
 			}, rmBySucc))
 	}
 
-	skl := NewXSkl[uint64, int64](
+	skl, err := NewXSkl[uint64, int64](
 		XConcSkl,
 		func(i, j uint64) int64 {
 			// avoid calculation overflow
@@ -320,6 +322,7 @@ func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode
 		},
 		opts...,
 	)
+	require.NoError(t, err)
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)

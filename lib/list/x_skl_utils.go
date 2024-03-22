@@ -195,6 +195,17 @@ const (
 	xSklGoMutex
 )
 
+func (mu mutexImpl) String() string {
+	switch mu {
+	case xSklSpinMutex:
+		return "spin"
+	case xSklGoMutex:
+		return "sync.Mutex"
+	default:
+		return "unknown"
+	}
+}
+
 func mutexFactory(e mutexImpl) segmentMutex {
 	switch e {
 	case xSklGoMutex:

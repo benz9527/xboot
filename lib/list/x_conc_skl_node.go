@@ -200,6 +200,19 @@ const (
 	rbtree     xNodeMode = 3
 )
 
+func (mode xNodeMode) String() string {
+	switch mode {
+	case unique:
+		return "unique"
+	case linkedList:
+		return "linked-list"
+	case rbtree:
+		return "rbtree"
+	default:
+		return "unknown"
+	}
+}
+
 type xConcSklNode[K infra.OrderedKey, V comparable] struct {
 	// If it is unique x-node type store value directly.
 	// Otherwise, it is a sentinel node for linked-list or rbtree.
