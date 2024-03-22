@@ -11,14 +11,14 @@ var (
 	_ XSkipList[uint8, uint8] = (*xComSkl[uint8, uint8])(nil)
 )
 
-// A common implementation of skip-list.
+// A common (not thread safe) implementation of skip-list.
 // @field head A sentinel node.
 // The head.indices[0].succ is the first data node of skip-list.
 // From head.indices[1], all of them are cache used to implement binary search.
 // @field tail A sentinel node. Points the skip-list tail node.
 type xComSkl[K infra.OrderedKey, V comparable] struct {
-	kcmp       infra.OrderedKeyComparator[K]
-	vcmp       SklValComparator[V]
+	kcmp       infra.OrderedKeyComparator[K] // key comparator
+	vcmp       SklValComparator[V]           // value comparator
 	rand       SklRand
 	pool       *sync.Pool
 	head       *xComSklNode[K, V]
@@ -280,7 +280,7 @@ func (skl *xComSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 
 // Duplicated element Skip-List basic APIs
 
-func (skl *xComSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+func (skl *xComSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
 		return nil, ErrXSklIsEmpty
 	}
@@ -322,7 +322,7 @@ func (skl *xComSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	return elements, nil
 }
 
-func (skl *xComSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+func (skl *xComSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
 		return nil, ErrXSklIsEmpty
 	}

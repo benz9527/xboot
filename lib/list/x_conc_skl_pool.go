@@ -6,6 +6,9 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
+// FIXME: How to recycle the x-conc-skl node and indices and avoid the data race?
+
+// The pool is used to recycle the auxiliary data structure.
 type xConcSklPool[K infra.OrderedKey, V comparable] struct {
 	auxPool *sync.Pool
 }

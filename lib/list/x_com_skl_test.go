@@ -196,7 +196,7 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 		{16, 47}, {8, 35}, {128, 71},
 	}
 	for _, e := range expectedRemoveList {
-		eleList, err = skl.RemoveIfMatched(e.w, func(that int) bool {
+		eleList, err = skl.RemoveIfMatch(e.w, func(that int) bool {
 			return that == e.id
 		})
 		assert.NotNil(t, eleList)
@@ -231,7 +231,7 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 		{128, 79},
 	}
 	for _, e := range expectedFindList {
-		eleList, err = skl.LoadIfMatched(e.w, func(obj int) bool {
+		eleList, err = skl.LoadIfMatch(e.w, func(obj int) bool {
 			return obj == e.id
 		})
 		require.NoError(t, err)
@@ -247,7 +247,7 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 		{129, 77},
 	}
 	for _, e := range expectedFindList {
-		eleList, err = skl.LoadIfMatched(e.w, func(obj int) bool {
+		eleList, err = skl.LoadIfMatch(e.w, func(obj int) bool {
 			return obj == e.id
 		})
 		require.Error(t, err)

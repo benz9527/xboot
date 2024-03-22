@@ -23,11 +23,11 @@ var (
 
 type xConcSkl[K infra.OrderedKey, V comparable] struct {
 	head       *xConcSklNode[K, V]
-	pool       *xConcSklPool[K, V]
-	kcmp       infra.OrderedKeyComparator[K]
-	vcmp       SklValComparator[V]
+	pool       *xConcSklPool[K, V]           // recycle resources
+	kcmp       infra.OrderedKeyComparator[K] // key comparator
+	vcmp       SklValComparator[V]           // value comparator
 	rand       SklRand
-	idGen      id.UUIDGen
+	optVer     id.UUIDGen // optimistic version generator
 	flags      flagBits
 	nodeLen    int64  // skip-list's node count.
 	indexCount uint64 // skip-list's index count.
@@ -126,7 +126,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		aux     = skl.pool.loadAux()
 		oldLvls = skl.Levels()
 		newLvls = skl.rand(int(oldLvls), skl.Len()) // avoid loop call
-		ver     = skl.idGen.Number()
+		ver     = skl.optVer.Number()
 	)
 	defer func() {
 		skl.pool.releaseAux(aux)
@@ -372,7 +372,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
-		ver      = skl.idGen.Number()
+		ver      = skl.optVer.Number()
 		foundAt  = int32(-1)
 	)
 	defer func() {
@@ -618,7 +618,7 @@ func (skl *xConcSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 
 // Duplicated element Skip-List basic APIs
 
-func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+func (skl *xConcSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
 		return nil, ErrXSklIsEmpty
 	}
@@ -642,7 +642,7 @@ func (skl *xConcSkl[K, V]) LoadIfMatched(key K, matcher func(that V) bool) ([]Sk
 				}
 				switch mode {
 				case unique:
-					panic("[x-conc-skl] unique mode skip-list not implements the load if matched method")
+					panic("[x-conc-skl] unique mode skip-list not implements the load if match method")
 				case linkedList:
 					for x := nIdx.atomicLoadRoot().parent.linkedListNext(); x != nil; x = x.linkedListNext() {
 						v := *x.vptr
@@ -727,7 +727,7 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	return nil, ErrXSklNotFound
 }
 
-func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
+func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
 		return nil, ErrXSklIsEmpty
 	}
@@ -737,7 +737,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
-		ver      = skl.idGen.Number()
+		ver      = skl.optVer.Number()
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
 	)
@@ -748,7 +748,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatched(key K, matcher func(that V) bool) ([]
 	switch mode := skl.loadXNodeMode(); mode {
 	// FIXME: Merge these 2 deletion loops logic
 	case unique:
-		panic("[x-conc-skl] unique mode skip-list not implements the remove if matched method")
+		panic("[x-conc-skl] unique mode skip-list not implements the remove if match method")
 	case linkedList, rbtree:
 		for {
 			foundAt = skl.rmTraverse(key, aux)
@@ -879,7 +879,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
-		ver      = skl.idGen.Number()
+		ver      = skl.optVer.Number()
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
 	)

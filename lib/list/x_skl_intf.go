@@ -4,6 +4,7 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
+// The classic and unique skip list.
 type SkipList[K infra.OrderedKey, V comparable] interface {
 	Levels() int32
 	Len() int64
@@ -16,11 +17,12 @@ type SkipList[K infra.OrderedKey, V comparable] interface {
 	PeekHead() SklElement[K, V]
 }
 
+// The X means the extended interface and it could store duplicate keys and values.
 type XSkipList[K infra.OrderedKey, V comparable] interface {
 	SkipList[K, V]
-	LoadIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error)
+	LoadIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error)
 	LoadAll(key K) ([]SklElement[K, V], error)
-	RemoveIfMatched(key K, matcher func(that V) bool) ([]SklElement[K, V], error)
+	RemoveIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error)
 	RemoveAll(key K) ([]SklElement[K, V], error)
 }
 

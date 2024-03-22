@@ -402,12 +402,12 @@ func (skl *xSklDelegator[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	}
 	return skl.impl.LoadAll(key)
 }
-func (skl *xSklDelegator[K, V]) LoadIfMatched(weight K, matcher func(V) bool) ([]SklElement[K, V], error) {
+func (skl *xSklDelegator[K, V]) LoadIfMatch(key K, matcher func(V) bool) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.RLock()
 		defer skl.rwmu.RUnlock()
 	}
-	return skl.impl.LoadIfMatched(weight, matcher)
+	return skl.impl.LoadIfMatch(key, matcher)
 }
 func (skl *xSklDelegator[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
@@ -416,12 +416,12 @@ func (skl *xSklDelegator[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	}
 	return skl.impl.RemoveAll(key)
 }
-func (skl *xSklDelegator[K, V]) RemoveIfMatched(key K, matcher func(V) bool) ([]SklElement[K, V], error) {
+func (skl *xSklDelegator[K, V]) RemoveIfMatch(key K, matcher func(V) bool) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
 		defer skl.rwmu.Unlock()
 	}
-	return skl.impl.RemoveIfMatched(key, matcher)
+	return skl.impl.RemoveIfMatch(key, matcher)
 }
 
 func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyComparator[K], opts ...SklOption[K, V]) (XSkipList[K, V], error) {
@@ -520,7 +520,7 @@ func sklFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) (XSkip
 			pool:    newXConcSklPool[K, V](),
 			kcmp:    opts.keyComparator,
 			vcmp:    opts.valComparator,
-			idGen:   opts.concOptimisticLockVerGen,
+			optVer:  opts.concOptimisticLockVerGen,
 			rand:    randomLevelV3,
 			flags:   flagBits{},
 		}

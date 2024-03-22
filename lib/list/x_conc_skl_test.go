@@ -200,7 +200,7 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 		flags: flagBits{},
 	}
 	idGen, _ := id.MonotonicNonZeroID()
-	skl.idGen = idGen
+	skl.optVer = idGen
 	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(xSklGoMutex))
 	skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(linkedList))
 
@@ -464,7 +464,7 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
 		flags: flagBits{},
 	}
 	idGen, _ := id.MonotonicNonZeroID()
-	skl.idGen = idGen
+	skl.optVer = idGen
 	if mode != unique {
 		skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
 		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
