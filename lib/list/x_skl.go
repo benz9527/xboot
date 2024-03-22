@@ -156,7 +156,7 @@ func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable]() SklOptio
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
-		} else if opts.concDataNodeMode != nil {
+		} else if opts.concDataNodeMode != nil && *opts.concDataNodeMode != unique {
 			return fmt.Errorf("[x-conc-skl] unique data node mode set failed, previous mode: %s, %w", *opts.concDataNodeMode, errSklOptionHasBeenEnabled)
 		} else if opts.valComparator != nil {
 			return fmt.Errorf("[x-conc-skl] unique data node mode not support value comparator %w", errSklOptionHasBeenEnabled)
@@ -293,6 +293,7 @@ func NewSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyC
 		sklType:       typ,
 		keyComparator: cmp,
 	}
+
 	var err error
 	for _, o := range opts {
 		err = multierr.Append(err, o(sklOpts))
@@ -311,10 +312,16 @@ func NewSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyC
 			return nil, errors.New("[x-com-skl] init the unique data node mode but value comparator is set")
 		}
 	case XConcSkl:
-		if *sklOpts.concDataNodeMode != unique || sklOpts.valComparator != nil {
-			return nil, errors.New("[x-conc-skl] init the unique data node mode with the wrong mode or value comparator is set")
+		if sklOpts.concDataNodeMode == nil {
+			mode := unique
+			sklOpts.concDataNodeMode = &mode
 		}
-
+		if *sklOpts.concDataNodeMode != unique {
+			return nil, fmt.Errorf("[x-conc-skl] init with the wrong mode: %s", *sklOpts.concDataNodeMode)
+		}
+		if sklOpts.valComparator != nil {
+			return nil, errors.New("[x-conc-skl] init the unique data node mode but value comparator is set")
+		}
 		if sklOpts.concOptimisticLockVerGen == nil {
 			gen, _ := id.MonotonicNonZeroID() // fallback to monotonic non-zero id
 			sklOpts.concOptimisticLockVerGen = gen
@@ -454,12 +461,13 @@ func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKey
 		if sklOpts.concDataNodeMode == nil {
 			mode := rbtree // fallback to rbtree mode
 			sklOpts.concDataNodeMode = &mode
-		} else if *sklOpts.concDataNodeMode == unique {
+		}
+		if sklOpts.concDataNodeMode != nil && *sklOpts.concDataNodeMode == unique {
 			return nil, fmt.Errorf("[x-skl] x-conc-skl init with the wrong mode: %s", unique)
-		} else if sklOpts.valComparator == nil {
+		}
+		if sklOpts.valComparator == nil {
 			return nil, errors.New("[x-skl] x-conc-skl non-unique data node mode, the value comparator must be set")
 		}
-
 		if sklOpts.concOptimisticLockVerGen == nil {
 			gen, _ := id.MonotonicNonZeroID() // fallback to monotonic non-zero id
 			sklOpts.concOptimisticLockVerGen = gen
