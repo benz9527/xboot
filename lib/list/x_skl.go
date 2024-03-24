@@ -152,7 +152,7 @@ func WithXConcSklOptimisticVersionGen[K infra.OrderedKey, V comparable](verGen i
 	}
 }
 
-func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable](disableSegMutex ...bool) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -161,6 +161,15 @@ func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable]() SklOptio
 		} else if opts.valComparator != nil {
 			return fmt.Errorf("[x-conc-skl] unique data node mode not support value comparator %w", errSklOptionHasBeenEnabled)
 		}
+
+		if disableSegMutex != nil && disableSegMutex[0] {
+			if opts.concSegMutexImpl != nil {
+				return fmt.Errorf("[x-conc-skl] unique data node mode seg mutex set failed, previous mutex: %s, %w", *opts.concSegMutexImpl, errSklOptionHasBeenEnabled)
+			}
+			mu := xSklFakeMutex
+			opts.concSegMutexImpl = &mu
+		}
+
 		mode := unique
 		opts.concDataNodeMode = &mode
 		return nil

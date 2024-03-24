@@ -193,6 +193,7 @@ type mutexImpl uint8
 const (
 	xSklSpinMutex mutexImpl = iota // Lock-free, spin-lock, optimistic-lock
 	xSklGoMutex
+	xSklFakeMutex // No lock
 )
 
 func (mu mutexImpl) String() string {
@@ -201,6 +202,8 @@ func (mu mutexImpl) String() string {
 		return "spin"
 	case xSklGoMutex:
 		return "sync.Mutex"
+	case xSklFakeMutex:
+		return "fake"
 	default:
 		return "unknown"
 	}
@@ -223,9 +226,9 @@ const (
 
 type spinMutex uint64
 
-func (lock *spinMutex) lock(version uint64) {
+func (m *spinMutex) lock(version uint64) {
 	backoff := uint8(1)
-	for !atomic.CompareAndSwapUint64((*uint64)(lock), unlocked, version) {
+	for !atomic.CompareAndSwapUint64((*uint64)(m), unlocked, version) {
 		if backoff <= 32 {
 			for i := uint8(0); i < backoff; i++ {
 				infra.ProcYield(20)
@@ -237,12 +240,12 @@ func (lock *spinMutex) lock(version uint64) {
 	}
 }
 
-func (lock *spinMutex) tryLock(version uint64) bool {
-	return atomic.CompareAndSwapUint64((*uint64)(lock), unlocked, version)
+func (m *spinMutex) tryLock(version uint64) bool {
+	return atomic.CompareAndSwapUint64((*uint64)(m), unlocked, version)
 }
 
-func (lock *spinMutex) unlock(version uint64) bool {
-	return atomic.CompareAndSwapUint64((*uint64)(lock), version, unlocked)
+func (m *spinMutex) unlock(version uint64) bool {
+	return atomic.CompareAndSwapUint64((*uint64)(m), version, unlocked)
 }
 
 type goSyncMutex struct {
@@ -261,3 +264,9 @@ func (m *goSyncMutex) unlock(version uint64) bool {
 	m.mu.Unlock()
 	return true
 }
+
+type fakeMutex struct{}
+
+func (m *fakeMutex) lock(version uint64)         {}
+func (m *fakeMutex) tryLock(version uint64) bool { return true }
+func (m *fakeMutex) unlock(version uint64) bool  { return true }
