@@ -86,7 +86,7 @@ const (
 	XConcSkl
 )
 
-type sklOptions[K infra.OrderedKey, V comparable] struct {
+type sklOptions[K infra.OrderedKey, V any] struct {
 	keyComparator            infra.OrderedKeyComparator[K]
 	valComparator            SklValComparator[V]
 	randLevelGen             SklRand
@@ -98,9 +98,9 @@ type sklOptions[K infra.OrderedKey, V comparable] struct {
 	isConcRbtreeBorrowSucc   bool
 }
 
-type SklOption[K infra.OrderedKey, V comparable] func(*sklOptions[K, V]) error
+type SklOption[K infra.OrderedKey, V any] func(*sklOptions[K, V]) error
 
-func WithSklRandLevelGen[K infra.OrderedKey, V comparable](gen SklRand) SklOption[K, V] {
+func WithSklRandLevelGen[K infra.OrderedKey, V any](gen SklRand) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.randLevelGen != nil {
 			return fmt.Errorf("[x-skl] random level generator %w", errSklOptionHasBeenEnabled)
@@ -112,7 +112,7 @@ func WithSklRandLevelGen[K infra.OrderedKey, V comparable](gen SklRand) SklOptio
 	}
 }
 
-func WithXComSklEnableConc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+func WithXComSklEnableConc[K infra.OrderedKey, V any]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XComSkl {
 			return fmt.Errorf("[x-com-skl] %w", errSklOptionWrongTypeApply)
@@ -124,7 +124,7 @@ func WithXComSklEnableConc[K infra.OrderedKey, V comparable]() SklOption[K, V] {
 	}
 }
 
-func WithXComSklValComparator[K infra.OrderedKey, V comparable](cmp SklValComparator[V]) SklOption[K, V] {
+func WithXComSklValComparator[K infra.OrderedKey, V any](cmp SklValComparator[V]) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XComSkl {
 			return fmt.Errorf("[x-com-skl] %w", errSklOptionWrongTypeApply)
@@ -138,7 +138,7 @@ func WithXComSklValComparator[K infra.OrderedKey, V comparable](cmp SklValCompar
 	}
 }
 
-func WithXConcSklOptimisticVersionGen[K infra.OrderedKey, V comparable](verGen id.UUIDGen) SklOption[K, V] {
+func WithXConcSklOptimisticVersionGen[K infra.OrderedKey, V any](verGen id.UUIDGen) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -152,7 +152,7 @@ func WithXConcSklOptimisticVersionGen[K infra.OrderedKey, V comparable](verGen i
 	}
 }
 
-func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable](disableSegMutex ...bool) SklOption[K, V] {
+func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V any](disableSegMutex ...bool) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -176,7 +176,7 @@ func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V comparable](disableSeg
 	}
 }
 
-func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V comparable](cmp SklValComparator[V]) SklOption[K, V] {
+func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V any](cmp SklValComparator[V]) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -195,7 +195,7 @@ func WithXConcSklDataNodeLinkedListMode[K infra.OrderedKey, V comparable](cmp Sk
 	}
 }
 
-func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V comparable](cmp SklValComparator[V], borrowSucc ...bool) SklOption[K, V] {
+func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V any](cmp SklValComparator[V], borrowSucc ...bool) SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -215,7 +215,7 @@ func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V comparable](cmp SklVal
 	}
 }
 
-func WithSklConcBySpin[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+func WithSklConcBySpin[K infra.OrderedKey, V any]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -228,7 +228,7 @@ func WithSklConcBySpin[K infra.OrderedKey, V comparable]() SklOption[K, V] {
 	}
 }
 
-func WithSklConcByGoNative[K infra.OrderedKey, V comparable]() SklOption[K, V] {
+func WithSklConcByGoNative[K infra.OrderedKey, V any]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -248,7 +248,7 @@ var (
 // sklDelegator is the skip list delegator.
 // It does not support duplicate keys and values.
 // Concurrent read-write mode is supported if enabled.
-type sklDelegator[K infra.OrderedKey, V comparable] struct {
+type sklDelegator[K infra.OrderedKey, V any] struct {
 	rwmu *sync.RWMutex
 	impl SkipList[K, V]
 }
@@ -293,7 +293,7 @@ func (skl *sklDelegator[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	return skl.impl.RemoveFirst(key)
 }
 
-func NewSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyComparator[K], opts ...SklOption[K, V]) (SkipList[K, V], error) {
+func NewSkl[K infra.OrderedKey, V any](typ SklType, cmp infra.OrderedKeyComparator[K], opts ...SklOption[K, V]) (SkipList[K, V], error) {
 	if cmp == nil {
 		return nil, errors.New("[x-skl] key comparator is nil")
 	}
@@ -367,7 +367,7 @@ var (
 // xSklDelegator is the skip list delegator.
 // It supports duplicate keys and values.
 // Concurrent read-write mode is supported if enabled.
-type xSklDelegator[K infra.OrderedKey, V comparable] struct {
+type xSklDelegator[K infra.OrderedKey, V any] struct {
 	rwmu *sync.RWMutex
 	impl XSkipList[K, V]
 }
@@ -440,7 +440,7 @@ func (skl *xSklDelegator[K, V]) RemoveIfMatch(key K, matcher func(V) bool) ([]Sk
 	return skl.impl.RemoveIfMatch(key, matcher)
 }
 
-func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKeyComparator[K], opts ...SklOption[K, V]) (XSkipList[K, V], error) {
+func NewXSkl[K infra.OrderedKey, V any](typ SklType, cmp infra.OrderedKeyComparator[K], opts ...SklOption[K, V]) (XSkipList[K, V], error) {
 	if cmp == nil {
 		return nil, errors.New("[x-skl] key comparator is nil")
 	}
@@ -502,7 +502,7 @@ func NewXSkl[K infra.OrderedKey, V comparable](typ SklType, cmp infra.OrderedKey
 	return d, nil
 }
 
-func sklFactory[K infra.OrderedKey, V comparable](opts *sklOptions[K, V]) (XSkipList[K, V], error) {
+func sklFactory[K infra.OrderedKey, V any](opts *sklOptions[K, V]) (XSkipList[K, V], error) {
 	var impl XSkipList[K, V]
 	switch opts.sklType {
 	case XComSkl:

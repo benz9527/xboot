@@ -16,7 +16,7 @@ var (
 // The head.indices[0].succ is the first data node of skip-list.
 // From head.indices[1], all of them are cache used to implement binary search.
 // @field tail A sentinel node. Points the skip-list tail node.
-type xComSkl[K infra.OrderedKey, V comparable] struct {
+type xComSkl[K infra.OrderedKey, V any] struct {
 	kcmp       infra.OrderedKeyComparator[K] // key comparator
 	vcmp       SklValComparator[V]           // value comparator
 	rand       SklRand

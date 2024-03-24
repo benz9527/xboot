@@ -7,7 +7,7 @@ import (
 // The cache level array index > 0, it is the Y axis, and it means that it is the interval after
 // the bisection search. Used to locate an element quickly.
 // The cache level array index == 0, it is the X axis, and it means that it is the bits container.
-type xComSklNode[K infra.OrderedKey, V comparable] struct {
+type xComSklNode[K infra.OrderedKey, V any] struct {
 	// The cache part.
 	// When the current node works as a data node, it doesn't contain levels metadata.
 	// If a node is a level node, the cache is from levels[0], but it is differed
@@ -59,7 +59,7 @@ func (node *xComSklNode[K, V]) Free() {
 	node.indices = nil
 }
 
-func newXComSklNode[K infra.OrderedKey, V comparable](level int32, key K, obj V) *xComSklNode[K, V] {
+func newXComSklNode[K infra.OrderedKey, V any](level int32, key K, obj V) *xComSklNode[K, V] {
 	e := &xComSklNode[K, V]{
 		element: &xSklElement[K, V]{
 			key: key,

@@ -9,11 +9,11 @@ import (
 // FIXME: How to recycle the x-conc-skl node and indices and avoid the data race?
 
 // The pool is used to recycle the auxiliary data structure.
-type xConcSklPool[K infra.OrderedKey, V comparable] struct {
+type xConcSklPool[K infra.OrderedKey, V any] struct {
 	auxPool *sync.Pool
 }
 
-func newXConcSklPool[K infra.OrderedKey, V comparable]() *xConcSklPool[K, V] {
+func newXConcSklPool[K infra.OrderedKey, V any]() *xConcSklPool[K, V] {
 	p := &xConcSklPool[K, V]{
 		auxPool: &sync.Pool{
 			New: func() any {

@@ -18,7 +18,7 @@ var (
 	_ SklIterationItem[uint8, uint8] = (*xSklIter[uint8, uint8])(nil)
 )
 
-type xSklElement[K infra.OrderedKey, V comparable] struct {
+type xSklElement[K infra.OrderedKey, V any] struct {
 	key K
 	val V
 }
@@ -31,7 +31,7 @@ func (e *xSklElement[K, V]) Val() V {
 	return e.val
 }
 
-type xSklIter[K infra.OrderedKey, V comparable] struct {
+type xSklIter[K infra.OrderedKey, V any] struct {
 	keyFn           func() K
 	valFn           func() V
 	nodeLevelFn     func() uint32

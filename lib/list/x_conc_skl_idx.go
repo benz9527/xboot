@@ -8,11 +8,11 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-type xConcSklIndex[K infra.OrderedKey, V comparable] struct {
+type xConcSklIndex[K infra.OrderedKey, V any] struct {
 	forward *xConcSklNode[K, V]
 }
 
-type xConcSklIndices[W infra.OrderedKey, O comparable] []*xConcSklIndex[W, O]
+type xConcSklIndices[W infra.OrderedKey, O any] []*xConcSklIndex[W, O]
 
 func (indices xConcSklIndices[W, O]) must(i int32) {
 	l := len(indices)
@@ -42,7 +42,7 @@ func (indices xConcSklIndices[W, O]) atomicStoreForwardIndex(i int32, n *xConcSk
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].forward)), unsafe.Pointer(n))
 }
 
-func newXConcSklIndices[K infra.OrderedKey, V comparable](level int32) xConcSklIndices[K, V] {
+func newXConcSklIndices[K infra.OrderedKey, V any](level int32) xConcSklIndices[K, V] {
 	indices := make(xConcSklIndices[K, V], level)
 	for i := int32(0); i < level; i++ {
 		indices[i] = &xConcSklIndex[K, V]{
@@ -53,7 +53,7 @@ func newXConcSklIndices[K infra.OrderedKey, V comparable](level int32) xConcSklI
 }
 
 // Auxiliary: records the traverse predecessors and successors info.
-type xConcSklAux[K infra.OrderedKey, V comparable] []*xConcSklNode[K, V]
+type xConcSklAux[K infra.OrderedKey, V any] []*xConcSklNode[K, V]
 
 // Left part.
 func (aux xConcSklAux[K, V]) loadPred(i int32) *xConcSklNode[K, V] {

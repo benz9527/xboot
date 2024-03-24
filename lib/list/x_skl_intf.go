@@ -5,7 +5,7 @@ import (
 )
 
 // The classic and unique skip list.
-type SkipList[K infra.OrderedKey, V comparable] interface {
+type SkipList[K infra.OrderedKey, V any] interface {
 	Levels() int32
 	Len() int64
 	IndexCount() uint64
@@ -18,7 +18,7 @@ type SkipList[K infra.OrderedKey, V comparable] interface {
 }
 
 // The X means the extended interface and it could store duplicate keys and values.
-type XSkipList[K infra.OrderedKey, V comparable] interface {
+type XSkipList[K infra.OrderedKey, V any] interface {
 	SkipList[K, V]
 	LoadIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error)
 	LoadAll(key K) ([]SklElement[K, V], error)
@@ -26,15 +26,15 @@ type XSkipList[K infra.OrderedKey, V comparable] interface {
 	RemoveAll(key K) ([]SklElement[K, V], error)
 }
 
-type SklElement[K infra.OrderedKey, V comparable] interface {
+type SklElement[K infra.OrderedKey, V any] interface {
 	Key() K
 	Val() V
 }
 
-type SklIterationItem[K infra.OrderedKey, V comparable] interface {
+type SklIterationItem[K infra.OrderedKey, V any] interface {
 	SklElement[K, V]
 	NodeLevel() uint32
 	NodeItemCount() int64
 }
 
-type SklValComparator[V comparable] func(i, j V) int64
+type SklValComparator[V any] func(i, j V) int64

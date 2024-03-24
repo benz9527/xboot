@@ -17,9 +17,9 @@ const (
 // embedded data-structure
 // singly linked-list and rbtree
 // @field vptr: In Uber go guid, it is not to store a pointer for interface type.
-// But in this case, we don't know whether the V (comparable) is an interface type.
+// But in this case, we don't know whether the V (any) is an interface type.
 // And it is easy way for us to debug the value.
-type xNode[V comparable] struct {
+type xNode[V any] struct {
 	// parent It is easy for us to backward to access upper level node info.
 	parent *xNode[V] // Linked-list & rbtree
 	left   *xNode[V] // rbtree only
@@ -217,7 +217,7 @@ func (mode xNodeMode) String() string {
 	}
 }
 
-type xConcSklNode[K infra.OrderedKey, V comparable] struct {
+type xConcSklNode[K infra.OrderedKey, V any] struct {
 	// If it is unique x-node type store value directly.
 	// Otherwise, it is a sentinel node for linked-list or rbtree.
 	root    *xNode[V]
@@ -1069,7 +1069,7 @@ func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
 	return nil
 }
 
-func newXConcSklNode[K infra.OrderedKey, V comparable](
+func newXConcSklNode[K infra.OrderedKey, V any](
 	key K,
 	val V,
 	lvl int32,
@@ -1105,7 +1105,7 @@ func newXConcSklNode[K infra.OrderedKey, V comparable](
 	return node
 }
 
-func newXConcSklHead[K infra.OrderedKey, V comparable](mu mutexImpl, mode xNodeMode) *xConcSklNode[K, V] {
+func newXConcSklHead[K infra.OrderedKey, V any](mu mutexImpl, mode xNodeMode) *xConcSklNode[K, V] {
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: sklMaxLevel,
@@ -1117,7 +1117,7 @@ func newXConcSklHead[K infra.OrderedKey, V comparable](mu mutexImpl, mode xNodeM
 	return head
 }
 
-func unlockNodes[K infra.OrderedKey, V comparable](version uint64, num int32, nodes ...*xConcSklNode[K, V]) {
+func unlockNodes[K infra.OrderedKey, V any](version uint64, num int32, nodes ...*xConcSklNode[K, V]) {
 	var prev *xConcSklNode[K, V]
 	for i := num; i >= 0; i-- {
 		if nodes[i] != prev {
