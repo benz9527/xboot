@@ -1,7 +1,6 @@
 package list
 
 import (
-	"strconv"
 	"sync/atomic"
 	"unsafe"
 
@@ -14,31 +13,20 @@ type xConcSklIndex[K infra.OrderedKey, V any] struct {
 
 type xConcSklIndices[W infra.OrderedKey, O any] []*xConcSklIndex[W, O]
 
-func (indices xConcSklIndices[W, O]) must(i int32) {
-	l := len(indices)
-	if int(i) >= l {
-		panic("[x-conc-skl-indexCount] " + strconv.Itoa(int(i)) + " out of nodeLen " + strconv.Itoa(l))
-	}
-}
-
 func (indices xConcSklIndices[W, O]) loadForwardIndex(i int32) *xConcSklNode[W, O] {
-	indices.must(i)
 	return indices[i].forward
 }
 
 func (indices xConcSklIndices[W, O]) storeForwardIndex(i int32, n *xConcSklNode[W, O]) {
-	indices.must(i)
 	indices[i].forward = n
 }
 
 func (indices xConcSklIndices[W, O]) atomicLoadForwardIndex(i int32) *xConcSklNode[W, O] {
-	indices.must(i)
 	ptr := (*xConcSklNode[W, O])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].forward))))
 	return ptr
 }
 
 func (indices xConcSklIndices[W, O]) atomicStoreForwardIndex(i int32, n *xConcSklNode[W, O]) {
-	indices.must(i)
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&indices[i].forward)), unsafe.Pointer(n))
 }
 

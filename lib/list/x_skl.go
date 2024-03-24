@@ -538,7 +538,7 @@ func sklFactory[K infra.OrderedKey, V any](opts *sklOptions[K, V]) (XSkipList[K,
 			kcmp:    opts.keyComparator,
 			vcmp:    opts.valComparator,
 			optVer:  opts.concOptimisticLockVerGen,
-			rand:    randomLevelV3,
+			rand:    opts.randLevelGen,
 			flags:   flagBits{},
 		}
 		skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(*opts.concSegMutexImpl))
