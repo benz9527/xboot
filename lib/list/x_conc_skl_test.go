@@ -588,3 +588,71 @@ func TestXConcSklPeekAndPopHead(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkXConcSklUnique(b *testing.B) {
+	type testcase struct {
+		name string
+		mu   mutexImpl
+	}
+	testcases := []testcase{
+		{
+			name: "unique with fake mutex",
+			mu:   xSklFakeMutex,
+		},
+		{
+			name: "unique with spin mutex",
+			mu:   xSklSpinMutex,
+		},
+		{
+			name: "unique with sync mutex",
+			mu:   xSklGoMutex,
+		},
+	}
+
+	testByBytes := []byte(`abc`)
+
+	rc := func(mu mutexImpl) func(pb *testing.B) {
+		return func(pb *testing.B) {
+			pb.StopTimer()
+			var opts = make([]SklOption[int, []byte], 0, 2)
+			switch mu {
+			case xSklGoMutex:
+				opts = append(opts,
+					WithXConcSklDataNodeUniqueMode[int, []byte](),
+					WithSklConcByGoNative[int, []byte](),
+				)
+			case xSklSpinMutex:
+				opts = append(opts,
+					WithXConcSklDataNodeUniqueMode[int, []byte](),
+					WithSklConcBySpin[int, []byte](),
+				)
+			case xSklFakeMutex:
+				opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte](true))
+			}
+			skl, err := NewSkl[int, []byte](
+				XConcSkl,
+				func(i, j int) int64 {
+					if i == j {
+						return 0
+					} else if i < j {
+						return -1
+					}
+					return 1
+				},
+				opts...,
+			)
+			if err != nil {
+				panic(err)
+			}
+
+			pb.StartTimer()
+			for i := 0; i < pb.N; i++ {
+				skl.Insert(i, testByBytes)
+			}
+		}
+	}
+
+	for _, tc := range testcases {
+		b.Run(tc.name, rc(tc.mu))
+	}
+}
