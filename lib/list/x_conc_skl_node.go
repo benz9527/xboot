@@ -405,7 +405,6 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 
 // i1: Empty rbtree, insert directly, but root node is painted to black.
 func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
-
 	if /* i1 */ node.root.isNilLeaf() {
 		node.root = &xNode[V]{
 			vptr: &val,
@@ -1047,10 +1046,10 @@ func (node *xConcSklNode[K, V]) rbBFSLeaves() []*xNode[V] {
 
 2-3-4 tree like:
 
-	       <8> --- [13]
-		  /   \       \
-		 /     \       \
-	  [1]-<6> [11] <15>-[17]
+	       <8> --- [13] --- <15>
+		  /  \             /    \
+		 /    \           /      \
+	  <1>-[6][11]      [14] <16>-[17]
 
 Each leaf node to root node black depth are equal.
 */
