@@ -17,9 +17,7 @@ const (
 	xConcSklRbtreeRmBorrowFlagBit = 0x0400
 )
 
-var (
-	_ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
-)
+var _ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
 
 type xConcSkl[K infra.OrderedKey, V any] struct {
 	head       *xConcSklNode[K, V]
@@ -146,7 +144,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 				return ErrXSklIsFull
 			}
 
-			if isAppend, err := node.storeVal(ver, val, ifNotPresent...); err != nil {
+			if isAppend, err := node.storeVal(ver, val, skl.vcmp, ifNotPresent...); err != nil {
 				return err
 			} else if isAppend {
 				atomic.AddInt64(&skl.nodeLen, 1)
@@ -838,7 +836,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 						return true
 					})
 					for _, e := range elements {
-						if _, err := rmNode.rbRemove(e.Val()); err == nil {
+						if _, err := rmNode.rbRemove(e.Val(), skl.vcmp); err == nil {
 							atomic.AddInt64(&rmNode.count, -1)
 							atomic.AddInt64(&skl.nodeLen, -1)
 						}

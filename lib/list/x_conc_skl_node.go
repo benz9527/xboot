@@ -222,7 +222,6 @@ type xConcSklNode[K infra.OrderedKey, V any] struct {
 	// Otherwise, it is a sentinel node for linked-list or rbtree.
 	root    *xNode[V]
 	key     K
-	vcmp    SklValComparator[V]
 	indices xConcSklIndices[K, V]
 	mu      segmentMutex
 	flags   flagBits
@@ -230,7 +229,7 @@ type xConcSklNode[K infra.OrderedKey, V any] struct {
 	level   uint32
 }
 
-func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, ifNotPresent ...bool) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
 	switch mode := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits)); mode {
 	case unique:
 		if ifNotPresent[0] {
@@ -241,13 +240,13 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, ifNotPresent ...bool
 		// pred
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		isAppend, err = node.llInsert(val, ifNotPresent...)
+		isAppend, err = node.llInsert(val, vcmp, ifNotPresent...)
 		node.mu.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	case rbtree:
 		node.mu.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		isAppend, err = node.rbInsert(val)
+		isAppend, err = node.rbInsert(val, vcmp)
 		node.mu.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
@@ -279,9 +278,9 @@ func (node *xConcSklNode[K, V]) atomicStoreNextNode(i int32, next *xConcSklNode[
 
 /* linked-list operation implementation */
 
-func (node *xConcSklNode[K, V]) llInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) llInsert(val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
 	for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
-		if /* replace */ res := node.vcmp(val, *n.vptr); res == 0 {
+		if /* replace */ res := vcmp(val, *n.vptr); res == 0 {
 			if /* disabled */ ifNotPresent[0] {
 				return false, ErrXSklDisabledValReplace
 			}
@@ -404,7 +403,7 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 }
 
 // i1: Empty rbtree, insert directly, but root node is painted to black.
-func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) rbInsert(val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
 	if /* i1 */ node.root.isNilLeaf() {
 		node.root = &xNode[V]{
 			vptr: &val,
@@ -416,7 +415,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend 
 	var x, y *xNode[V] = node.root, nil
 	for !x.isNilLeaf() {
 		y = x
-		res := node.vcmp(val, *x.vptr)
+		res := vcmp(val, *x.vptr)
 		if /* equal */ res == 0 {
 			break
 		} else /* less */ if res < 0 {
@@ -432,7 +431,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend 
 	}
 
 	var z *xNode[V]
-	res := node.vcmp(val, *y.vptr)
+	res := vcmp(val, *y.vptr)
 	if /* equal */ res == 0 {
 		if /* disabled */ ifNotPresent[0] {
 			return false, ErrXSklDisabledValReplace
@@ -689,12 +688,12 @@ func (node *xConcSklNode[K, V]) rbRemoveNode(z *xNode[V]) (res *xNode[V], err er
 	return res, nil
 }
 
-func (node *xConcSklNode[K, V]) rbRemove(val V) (*xNode[V], error) {
+func (node *xConcSklNode[K, V]) rbRemove(val V, vcmp SklValComparator[V]) (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return nil, ErrXSklNotFound
 	}
 	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
-		return node.vcmp(val, *vn.vptr)
+		return vcmp(val, *vn.vptr)
 	})
 	if z == nil {
 		return nil, ErrXSklNotFound
@@ -1074,13 +1073,12 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	lvl int32,
 	mu mutexImpl,
 	mode xNodeMode,
-	cmp SklValComparator[V],
+	vcmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node := &xConcSklNode[K, V]{
 		key:   key,
 		level: uint32(lvl),
 		mu:    mutexFactory(mu),
-		vcmp:  cmp,
 	}
 	node.indices = newXConcSklIndices[K, V](lvl)
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
@@ -1096,7 +1094,7 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 			},
 		}
 	case rbtree:
-		node.rbInsert(val)
+		node.rbInsert(val, vcmp)
 	default:
 		panic("[x-conc-skl] unknown x-node type")
 	}

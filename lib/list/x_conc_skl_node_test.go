@@ -189,17 +189,17 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		val   uint64
 	}
 
-	node := &xConcSklNode[uint64, uint64]{
-		vcmp: func(i, j uint64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
+	vcmp := func(i, j uint64) int64 {
+		if i == j {
+			return 0
+		} else if i > j {
+			return 1
+		}
+		return -1
 	}
-	node.rbInsert(52)
+
+	node := &xConcSklNode[uint64, uint64]{}
+	node.rbInsert(52, vcmp)
 	expected := []checkData{
 		{black, 52},
 	}
@@ -211,7 +211,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	node.rbInsert(47)
+	node.rbInsert(47, vcmp)
 	expected = []checkData{
 		{red, 47}, {black, 52},
 	}
@@ -222,7 +222,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	})
 	require.NoError(t, node.rbRedViolationValidate())
 
-	node.rbInsert(3)
+	node.rbInsert(3, vcmp)
 	expected = []checkData{
 		{red, 3}, {black, 47}, {red, 52},
 	}
@@ -234,10 +234,12 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	node.rbInsert(35)
+	node.rbInsert(35, vcmp)
 	expected = []checkData{
-		{black, 3}, {red, 35},
-		{black, 47}, {black, 52},
+		{black, 3},
+		{red, 35},
+		{black, 47},
+		{black, 52},
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
@@ -247,10 +249,13 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	node.rbInsert(24)
+	node.rbInsert(24, vcmp)
 	expected = []checkData{
-		{red, 3}, {black, 24}, {red, 35},
-		{black, 47}, {black, 52},
+		{red, 3},
+		{black, 24},
+		{red, 35},
+		{black, 47},
+		{black, 52},
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
@@ -262,26 +267,13 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 
 	// remove
 
-	x, err := node.rbRemove(24)
+	x, err := node.rbRemove(24, vcmp)
 	require.NoError(t, err)
 	require.Equal(t, uint64(24), *x.vptr)
 	expected = []checkData{
-		{black, 3}, {red, 35},
-		{black, 47}, {black, 52},
-	}
-	node.rbDFS(func(idx int64, color color, val uint64) bool {
-		require.Equal(t, expected[idx].color, color)
-		require.Equal(t, expected[idx].val, val)
-		return true
-	})
-	require.NoError(t, node.rbRedViolationValidate())
-	require.NoError(t, node.rbBlackViolationValidate())
-
-	x, err = node.rbRemove(47)
-	require.NoError(t, err)
-	require.Equal(t, uint64(47), *x.vptr)
-	expected = []checkData{
-		{black, 3}, {black, 35},
+		{black, 3},
+		{red, 35},
+		{black, 47},
 		{black, 52},
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
@@ -292,7 +284,23 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	x, err = node.rbRemove(52)
+	x, err = node.rbRemove(47, vcmp)
+	require.NoError(t, err)
+	require.Equal(t, uint64(47), *x.vptr)
+	expected = []checkData{
+		{black, 3},
+		{black, 35},
+		{black, 52},
+	}
+	node.rbDFS(func(idx int64, color color, val uint64) bool {
+		require.Equal(t, expected[idx].color, color)
+		require.Equal(t, expected[idx].val, val)
+		return true
+	})
+	require.NoError(t, node.rbRedViolationValidate())
+	require.NoError(t, node.rbBlackViolationValidate())
+
+	x, err = node.rbRemove(52, vcmp)
 	require.NoError(t, err)
 	require.Equal(t, uint64(52), *x.vptr)
 	expected = []checkData{
@@ -306,7 +314,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	x, err = node.rbRemove(3)
+	x, err = node.rbRemove(3, vcmp)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), *x.vptr)
 	expected = []checkData{
@@ -320,7 +328,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	x, err = node.rbRemove(35)
+	x, err = node.rbRemove(35, vcmp)
 	require.NoError(t, err)
 	require.Equal(t, uint64(35), *x.vptr)
 	require.Equal(t, int64(0), atomic.LoadInt64(&node.count))
@@ -332,24 +340,27 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		val   uint64
 	}
 
-	node := &xConcSklNode[uint64, uint64]{
-		vcmp: func(i, j uint64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
+	vcmp := func(i, j uint64) int64 {
+		if i == j {
+			return 0
+		} else if i > j {
+			return 1
+		}
+		return -1
 	}
-	node.rbInsert(52)
-	node.rbInsert(47)
-	node.rbInsert(3)
-	node.rbInsert(35)
-	node.rbInsert(24)
+
+	node := &xConcSklNode[uint64, uint64]{}
+	node.rbInsert(52, vcmp)
+	node.rbInsert(47, vcmp)
+	node.rbInsert(3, vcmp)
+	node.rbInsert(35, vcmp)
+	node.rbInsert(24, vcmp)
 	expected := []checkData{
-		{red, 3}, {black, 24}, {red, 35},
-		{black, 47}, {black, 52},
+		{red, 3},
+		{black, 24},
+		{red, 35},
+		{black, 47},
+		{black, 52},
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
@@ -363,8 +374,10 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), *x.vptr)
 	expected = []checkData{
-		{black, 24}, {red, 35},
-		{black, 47}, {black, 52},
+		{black, 24},
+		{red, 35},
+		{black, 47},
+		{black, 52},
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
@@ -379,7 +392,8 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	require.Equal(t, uint64(24), *x.vptr)
 	expected = []checkData{
 		{black, 35},
-		{black, 47}, {black, 52},
+		{black, 47},
+		{black, 52},
 	}
 	node.rbDFS(func(idx int64, color color, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
@@ -428,22 +442,22 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
-	node := &xConcSklNode[uint64, uint64]{
-		vcmp: func(i, j uint64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
+	vcmp := func(i, j uint64) int64 {
+		if i == j {
+			return 0
+		} else if i > j {
+			return 1
+		}
+		return -1
 	}
+
+	node := &xConcSklNode[uint64, uint64]{}
 	if rbRmBySucc {
 		node.flags.set(nodeRbRmBorrowFlagBit)
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbInsert(i)
+		node.rbInsert(i, vcmp)
 		require.NoError(t, node.rbRedViolationValidate())
 		require.NoError(t, node.rbBlackViolationValidate())
 	}
@@ -453,7 +467,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 	})
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
-		node.rbInsert(i)
+		node.rbInsert(i, vcmp)
 		require.NoError(t, node.rbRedViolationValidate())
 		require.NoError(t, node.rbBlackViolationValidate())
 	}
@@ -465,11 +479,11 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		if i == 92 {
 			x := node.rbSearch(node.root, func(x *xNode[uint64]) int64 {
-				return node.vcmp(i, *x.vptr)
+				return vcmp(i, *x.vptr)
 			})
 			require.Equal(t, uint64(92), *x.vptr)
 		}
-		x, err := node.rbRemove(i)
+		x, err := node.rbRemove(i, vcmp)
 		require.NoError(t, err)
 		require.Equal(t, i, *x.vptr)
 		require.NoError(t, node.rbRedViolationValidate())
@@ -505,20 +519,20 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
 	insertTotal := uint64(100000)
 
-	node := &xConcSklNode[uint64, uint64]{
-		vcmp: func(i, j uint64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
+	vcmp := func(i, j uint64) int64 {
+		if i == j {
+			return 0
+		} else if i > j {
+			return 1
+		}
+		return -1
 	}
+
+	node := &xConcSklNode[uint64, uint64]{}
 
 	rand := uint64(cryptoRandUint32() % 1000)
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbInsert(i)
+		node.rbInsert(i, vcmp)
 		if i%1000 == rand {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
@@ -538,20 +552,20 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	insertTotal := int64(float64(total) * 0.8)
 	removeTotal := int64(float64(total) * 0.2)
 
-	node := &xConcSklNode[uint64, int64]{
-		vcmp: func(i, j int64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
+	vcmp := func(i, j int64) int64 {
+		if i == j {
+			return 0
+		} else if i > j {
+			return 1
+		}
+		return -1
 	}
+
+	node := &xConcSklNode[uint64, int64]{}
 
 	rand := int64(cryptoRandUint32() % 1000)
 	for i := insertTotal - 1; i >= 0; i-- {
-		node.rbInsert(i)
+		node.rbInsert(i, vcmp)
 		if i%1000 == rand {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
@@ -563,7 +577,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	})
 
 	for i := removeTotal + insertTotal - 1; i >= insertTotal; i-- {
-		node.rbInsert(i)
+		node.rbInsert(i, vcmp)
 	}
 	node.rbDFS(func(idx int64, color color, val int64) bool {
 		require.Equal(t, int64(idx), val)
@@ -573,11 +587,11 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		if i == 92 {
 			x := node.rbSearch(node.root, func(x *xNode[int64]) int64 {
-				return node.vcmp(i, *x.vptr)
+				return vcmp(i, *x.vptr)
 			})
 			require.Equal(t, int64(92), *x.vptr)
 		}
-		x, err := node.rbRemove(i)
+		x, err := node.rbRemove(i, vcmp)
 		require.NoError(t, err)
 		require.Equal(t, i, *x.vptr)
 	}
@@ -624,22 +638,22 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 	shuffle(insertElements)
 	shuffle(removeElements)
 
-	node := &xConcSklNode[uint64, uint64]{
-		vcmp: func(i, j uint64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
+	vcmp := func(i, j uint64) int64 {
+		if i == j {
+			return 0
+		} else if i > j {
+			return 1
+		}
+		return -1
 	}
+
+	node := &xConcSklNode[uint64, uint64]{}
 	if rbRmBySucc {
 		node.flags.set(nodeRbRmBorrowFlagBit)
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbInsert(insertElements[i])
+		node.rbInsert(insertElements[i], vcmp)
 		if violationCheck {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
@@ -654,7 +668,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 	})
 
 	for i := uint64(0); i < removeTotal; i++ {
-		node.rbInsert(removeElements[i])
+		node.rbInsert(removeElements[i], vcmp)
 		if violationCheck {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
@@ -664,7 +678,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 	require.NoError(t, node.rbBlackViolationValidate())
 
 	for i := uint64(0); i < removeTotal; i++ {
-		x, err := node.rbRemove(removeElements[i])
+		x, err := node.rbRemove(removeElements[i], vcmp)
 		require.NoError(t, err)
 		require.Equalf(t, removeElements[i], *x.vptr, "value exp: %d, real: %d\n", removeElements[i], *x.vptr)
 		if violationCheck {
