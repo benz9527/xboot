@@ -45,9 +45,14 @@ func TestNode2StructSize(t *testing.T) {
 	t.Logf("uptr :%v\n", uptr)
 	t.Logf("uptr value: %s\n", *(*string)(uptr))
 
+	m := map[string]string{}
+	m[s] = s
+	s = ""
 	runtime.GC()
 
 	t.Logf("uptr value again after gc: %s\n", *(*string)(uptr))
+	t.Logf("get key from map: %v\n", m[s])
+	t.Logf("get key from map by origin value: %v\n", m["123"])
 
 	x2 := node2[string, []byte]{}
 	t.Logf("2 root size: %d\n", unsafe.Sizeof(x2.root))
@@ -67,6 +72,6 @@ func TestNode2StructSize(t *testing.T) {
 	t.Logf("3 count size: %d\n", unsafe.Sizeof(x3.count))
 	t.Logf("3 level size: %d\n", unsafe.Sizeof(x3.level))
 
-	x4 := _xConcSklNode[string, map[string][]byte]{}
+	x4 := xConcSklV2Node[string, map[string][]byte]{}
 	t.Logf("x4 size: %v\n", unsafe.Sizeof(x4))
 }
