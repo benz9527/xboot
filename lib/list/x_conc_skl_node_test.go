@@ -739,3 +739,4 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		})
 	}
 }
+
