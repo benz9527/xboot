@@ -52,21 +52,23 @@ func (skl *xConcSkl[K, V]) traverse(
 	key K,
 	aux xConcSklAux[K, V],
 ) *xConcSklNode[K, V] {
-	forward := skl.atomicLoadHead()
-	for /* vertical */ l := lvl - 1; l >= 0; l-- {
+	for /* vertical */ forward, l := skl.atomicLoadHead(), lvl-1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
-			forward = nIdx
-			nIdx = forward.atomicLoadNextNode(l)
+		for /* horizontal */ nIdx != nil {
+			if res := skl.kcmp(key, nIdx.key); /* horizontal next */ res > 0 {
+				forward = nIdx
+				nIdx = forward.atomicLoadNextNode(l)
+			} else if /* found */ res == 0 {
+				aux.storePred(l, forward)
+				aux.storeSucc(l, nIdx)
+				return nIdx
+			} else /* not found, vertical next */ {
+				break
+			}
 		}
 
 		aux.storePred(l, forward)
 		aux.storeSucc(l, nIdx)
-
-		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
-			return nIdx
-		}
-		// Not found at current level, downward to next level's indexCount.
 	}
 	return nil
 }

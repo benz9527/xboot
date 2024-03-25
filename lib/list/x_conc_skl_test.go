@@ -631,14 +631,7 @@ func BenchmarkXConcSklUnique(b *testing.B) {
 			}
 			skl, err := NewSkl[int, []byte](
 				XConcSkl,
-				func(i, j int) int64 {
-					if i == j {
-						return 0
-					} else if i < j {
-						return -1
-					}
-					return 1
-				},
+				intKeyComparator,
 				opts...,
 			)
 			if err != nil {
@@ -655,6 +648,15 @@ func BenchmarkXConcSklUnique(b *testing.B) {
 	for _, tc := range testcases {
 		b.Run(tc.name, rc(tc.mu))
 	}
+}
+
+func intKeyComparator(i, j int) int64 {
+	if i == j {
+		return 0
+	} else if i < j {
+		return -1
+	}
+	return 1
 }
 
 func TestXConcSklUnique(t *testing.T) {
