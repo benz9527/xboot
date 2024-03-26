@@ -15,13 +15,15 @@ import (
 
 func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
 	opts := make([]SklOption[uint64, *xSklObject], 0, 2)
-	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
+
 	switch mu {
-	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, *xSklObject]())
 	case xSklSpinMutex:
-		opts = append(opts, WithSklConcBySpin[uint64, *xSklObject]())
+		opts = append(opts,
+			WithXConcSklDataNodeUniqueMode[uint64, *xSklObject](),
+			WithSklConcBySpin[uint64, *xSklObject](),
+		)
 	default:
+		opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
 	}
 
 	skl, err := NewSkl[uint64, *xSklObject](
@@ -68,11 +70,12 @@ func TestXConcSkl_SerialProcessing(t *testing.T) {
 	}
 	testcases := []testcase{
 		{
-			name: "go native sync mutex",
-			me:   xSklGoMutex,
-		}, {
 			name: "skl lock free mutex",
 			me:   xSklSpinMutex,
+		},
+		{
+			name: "skl no lock mutex",
+			me:   xSklFakeMutex,
 		},
 	}
 	t.Parallel()
@@ -83,16 +86,12 @@ func TestXConcSkl_SerialProcessing(t *testing.T) {
 	}
 }
 
-func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
+func TestXConcSkl_DataRace(t *testing.T) {
 	opts := make([]SklOption[uint64, *xSklObject], 0, 2)
-	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
-	switch mu {
-	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, *xSklObject]())
-	case xSklSpinMutex:
-		opts = append(opts, WithSklConcBySpin[uint64, *xSklObject]())
-	default:
-	}
+	opts = append(opts,
+		WithXConcSklDataNodeUniqueMode[uint64, *xSklObject](),
+		WithSklConcBySpin[uint64, *xSklObject](),
+	)
 
 	skl, err := NewSkl[uint64, *xSklObject](
 		XConcSkl,
@@ -149,31 +148,9 @@ func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
-func TestXConcSkl_DataRace(t *testing.T) {
-	type testcase struct {
-		name string
-		mu   mutexImpl
-	}
-	testcases := []testcase{
-		{
-			name: "go native sync mutex data race -- unique",
-			mu:   xSklGoMutex,
-		}, {
-			name: "skl lock free mutex data race -- unique",
-			mu:   xSklSpinMutex,
-		},
-	}
-	t.Parallel()
-	for _, tc := range testcases {
-		t.Run(tc.name, func(tt *testing.T) {
-			xConcSklDataRaceRunCore(tt, tc.mu)
-		})
-	}
-}
-
 func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSklObject]{
-		head:    newXConcSklHead[uint64, *xSklObject](xSklGoMutex, linkedList),
+		head:    newXConcSklHead[uint64, *xSklObject](xSklFakeMutex, linkedList),
 		pool:    newXConcSklPool[uint64, *xSklObject](1000, 1000),
 		levels:  1,
 		nodeLen: 0,
@@ -201,7 +178,6 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
-	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(xSklGoMutex))
 	skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(linkedList))
 
 	ele, err := skl.PopHead()
@@ -279,8 +255,6 @@ func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode
 		WithSklRandLevelGen[uint64, int64](randomLevelV3),
 	}
 	switch mu {
-	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, int64]())
 	case xSklSpinMutex:
 		opts = append(opts, WithSklConcBySpin[uint64, int64]())
 	}
@@ -396,30 +370,14 @@ func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 	}
 	testcases := []testcase{
 		{
-			name: "go native sync mutex data race - linkedlist",
-			mu:   xSklGoMutex,
-			typ:  linkedList,
-		},
-		{
 			name: "skl lock free mutex data race - linkedlist",
 			mu:   xSklSpinMutex,
 			typ:  linkedList,
 		},
 		{
-			name: "go native sync mutex data race - rbtree",
-			mu:   xSklGoMutex,
-			typ:  rbtree,
-		},
-		{
 			name: "skl lock free mutex data race - rbtree",
 			mu:   xSklSpinMutex,
 			typ:  rbtree,
-		},
-		{
-			name:       "go native sync mutex data race - rbtree (succ)",
-			mu:         xSklGoMutex,
-			typ:        rbtree,
-			rbRmBySucc: true,
 		},
 		{
 			name:       "skl lock free mutex data race - rbtree (succ)",
@@ -466,7 +424,9 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
 	if mode != unique {
-		skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
+		if mu == xSklSpinMutex {
+			skl.flags.set(xConcSklMutexImplBit)
+		}
 		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
 	}
 
@@ -541,38 +501,19 @@ func TestXConcSklPeekAndPopHead(t *testing.T) {
 	}
 	testcases := []testcase{
 		{
-			name: "go native sync mutex data race - unique",
-			mu:   xSklGoMutex,
-			typ:  unique,
-		},
-		{
 			name: "skl lock free mutex data race - unique",
 			mu:   xSklSpinMutex,
 			typ:  unique,
-		},
-		{
-			name: "go native sync mutex data race - linkedlist",
-			mu:   xSklGoMutex,
-			typ:  linkedList,
 		},
 		{
 			name: "skl lock free mutex data race - linkedlist",
 			mu:   xSklSpinMutex,
 			typ:  linkedList,
 		},
-		{
-			name: "go native sync mutex data race - rbtree",
-			mu:   xSklGoMutex,
-			typ:  rbtree,
-		},
+
 		{
 			name: "skl lock free mutex data race - rbtree",
 			mu:   xSklSpinMutex,
-			typ:  rbtree,
-		},
-		{
-			name: "go native sync mutex data race - rbtree (succ)",
-			mu:   xSklGoMutex,
 			typ:  rbtree,
 		},
 		{
@@ -603,10 +544,6 @@ func BenchmarkXConcSklUnique(b *testing.B) {
 			name: "unique with spin mutex",
 			mu:   xSklSpinMutex,
 		},
-		{
-			name: "unique with sync mutex",
-			mu:   xSklGoMutex,
-		},
 	}
 
 	testByBytes := []byte(`abc`)
@@ -616,18 +553,13 @@ func BenchmarkXConcSklUnique(b *testing.B) {
 			pb.StopTimer()
 			var opts = make([]SklOption[int, []byte], 0, 2)
 			switch mu {
-			case xSklGoMutex:
-				opts = append(opts,
-					WithXConcSklDataNodeUniqueMode[int, []byte](),
-					WithSklConcByGoNative[int, []byte](),
-				)
 			case xSklSpinMutex:
 				opts = append(opts,
 					WithXConcSklDataNodeUniqueMode[int, []byte](),
 					WithSklConcBySpin[int, []byte](),
 				)
 			case xSklFakeMutex:
-				opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte](true))
+				opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
 			}
 			skl, err := NewSkl[int, []byte](
 				XConcSkl,
@@ -665,18 +597,14 @@ func TestXConcSklUnique(t *testing.T) {
 		mu   mutexImpl
 	}
 	testcases := []testcase{
-		// {
-		// 	name: "unique with fake mutex",
-		// 	mu:   xSklFakeMutex,
-		// },
 		{
 			name: "unique with spin mutex",
 			mu:   xSklSpinMutex,
 		},
-		// {
-		// 	name: "unique with sync mutex",
-		// 	mu:   xSklGoMutex,
-		// },
+		{
+			name: "unique with fake mutex",
+			mu:   xSklFakeMutex,
+		},
 	}
 
 	testByBytes := []byte(`abc`)
@@ -685,18 +613,13 @@ func TestXConcSklUnique(t *testing.T) {
 		return func(tt *testing.T) {
 			var opts = make([]SklOption[int, []byte], 0, 2)
 			switch mu {
-			case xSklGoMutex:
-				opts = append(opts,
-					WithXConcSklDataNodeUniqueMode[int, []byte](),
-					WithSklConcByGoNative[int, []byte](),
-				)
 			case xSklSpinMutex:
 				opts = append(opts,
 					WithXConcSklDataNodeUniqueMode[int, []byte](),
 					WithSklConcBySpin[int, []byte](),
 				)
 			case xSklFakeMutex:
-				opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte](true))
+				opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
 			}
 			skl, err := NewSkl[int, []byte](
 				XConcSkl,

@@ -10,10 +10,11 @@ import (
 
 // The pool is used to recycle the auxiliary data structure.
 type xConcSklPool[K infra.OrderedKey, V any] struct {
-	preAllocNodes  uint32
-	allocNodesIncr uint32
-	auxPool        *sync.Pool
-	nodeQueue      []*xConcSklNode[K, V]
+	preAllocNodes     uint32
+	allocNodesIncr    uint32
+	auxPool           *sync.Pool
+	nodeQueue         []*xConcSklNode[K, V]
+	releasedNodeQueue []*xConcSklNode[K, V]
 }
 
 func newXConcSklPool[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint32) *xConcSklPool[K, V] {
@@ -27,6 +28,10 @@ func newXConcSklPool[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint3
 		nodeQueue:      make([]*xConcSklNode[K, V], allocNodes),
 	}
 	return p
+}
+
+func (p *xConcSklPool[K, V]) allocateNodes() {
+	p.nodeQueue = make([]*xConcSklNode[K, V], p.allocNodesIncr)
 }
 
 func (p *xConcSklPool[K, V]) loadAux() xConcSklAux[K, V] {

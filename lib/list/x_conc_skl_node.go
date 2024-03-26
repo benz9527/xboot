@@ -1,6 +1,7 @@
 package list
 
 import (
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 
@@ -187,6 +188,7 @@ func (n *xNode[V]) succ() *xNode[V] {
 const (
 	nodeInsertedFlagBit = 1 << iota
 	nodeRemovingFlagBit
+	nodeSpinLockFlagBit
 	nodeIsHeadFlagBit
 	nodeIsSetFlagBit      /* 0: unique; 1: enable linked-list or rbtree */
 	nodeSetModeFlagBit    /* 0: linked-list; 1: rbtree */
@@ -204,6 +206,10 @@ const (
 	rbtree     xNodeMode = 3
 )
 
+const (
+	unlocked = 0
+)
+
 func (mode xNodeMode) String() string {
 	switch mode {
 	case unique:
@@ -219,14 +225,48 @@ func (mode xNodeMode) String() string {
 
 // If it is unique x-node type store value directly.
 // Otherwise, it is a sentinel node for linked-list or rbtree.
+// @field count, the number of duplicate elements.
+// @field mu, lock-free, spin-lock, optimistic-lock.
 type xConcSklNode[K infra.OrderedKey, V any] struct {
-	indices []*xConcSklNode[K, V]
-	root    *xNode[V]
-	key     K
-	mu      segmentMutex
-	flags   flagBits
-	count   int64 // The number of duplicate elements
-	level   uint32
+	indices []*xConcSklNode[K, V] // size 24, 3 bytes
+	mu      uint64                // size 8, 2 byte
+	root    *xNode[V]             // size 8, 1 byte
+	key     K                     // size 8, 1 byte
+	count   int64                 // size 8, 1 byte
+	level   uint32                // size 4
+	flags   flagBits              // size 4
+}
+
+func (node *xConcSklNode[K, V]) lock(version uint64) {
+	if !node.flags.atomicIsSet(nodeSpinLockFlagBit) {
+		return
+	}
+
+	backoff := uint8(1)
+	for !atomic.CompareAndSwapUint64(&node.mu, unlocked, version) {
+		if backoff <= 32 {
+			for i := uint8(0); i < backoff; i++ {
+				infra.ProcYield(10)
+			}
+		} else {
+			runtime.Gosched()
+		}
+		backoff <<= 1
+	}
+}
+
+func (node *xConcSklNode[K, V]) tryLock(version uint64) bool {
+	if !node.flags.atomicIsSet(nodeSpinLockFlagBit) {
+		return true
+	}
+	return atomic.CompareAndSwapUint64(&node.mu, unlocked, version)
+}
+
+func (node *xConcSklNode[K, V]) unlock(version uint64) bool {
+	if !node.flags.atomicIsSet(nodeSpinLockFlagBit) {
+		return true
+	}
+	return atomic.CompareAndSwapUint64(&node.mu, version, unlocked)
 }
 
 func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
@@ -238,16 +278,16 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparato
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
 	case linkedList:
 		// pred
-		node.mu.lock(ver)
+		node.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
 		isAppend, err = node.llInsert(val, vcmp, ifNotPresent...)
-		node.mu.unlock(ver)
+		node.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	case rbtree:
-		node.mu.lock(ver)
+		node.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
 		isAppend, err = node.rbInsert(val, vcmp)
-		node.mu.unlock(ver)
+		node.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
 		// impossible run to here
@@ -1071,17 +1111,19 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	key K,
 	val V,
 	lvl int32,
-	mu mutexImpl,
+	spinLockEnabled bool,
 	mode xNodeMode,
 	vcmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node := &xConcSklNode[K, V]{
 		key:   key,
 		level: uint32(lvl),
-		mu:    mutexFactory(mu),
 	}
 	node.indices = make([]*xConcSklNode[K, V], lvl)
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
+	if spinLockEnabled {
+		node.flags.set(nodeSpinLockFlagBit)
+	}
 	switch mode {
 	case unique:
 		node.root = &xNode[V]{
@@ -1106,7 +1148,6 @@ func newXConcSklHead[K infra.OrderedKey, V any](mu mutexImpl, mode xNodeMode) *x
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: sklMaxLevel,
-		mu:    mutexFactory(mu),
 	}
 	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
 	head.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
@@ -1118,7 +1159,7 @@ func unlockNodes[K infra.OrderedKey, V any](version uint64, num int32, nodes ...
 	var prev *xConcSklNode[K, V]
 	for i := num; i >= 0; i-- {
 		if nodes[i] != prev {
-			nodes[i].mu.unlock(version)
+			nodes[i].unlock(version)
 			prev = nodes[i]
 		}
 	}

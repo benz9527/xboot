@@ -9,7 +9,7 @@ import (
 )
 
 func TestOptimisticLock(t *testing.T) {
-	lock := mutexFactory(xSklSpinMutex)
+	lock := new(spinMutex)
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {

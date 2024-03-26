@@ -41,6 +41,12 @@ func TestDecreaseIndexSize(t *testing.T) {
 	require.Equal(t, uint64(50), idxSize)
 }
 
+func TestXConcSklNodeSize(t *testing.T) {
+	node := new(xConcSklNode[int64, []byte])
+	size := unsafe.Sizeof(*node)
+	t.Log(size)
+}
+
 type vNode[W SkipListWeight, O HashObject] struct {
 	weight *atomic.Pointer[W]
 	object *atomic.Pointer[O]

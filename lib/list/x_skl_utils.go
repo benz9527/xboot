@@ -192,7 +192,6 @@ type mutexImpl uint8
 
 const (
 	xSklSpinMutex mutexImpl = iota // Lock-free, spin-lock, optimistic-lock
-	xSklGoMutex
 	xSklFakeMutex // No lock
 )
 
@@ -200,29 +199,12 @@ func (mu mutexImpl) String() string {
 	switch mu {
 	case xSklSpinMutex:
 		return "spin"
-	case xSklGoMutex:
-		return "sync.Mutex"
 	case xSklFakeMutex:
 		return "fake"
 	default:
 		return "unknown"
 	}
 }
-
-func mutexFactory(e mutexImpl) segmentMutex {
-	switch e {
-	case xSklGoMutex:
-		return new(goSyncMutex)
-	case xSklSpinMutex:
-		fallthrough
-	default:
-		return new(spinMutex)
-	}
-}
-
-const (
-	unlocked = 0
-)
 
 type spinMutex uint64
 

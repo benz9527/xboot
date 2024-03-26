@@ -10,30 +10,26 @@ import (
 
 const (
 	// Indicating that the skip-list exclusive lock implementation type.
-	xConcSklMutexImplBits = 0x00FF
+	xConcSklMutexImplBit = 0x0001 /* 0: no-lock; 1: spin-lock */
 	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
-	xConcSklXNodeModeBits = 0x0300
+	xConcSklXNodeModeBits = 0x0006
 	// Indicating that the skip-list data node mode is rbtree and do delete operation will borrow pred(0) or succ node(1).
-	xConcSklRbtreeRmBorrowFlagBit = 0x0400
+	xConcSklRbtreeRmBorrowFlagBit = 0x0008
 )
 
 var _ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
 
 type xConcSkl[K infra.OrderedKey, V any] struct {
-	head           *xConcSklNode[K, V]
-	pool           *xConcSklPool[K, V]           // recycle resources
-	kcmp           infra.OrderedKeyComparator[K] // key comparator
-	vcmp           SklValComparator[V]           // value comparator
-	rand           SklRand
-	optVer         id.UUIDGen // optimistic version generator
-	flags          flagBits
-	nodeLen        int64  // skip-list's node count.
-	indexCount     uint64 // skip-list's index count.
-	levels         int32  // skip-list's max height value inside the indexCount.
-}
-
-func (skl *xConcSkl[K, V]) loadMutex() mutexImpl {
-	return mutexImpl(skl.flags.atomicLoadBits(xConcSklMutexImplBits))
+	head       *xConcSklNode[K, V]
+	pool       *xConcSklPool[K, V]           // recycle resources
+	kcmp       infra.OrderedKeyComparator[K] // key comparator
+	vcmp       SklValComparator[V]           // value comparator
+	rand       SklRand
+	optVer     id.UUIDGen // optimistic version generator
+	flags      flagBits
+	nodeLen    int64  // skip-list's node count.
+	indexCount uint64 // skip-list's index count.
+	levels     int32  // skip-list's max height value inside the indexCount.
 }
 
 func (skl *xConcSkl[K, V]) loadXNodeMode() xNodeMode {
@@ -160,7 +156,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		for l := int32(0); isValid && l < newLvls; l++ {
 			pred, succ = aux.loadPred(l), aux.loadSucc(l)
 			if /* lock */ pred != prev {
-				pred.mu.lock(ver)
+				pred.lock(ver)
 				lockedLevels = l
 				prev = pred
 			}
@@ -186,7 +182,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			return ErrXSklIsFull
 		}
 
-		node := newXConcSklNode(key, val, newLvls, skl.loadMutex(), skl.loadXNodeMode(), skl.vcmp)
+		node := newXConcSklNode(key, val, newLvls, skl.flags.isSet(xConcSklMutexImplBit), skl.loadXNodeMode(), skl.vcmp)
 		for /* linking */ l := int32(0); l < newLvls; l++ {
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...
@@ -390,7 +386,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 				if !isMarked {
 					rmNode = aux.loadSucc(foundAt)
 					topLevel = foundAt
-					if !rmNode.mu.tryLock(ver) {
+					if !rmNode.tryLock(ver) {
 						if /* d-check */ rmNode.flags.atomicIsSet(nodeRemovingFlagBit) {
 							return nil, ErrXSklConcRemoveTryLock
 						}
@@ -399,7 +395,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					}
 
 					if /* node locked, d-check */ rmNode.flags.atomicIsSet(nodeRemovingFlagBit) {
-						rmNode.mu.unlock(ver)
+						rmNode.unlock(ver)
 						return nil, ErrXSklConcRemoving
 					}
 
@@ -415,7 +411,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
 					pred, succ = aux.loadPred(l), aux.loadSucc(l)
 					if /* lock indexCount */ pred != prevPred {
-						pred.mu.lock(ver)
+						pred.lock(ver)
 						lockedLayers = l
 						prevPred = pred
 					}
@@ -445,7 +441,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
-				rmNode.mu.unlock(ver)
+				rmNode.unlock(ver)
 				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
@@ -468,7 +464,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 				if fullyLinkedButNotRemove && !isMarked {
 					rmNode = aux.loadSucc(foundAt)
 					topLevel = foundAt
-					if !rmNode.mu.tryLock(ver) {
+					if !rmNode.tryLock(ver) {
 						continue
 					}
 
@@ -486,7 +482,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
 					pred, succ = aux.loadPred(l), aux.loadSucc(l)
 					if /* lock indexCount */ pred != prev {
-						pred.mu.lock(ver)
+						pred.lock(ver)
 						lockedLayers = l
 						prev = pred
 					}
@@ -534,7 +530,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
-				rmNode.mu.unlock(ver)
+				rmNode.unlock(ver)
 				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
@@ -764,7 +760,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 				if fullyLinkedButNotRemove && !isMarked {
 					rmNode = aux.loadSucc(foundAt)
 					topLevel = foundAt
-					if !rmNode.mu.tryLock(ver) {
+					if !rmNode.tryLock(ver) {
 						continue
 					}
 
@@ -782,7 +778,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
 					pred, succ = aux.loadPred(l), aux.loadSucc(l)
 					if /* lock indexCount */ pred != prev {
-						pred.mu.lock(ver)
+						pred.lock(ver)
 						lockedLayers = l
 						prev = pred
 					}
@@ -851,7 +847,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
-				rmNode.mu.unlock(ver)
+				rmNode.unlock(ver)
 				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
@@ -906,7 +902,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 				if fullyLinkedButNotRemove && !isMarked {
 					rmNode = aux.loadSucc(foundAt)
 					topLevel = foundAt
-					if !rmNode.mu.tryLock(ver) {
+					if !rmNode.tryLock(ver) {
 						continue
 					}
 
@@ -924,7 +920,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
 					pred, succ = aux.loadPred(l), aux.loadSucc(l)
 					if /* lock indexCount */ pred != prev {
-						pred.mu.lock(ver)
+						pred.lock(ver)
 						lockedLayers = l
 						prev = pred
 					}
@@ -979,7 +975,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
-				rmNode.mu.unlock(ver)
+				rmNode.unlock(ver)
 				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
 					unlockNodes(ver, lockedLayers, list...)
 				})
