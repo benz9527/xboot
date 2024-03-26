@@ -1111,12 +1111,14 @@ func initXConcSklNode[K infra.OrderedKey, V any](
 	node *xConcSklNode[K,V],
 	key K,
 	val V,
+	lvl int32,
 	spinLockEnabled bool,
 	mode xNodeMode,
 	vcmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node.key = key
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
+	node.indices = make([]*xConcSklNode[K, V], lvl)
 	if spinLockEnabled {
 		node.flags.set(nodeSpinLockFlagBit)
 	}

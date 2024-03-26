@@ -10,11 +10,9 @@ import (
 
 // The pool is used to recycle the auxiliary data structure.
 type xConcSklPool[K infra.OrderedKey, V any] struct {
-	nodes             uint64
-	nodeQueue         []*xConcSklNode[K, V]
 	releasedNodeQueue []*xConcSklNode[K, V]
 	auxPool           *sync.Pool
-	allocNodesIncr    uint32
+	nodePool          *sync.Pool
 }
 
 func newXConcSklPool[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint32) *xConcSklPool[K, V] {
@@ -24,43 +22,17 @@ func newXConcSklPool[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint3
 				return make(xConcSklAux[K, V], 2*sklMaxLevel)
 			},
 		},
-		allocNodesIncr: allocNodesIncr,
-		nodeQueue:      make([]*xConcSklNode[K, V], allocNodes),
-		nodes:          uint64(allocNodes),
-	}
-	for i := 0; i < int(allocNodes); i++ {
-		p.nodeQueue[i] = new(xConcSklNode[K, V])
+		nodePool: &sync.Pool{
+			New: func() any {
+				return new(xConcSklNode[K, V])
+			},
+		},
 	}
 	return p
 }
 
-func (p *xConcSklPool[K, V]) allocateNodes() {
-	p.nodeQueue = make([]*xConcSklNode[K, V], p.allocNodesIncr)
-	for i := 0; i < int(p.allocNodesIncr); i++ {
-		p.nodeQueue[i] = new(xConcSklNode[K, V])
-	}
-	p.nodes = uint64(p.allocNodesIncr)
-}
-
-func (p *xConcSklPool[K, V]) loadNode(lvl int32) *xConcSklNode[K, V] {
-	total := int(lvl + 1)
-	if p.nodes < uint64(total) {
-		take := p.nodeQueue[:]
-		k := total - len(take)
-		p.allocateNodes()
-		take = append(take, p.nodeQueue[:k]...)
-		p.nodeQueue = p.nodeQueue[k:]
-		p.nodes -= uint64(k)
-		take[0].indices = take[1:]
-		take[0].level = uint32(lvl)
-		return take[0]
-	}
-	take := p.nodeQueue[:total]
-	p.nodeQueue = p.nodeQueue[total:]
-	p.nodes -= uint64(total)
-	take[0].indices = take[1:]
-	take[0].level = uint32(lvl)
-	return take[0]
+func (p *xConcSklPool[K, V]) loadNode() *xConcSklNode[K, V] {
+	return p.nodePool.Get().(*xConcSklNode[K, V])
 }
 
 func (p *xConcSklPool[K, V]) loadAux() xConcSklAux[K, V] {
