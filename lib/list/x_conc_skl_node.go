@@ -1107,19 +1107,15 @@ func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
 	return nil
 }
 
-func newXConcSklNode[K infra.OrderedKey, V any](
+func initXConcSklNode[K infra.OrderedKey, V any](
+	node *xConcSklNode[K,V],
 	key K,
 	val V,
-	lvl int32,
 	spinLockEnabled bool,
 	mode xNodeMode,
 	vcmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
-	node := &xConcSklNode[K, V]{
-		key:   key,
-		level: uint32(lvl),
-	}
-	node.indices = make([]*xConcSklNode[K, V], lvl)
+	node.key = key
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
 	if spinLockEnabled {
 		node.flags.set(nodeSpinLockFlagBit)
