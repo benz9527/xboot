@@ -20,16 +20,16 @@ const (
 var _ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
 
 type xConcSkl[K infra.OrderedKey, V any] struct {
-	head       *xConcSklNode[K, V]
-	pool       *xConcSklPool[K, V]           // recycle resources
-	kcmp       infra.OrderedKeyComparator[K] // key comparator
-	vcmp       SklValComparator[V]           // value comparator
-	rand       SklRand
-	optVer     id.UUIDGen // optimistic version generator
-	flags      flagBits
-	nodeLen    int64  // skip-list's node count.
-	indexCount uint64 // skip-list's index count.
-	levels     int32  // skip-list's max height value inside the indexCount.
+	head           *xConcSklNode[K, V]
+	pool           *xConcSklPool[K, V]           // recycle resources
+	kcmp           infra.OrderedKeyComparator[K] // key comparator
+	vcmp           SklValComparator[V]           // value comparator
+	rand           SklRand
+	optVer         id.UUIDGen // optimistic version generator
+	flags          flagBits
+	nodeLen        int64  // skip-list's node count.
+	indexCount     uint64 // skip-list's index count.
+	levels         int32  // skip-list's max height value inside the indexCount.
 }
 
 func (skl *xConcSkl[K, V]) loadMutex() mutexImpl {

@@ -217,12 +217,12 @@ func (mode xNodeMode) String() string {
 	}
 }
 
+// If it is unique x-node type store value directly.
+// Otherwise, it is a sentinel node for linked-list or rbtree.
 type xConcSklNode[K infra.OrderedKey, V any] struct {
-	// If it is unique x-node type store value directly.
-	// Otherwise, it is a sentinel node for linked-list or rbtree.
+	indices []*xConcSklNode[K, V]
 	root    *xNode[V]
 	key     K
-	indices xConcSklIndices[K, V]
 	mu      segmentMutex
 	flags   flagBits
 	count   int64 // The number of duplicate elements
@@ -261,19 +261,19 @@ func (node *xConcSklNode[K, V]) atomicLoadRoot() *xNode[V] {
 }
 
 func (node *xConcSklNode[K, V]) loadNextNode(i int32) *xConcSklNode[K, V] {
-	return node.indices.loadForwardIndex(i)
+	return node.indices[i]
 }
 
 func (node *xConcSklNode[K, V]) storeNextNode(i int32, next *xConcSklNode[K, V]) {
-	node.indices.storeForwardIndex(i, next)
+	node.indices[i] = next
 }
 
 func (node *xConcSklNode[K, V]) atomicLoadNextNode(i int32) *xConcSklNode[K, V] {
-	return node.indices.atomicLoadForwardIndex(i)
+	return (*xConcSklNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.indices[i]))))
 }
 
 func (node *xConcSklNode[K, V]) atomicStoreNextNode(i int32, next *xConcSklNode[K, V]) {
-	node.indices.atomicStoreForwardIndex(i, next)
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.indices[i])), unsafe.Pointer(next))
 }
 
 /* linked-list operation implementation */
@@ -1080,7 +1080,7 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 		level: uint32(lvl),
 		mu:    mutexFactory(mu),
 	}
-	node.indices = newXConcSklIndices[K, V](lvl)
+	node.indices = make([]*xConcSklNode[K, V], lvl)
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
 	switch mode {
 	case unique:
@@ -1110,7 +1110,7 @@ func newXConcSklHead[K infra.OrderedKey, V any](mu mutexImpl, mode xNodeMode) *x
 	}
 	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
 	head.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
-	head.indices = newXConcSklIndices[K, V](sklMaxLevel)
+	head.indices = make([]*xConcSklNode[K, V], sklMaxLevel)
 	return head
 }
 
