@@ -82,8 +82,8 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 			nIdx = forward.atomicLoadNextNode(l)
 		}
 
-		aux.storePred(l, forward)
-		aux.storeSucc(l, nIdx)
+		aux[l] = forward
+		aux[sklMaxLevel+l] = nIdx
 
 		if foundAt == -1 && nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
 			foundAt = l
@@ -117,7 +117,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	}
 
 	var (
-		aux     = make(xConcSklAux[K, V], 2*sklMaxLevel)
+		aux     = make([]*xConcSklNode[K, V], 2*sklMaxLevel)
 		oldLvls = skl.Levels()
 		newLvls = skl.rand(int(oldLvls), skl.Len()) // avoid loop call
 		ver     = skl.optVer.Number()
@@ -353,16 +353,13 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 	}
 
 	var (
-		aux      = skl.pool.loadAux()
+		aux      = make([]*xConcSklNode[K, V], 2*sklMaxLevel)
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
 		ver      = skl.optVer.Number()
 		foundAt  = int32(-1)
 	)
-	defer func() {
-		skl.pool.releaseAux(aux)
-	}()
 
 	switch mode := skl.loadXNodeMode(); mode {
 	// FIXME: Merge these 2 deletion loops logic
@@ -370,10 +367,10 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 		for {
 			foundAt = skl.rmTraverse(key, aux)
 			if isMarked || foundAt != -1 &&
-				aux.loadSucc(foundAt).flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) &&
-				(int32(aux.loadSucc(foundAt).level)-1) == foundAt {
+				aux[sklMaxLevel+foundAt].flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) &&
+				(int32(aux[sklMaxLevel+foundAt].level)-1) == foundAt {
 				if !isMarked {
-					rmNode = aux.loadSucc(foundAt)
+					rmNode = aux[sklMaxLevel+foundAt]
 					topLevel = foundAt
 					if !rmNode.tryLock(ver) {
 						if /* d-check */ rmNode.flags.atomicIsSet(nodeRemovingFlagBit) {
@@ -398,7 +395,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					pred, succ, prevPred *xConcSklNode[K, V]
 				)
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
-					pred, succ = aux.loadPred(l), aux.loadSucc(l)
+					pred, succ = aux[l], aux[sklMaxLevel+l]
 					if /* lock indexCount */ pred != prevPred {
 						pred.lock(ver)
 						lockedLayers = l
@@ -410,9 +407,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) && pred.atomicLoadNextNode(l) == succ
 				}
 				if /* conc rm */ !isValid {
-					aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-						unlockNodes(ver, lockedLayers, list...)
-					})
+					unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 					continue
 				}
 
@@ -425,15 +420,13 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 
 				if atomic.LoadInt64(&rmNode.count) <= 0 {
 					for /* re-linking, reduce levels */ l := topLevel; l >= 0; l-- {
-						aux.loadPred(l).atomicStoreNextNode(l, rmNode.loadNextNode(l))
+						aux[l].atomicStoreNextNode(l, rmNode.loadNextNode(l))
 					}
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
 				rmNode.unlock(ver)
-				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-					unlockNodes(ver, lockedLayers, list...)
-				})
+				unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 				return element, nil
 			}
 			break
@@ -442,8 +435,8 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 		for {
 			foundAt = skl.rmTraverse(key, aux)
 			if isMarked || foundAt != -1 {
-				fullyLinkedButNotRemove := aux.loadSucc(foundAt).flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
-				succMatch := (int32(aux.loadSucc(foundAt).level) - 1) == foundAt
+				fullyLinkedButNotRemove := aux[sklMaxLevel+foundAt].flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
+				succMatch := (int32(aux[sklMaxLevel+foundAt].level) - 1) == foundAt
 				if !succMatch {
 					break
 				} else if !fullyLinkedButNotRemove {
@@ -451,7 +444,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 				}
 
 				if fullyLinkedButNotRemove && !isMarked {
-					rmNode = aux.loadSucc(foundAt)
+					rmNode = aux[sklMaxLevel+foundAt]
 					topLevel = foundAt
 					if !rmNode.tryLock(ver) {
 						continue
@@ -469,7 +462,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					pred, succ, prev *xConcSklNode[K, V]
 				)
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
-					pred, succ = aux.loadPred(l), aux.loadSucc(l)
+					pred, succ = aux[l], aux[sklMaxLevel+l]
 					if /* lock indexCount */ pred != prev {
 						pred.lock(ver)
 						lockedLayers = l
@@ -481,9 +474,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) && pred.atomicLoadNextNode(l) == succ
 				}
 				if /* conc rm */ !isValid {
-					aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-						unlockNodes(ver, lockedLayers, list...)
-					})
+					unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 					continue
 				}
 
@@ -514,20 +505,18 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 
 				if atomic.LoadInt64(&rmNode.count) <= 0 {
 					for /* re-linking, reduce levels */ l := topLevel; l >= 0; l-- {
-						aux.loadPred(l).atomicStoreNextNode(l, rmNode.loadNextNode(l))
+						aux[l].atomicStoreNextNode(l, rmNode.loadNextNode(l))
 					}
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
 				rmNode.unlock(ver)
-				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-					unlockNodes(ver, lockedLayers, list...)
-				})
+				unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 				return element, nil
 			}
 			break
 		}
-	default:
+	default: /* impossible */
 		panic("[x-conc-skl] unknown x-node type")
 	}
 
@@ -718,7 +707,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 	}
 
 	var (
-		aux      = skl.pool.loadAux()
+		aux      = make([]*xConcSklNode[K, V], 2*sklMaxLevel)
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
@@ -726,9 +715,6 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
 	)
-	defer func() {
-		skl.pool.releaseAux(aux)
-	}()
 
 	switch mode := skl.loadXNodeMode(); mode {
 	// FIXME: Merge these 2 deletion loops logic
@@ -738,8 +724,8 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 		for {
 			foundAt = skl.rmTraverse(key, aux)
 			if isMarked || foundAt != -1 {
-				fullyLinkedButNotRemove := aux.loadSucc(foundAt).flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
-				succMatch := (int32(aux.loadSucc(foundAt).level) - 1) == foundAt
+				fullyLinkedButNotRemove := aux[sklMaxLevel+foundAt].flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
+				succMatch := (int32(aux[sklMaxLevel+foundAt].level) - 1) == foundAt
 				if !succMatch {
 					break
 				} else if !fullyLinkedButNotRemove {
@@ -747,7 +733,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 				}
 
 				if fullyLinkedButNotRemove && !isMarked {
-					rmNode = aux.loadSucc(foundAt)
+					rmNode = aux[sklMaxLevel+foundAt]
 					topLevel = foundAt
 					if !rmNode.tryLock(ver) {
 						continue
@@ -765,7 +751,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 					pred, succ, prev *xConcSklNode[K, V]
 				)
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
-					pred, succ = aux.loadPred(l), aux.loadSucc(l)
+					pred, succ = aux[l], aux[sklMaxLevel+l]
 					if /* lock indexCount */ pred != prev {
 						pred.lock(ver)
 						lockedLayers = l
@@ -777,9 +763,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 					isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) && pred.atomicLoadNextNode(l) == succ
 				}
 				if /* conc rm */ !isValid {
-					aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-						unlockNodes(ver, lockedLayers, list...)
-					})
+					unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 					continue
 				}
 
@@ -831,15 +815,13 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 
 				if atomic.LoadInt64(&rmNode.count) <= 0 {
 					for /* re-linking, reduce levels */ l := topLevel; l >= 0; l-- {
-						aux.loadPred(l).atomicStoreNextNode(l, rmNode.loadNextNode(l))
+						aux[l].atomicStoreNextNode(l, rmNode.loadNextNode(l))
 					}
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
 				rmNode.unlock(ver)
-				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-					unlockNodes(ver, lockedLayers, list...)
-				})
+				unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 				return elements, nil
 			}
 			break
@@ -860,7 +842,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	}
 
 	var (
-		aux      = skl.pool.loadAux()
+		aux      = make([]*xConcSklNode[K, V], 2*sklMaxLevel)
 		rmNode   *xConcSklNode[K, V]
 		isMarked bool // represents if this operation mark the node
 		topLevel = int32(-1)
@@ -868,9 +850,6 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
 	)
-	defer func() {
-		skl.pool.releaseAux(aux)
-	}()
 
 	switch mode := skl.loadXNodeMode(); mode {
 	// FIXME: Merge these 2 deletion loops logic
@@ -880,8 +859,8 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		for {
 			foundAt = skl.rmTraverse(key, aux)
 			if isMarked || foundAt != -1 {
-				fullyLinkedButNotRemove := aux.loadSucc(foundAt).flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
-				succMatch := (int32(aux.loadSucc(foundAt).level) - 1) == foundAt
+				fullyLinkedButNotRemove := aux[sklMaxLevel+foundAt].flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
+				succMatch := (int32(aux[sklMaxLevel+foundAt].level) - 1) == foundAt
 				if !succMatch {
 					break
 				} else if !fullyLinkedButNotRemove {
@@ -889,7 +868,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 				}
 
 				if fullyLinkedButNotRemove && !isMarked {
-					rmNode = aux.loadSucc(foundAt)
+					rmNode = aux[sklMaxLevel+foundAt]
 					topLevel = foundAt
 					if !rmNode.tryLock(ver) {
 						continue
@@ -907,7 +886,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 					pred, succ, prev *xConcSklNode[K, V]
 				)
 				for /* node locked */ l := int32(0); isValid && (l <= topLevel); l++ {
-					pred, succ = aux.loadPred(l), aux.loadSucc(l)
+					pred, succ = aux[l], aux[sklMaxLevel+l]
 					if /* lock indexCount */ pred != prev {
 						pred.lock(ver)
 						lockedLayers = l
@@ -919,9 +898,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 					isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) && pred.atomicLoadNextNode(l) == succ
 				}
 				if /* conc rm */ !isValid {
-					aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-						unlockNodes(ver, lockedLayers, list...)
-					})
+					unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 					continue
 				}
 
@@ -959,15 +936,13 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 
 				if atomic.LoadInt64(&rmNode.count) <= 0 {
 					for /* re-linking, reduce levels */ l := topLevel; l >= 0; l-- {
-						aux.loadPred(l).atomicStoreNextNode(l, rmNode.loadNextNode(l))
+						aux[l].atomicStoreNextNode(l, rmNode.loadNextNode(l))
 					}
 					atomic.AddUint64(&skl.indexCount, ^uint64(rmNode.level-1))
 				}
 
 				rmNode.unlock(ver)
-				aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-					unlockNodes(ver, lockedLayers, list...)
-				})
+				unlockNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
 				return elements, nil
 			}
 			break

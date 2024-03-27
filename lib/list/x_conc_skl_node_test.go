@@ -16,6 +16,35 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
+// Auxiliary: records the traverse predecessors and successors info.
+type xConcSklAux[K infra.OrderedKey, V any] []*xConcSklNode[K, V]
+
+// Left part.
+func (aux xConcSklAux[K, V]) loadPred(i int32) *xConcSklNode[K, V] {
+	return aux[i]
+}
+
+func (aux xConcSklAux[K, V]) storePred(i int32, pred *xConcSklNode[K, V]) {
+	aux[i] = pred
+}
+
+func (aux xConcSklAux[K, V]) foreachPred(fn func(list ...*xConcSklNode[K, V])) {
+	fn(aux[0:sklMaxLevel]...)
+}
+
+// Right part.
+func (aux xConcSklAux[K, V]) loadSucc(i int32) *xConcSklNode[K, V] {
+	return aux[sklMaxLevel+i]
+}
+
+func (aux xConcSklAux[K, V]) storeSucc(i int32, succ *xConcSklNode[K, V]) {
+	aux[sklMaxLevel+i] = succ
+}
+
+func (aux xConcSklAux[K, V]) foreachSucc(fn func(list ...*xConcSklNode[K, V])) {
+	fn(aux[sklMaxLevel:]...)
+}
+
 type xConcSklIndex[K infra.OrderedKey, V any] struct {
 	forward *xConcSklNode[K, V]
 }
