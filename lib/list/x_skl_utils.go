@@ -82,7 +82,7 @@ func (f *flagBits) atomicUnset(bits uint32) {
 }
 
 func (f *flagBits) atomicIsSet(bit uint32) bool {
-	return (atomic.LoadUint32(&f.bits) & bit) == 1
+	return (atomic.LoadUint32(&f.bits) & bit) != 0
 }
 
 func (f *flagBits) atomicAreEqual(bits, expect uint32) bool {
@@ -158,7 +158,7 @@ func (f *flagBits) atomicSetBitsAs(bits, target uint32) {
 }
 
 func (f *flagBits) isSet(bit uint32) bool {
-	return (f.bits & bit) == 1
+	return (f.bits & bit) != 0
 }
 
 func (f *flagBits) loadBits(bits uint32) uint32 {
