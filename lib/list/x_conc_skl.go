@@ -51,16 +51,16 @@ func (skl *xConcSkl[K, V]) traverse(
 				forward = nIdx
 				nIdx = forward.atomicLoadNextNode(l)
 			} else if /* found */ res == 0 {
-				aux.storePred(l, forward)
-				aux.storeSucc(l, nIdx)
+				aux[l] = forward          /* pred */
+				aux[sklMaxLevel+l] = nIdx /* succ */
 				return nIdx
 			} else /* not found, vertical next */ {
-				break 
+				break
 			}
 		}
 
-		aux.storePred(l, forward)
-		aux.storeSucc(l, nIdx)
+		aux[l] = forward          /* pred */
+		aux[sklMaxLevel+l] = nIdx /* succ */
 	}
 	return nil
 }
@@ -117,14 +117,11 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	}
 
 	var (
-		aux     = skl.pool.loadAux()
+		aux     = make(xConcSklAux[K, V], 2*sklMaxLevel)
 		oldLvls = skl.Levels()
 		newLvls = skl.rand(int(oldLvls), skl.Len()) // avoid loop call
 		ver     = skl.optVer.Number()
 	)
-	defer func() {
-		skl.pool.releaseAux(aux)
-	}()
 
 	if len(ifNotPresent) <= 0 {
 		ifNotPresent = insertReplaceDisabled
@@ -152,7 +149,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			lockedLevels     = int32(-1)
 		)
 		for l := int32(0); isValid && l < newLvls; l++ {
-			pred, succ = aux.loadPred(l), aux.loadSucc(l)
+			pred, succ = aux[l], aux[sklMaxLevel+l]
 			if /* lock */ pred != prev {
 				pred.lock(ver)
 				lockedLevels = l
@@ -166,17 +163,13 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			// 2. The pred's next node is the succ in this level.
 			isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) &&
 				(succ == nil || !succ.flags.atomicIsSet(nodeRemovingFlagBit)) &&
-				pred.loadNextNode(l) == succ
+				pred.atomicLoadNextNode(l) == succ
 		}
 		if /* conc insert */ !isValid {
-			aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-				unlockNodes(ver, lockedLevels, list...)
-			})
+			unlockNodes(ver, lockedLevels, aux[0:sklMaxLevel]...)
 			continue
 		} else if /* conc d-check */ skl.Len() >= sklMaxSize {
-			aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-				unlockNodes(ver, lockedLevels, list...)
-			})
+			unlockNodes(ver, lockedLevels, aux[0:sklMaxLevel]...)
 			return ErrXSklIsFull
 		}
 
@@ -185,17 +178,15 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...
 			//      +------+       +------+      +------+
-			node.storeNextNode(l, aux.loadSucc(l))       // Useless to use atomic here.
-			aux.loadPred(l).atomicStoreNextNode(l, node) // Memory barrier, concurrency safety.
+			node.storeNextNode(l, aux[sklMaxLevel+l]) // Useless to use atomic here.
+			aux[l].atomicStoreNextNode(l, node)       // Memory barrier, concurrency safety.
 		}
 		node.flags.atomicSet(nodeInsertedFlagBit)
 		if oldLvls = skl.Levels(); oldLvls < newLvls {
 			atomic.StoreInt32(&skl.levels, newLvls)
 		}
 
-		aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
-			unlockNodes(ver, lockedLevels, list...)
-		})
+		unlockNodes(ver, lockedLevels, aux[0:sklMaxLevel]...)
 		atomic.AddInt64(&skl.nodeLen, 1)
 		atomic.AddUint64(&skl.indexCount, uint64(newLvls))
 		return nil
