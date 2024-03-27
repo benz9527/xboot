@@ -271,7 +271,6 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 
 	foundResult = skl.rmTraverse(0, aux)
 	assert.Equal(t, int32(-1), foundResult)
-
 }
 
 func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode, rmBySucc bool) {
@@ -396,13 +395,24 @@ func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 	}
 	testcases := []testcase{
 		{
-			name: "go native sync mutex data race - linkedlist",
-			mu:   xSklGoMutex,
+			name: "skl lock free mutex data race - linkedlist",
+			mu:   xSklSpinMutex,
 			typ:  linkedList,
 		},
 		{
-			name: "skl lock free mutex data race - linkedlist",
+			name: "skl lock free mutex data race - rbtree",
 			mu:   xSklSpinMutex,
+			typ:  rbtree,
+		},
+		{
+			name:       "skl lock free mutex data race - rbtree (succ)",
+			mu:         xSklSpinMutex,
+			typ:        rbtree,
+			rbRmBySucc: true,
+		},
+		{
+			name: "go native sync mutex data race - linkedlist",
+			mu:   xSklGoMutex,
 			typ:  linkedList,
 		},
 		{
@@ -411,19 +421,8 @@ func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 			typ:  rbtree,
 		},
 		{
-			name: "skl lock free mutex data race - rbtree",
-			mu:   xSklSpinMutex,
-			typ:  rbtree,
-		},
-		{
 			name:       "go native sync mutex data race - rbtree (succ)",
 			mu:         xSklGoMutex,
-			typ:        rbtree,
-			rbRmBySucc: true,
-		},
-		{
-			name:       "skl lock free mutex data race - rbtree (succ)",
-			mu:         xSklSpinMutex,
 			typ:        rbtree,
 			rbRmBySucc: true,
 		},

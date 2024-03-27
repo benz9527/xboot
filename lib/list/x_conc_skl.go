@@ -172,7 +172,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			// 2. The pred's next node is the succ in this level.
 			isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) &&
 				(succ == nil || !succ.flags.atomicIsSet(nodeRemovingFlagBit)) &&
-				pred.loadNextNode(l) == succ
+				pred.atomicLoadNextNode(l) == succ
 		}
 		if /* conc insert */ !isValid {
 			aux.foreachPred( /* unlock */ func(list ...*xConcSklNode[K, V]) {
