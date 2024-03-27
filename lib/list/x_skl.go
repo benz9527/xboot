@@ -94,6 +94,7 @@ type sklOptions[K infra.OrderedKey, V any] struct {
 	concOptimisticLockVerGen id.UUIDGen
 	concDataNodeMode         *xNodeMode
 	sklType                  SklType
+	arenaUnifiedCap          uint32
 	isConcRbtreeBorrowSucc   bool
 }
 
@@ -133,6 +134,13 @@ func WithXComSklValComparator[K infra.OrderedKey, V any](cmp SklValComparator[V]
 			return fmt.Errorf("[x-com-skl] value comparator %w", errSklOptionEmptySettingVal)
 		}
 		opts.valComparator = cmp
+		return nil
+	}
+}
+
+func WithXConcSklArenaCap[K infra.OrderedKey, V any](cap uint32) SklOption[K, V] {
+	return func(opts *sklOptions[K, V]) error {
+		opts.arenaUnifiedCap = cap
 		return nil
 	}
 }
@@ -305,6 +313,9 @@ func NewSkl[K infra.OrderedKey, V any](typ SklType, cmp infra.OrderedKeyComparat
 			mode := unique // fallback to unique
 			sklOpts.concDataNodeMode = &mode
 		}
+		if sklOpts.arenaUnifiedCap == 0 {
+			sklOpts.arenaUnifiedCap = 1_000
+		}
 	default:
 		return nil, ErrXSklUnknownType
 	}
@@ -448,6 +459,9 @@ func NewXSkl[K infra.OrderedKey, V any](typ SklType, cmp infra.OrderedKeyCompara
 			gen, _ := id.MonotonicNonZeroID() // fallback to monotonic non-zero id
 			sklOpts.concOptimisticLockVerGen = gen
 		}
+		if sklOpts.arenaUnifiedCap == 0 {
+			sklOpts.arenaUnifiedCap = 1_000
+		}
 	default:
 		return nil, ErrXSklUnknownType
 	}
@@ -497,7 +511,7 @@ func sklFactory[K infra.OrderedKey, V any](opts *sklOptions[K, V]) (XSkipList[K,
 			levels:  1,
 			nodeLen: 0,
 			head:    newXConcSklHead[K, V](),
-			arena:   newXConcSklArena[K, V](1000, 1000),
+			arena:   newXConcSklArenaPool[K, V](opts.arenaUnifiedCap),
 			kcmp:    opts.keyComparator,
 			vcmp:    opts.valComparator,
 			optVer:  opts.concOptimisticLockVerGen,

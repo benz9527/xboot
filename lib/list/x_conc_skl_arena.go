@@ -1,6 +1,7 @@
 package list
 
 import (
+	"reflect"
 	"unsafe"
 
 	"github.com/benz9527/xboot/lib/infra"
@@ -78,17 +79,6 @@ type autoGrowthArena[T any] struct {
 	recycled []*T
 }
 
-func newAutoGrowthArena[T any](capPerBuf, initRecycleCap uint32) *autoGrowthArena[T] {
-	o := *new(T)
-	objSize, objAlign := unsafe.Sizeof(o), unsafe.Alignof(o)
-	buffers := make([]*xConcSklBuffer, 0, 32)
-	buffers = append(buffers, newXConcSklBuffer(uintptr(capPerBuf), objSize, objAlign))
-	return &autoGrowthArena[T]{
-		buffers:  buffers,
-		recycled: make([]*T, 0, initRecycleCap),
-	}
-}
-
 func (arena *autoGrowthArena[T]) bufLen() int {
 	return len(arena.buffers)
 }
@@ -103,7 +93,7 @@ func (arena *autoGrowthArena[T]) objLen() uint64 {
 		if arena.buffers[i].availableBytes() <= uintptr(0) {
 			l += uint64(arena.buffers[i].cap)
 		} else {
-			l += uint64(arena.buffers[i].offset/arena.buffers[i].objSize)
+			l += uint64(arena.buffers[i].offset / arena.buffers[i].objSize)
 		}
 	}
 	return l
@@ -166,18 +156,30 @@ func (arena *autoGrowthArena[T]) recycle(objs ...*T) {
 	arena.recycled = append(arena.recycled, objs...)
 }
 
-// The pool is used to recycle the auxiliary data structure.
-type xConcSklArenas[K infra.OrderedKey, V any] struct {
-	preAllocNodes     uint32
-	allocNodesIncr    uint32
-	nodeQueue         []*xConcSklNode[K, V]
-	releasedNodeQueue []*xConcSklNode[K, V]
+func newAutoGrowthArena[T any](capPerBuf, initRecycleCap uint32) *autoGrowthArena[T] {
+	o := *new(T)
+	if reflect.TypeOf(o).Kind() == reflect.Ptr {
+		panic("forbid to pass ptr generic type for auto growth arena")
+	}
+
+	objSize, objAlign := unsafe.Sizeof(o), unsafe.Alignof(o)
+	buffers := make([]*xConcSklBuffer, 0, 32)
+	buffers = append(buffers, newXConcSklBuffer(uintptr(capPerBuf), objSize, objAlign))
+	return &autoGrowthArena[T]{
+		buffers:  buffers,
+		recycled: make([]*T, 0, initRecycleCap),
+	}
 }
 
-func newXConcSklArena[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint32) *xConcSklArenas[K, V] {
-	p := &xConcSklArenas[K, V]{
-		allocNodesIncr: allocNodesIncr,
-		nodeQueue:      make([]*xConcSklNode[K, V], allocNodes),
+// The pool is used to recycle the auxiliary data structure.
+type xConcSklArenaPool[K infra.OrderedKey, V any] struct {
+	sklNodeArena *autoGrowthArena[xConcSklNode[K, V]]
+	xNodeArena   *autoGrowthArena[xNode[V]]
+}
+
+func newXConcSklArenaPool[K infra.OrderedKey, V any](unifiedCap uint32) *xConcSklArenaPool[K, V] {
+	return &xConcSklArenaPool[K, V]{
+		sklNodeArena: newAutoGrowthArena[xConcSklNode[K, V]](unifiedCap, 256),
+		xNodeArena:   newAutoGrowthArena[xNode[V]](unifiedCap, 256),
 	}
-	return p
 }

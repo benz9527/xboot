@@ -31,6 +31,11 @@ func TestXConcSklBuffer(t *testing.T) {
 
 func TestAutoGrowthArena_xConcSklNode(t *testing.T) {
 	arenaCap, total := 10, 101
+
+	require.Panics(t, func() {
+		newAutoGrowthArena[*xConcSklNode[uint64, []string]](uint32(arenaCap), 128)
+	})
+
 	arena := newAutoGrowthArena[xConcSklNode[uint64, []string]](uint32(arenaCap), 128)
 	defer arena.free()
 	rand := cryptoRandUint32() % uint32(total)
