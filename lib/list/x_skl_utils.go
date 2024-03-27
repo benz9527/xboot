@@ -9,9 +9,7 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-var (
-	insertReplaceDisabled = []bool{false}
-)
+var insertReplaceDisabled = []bool{false}
 
 var (
 	_ SklElement[uint8, uint8]       = (*xSklElement[uint8, uint8])(nil)
@@ -84,7 +82,7 @@ func (f *flagBits) atomicUnset(bits uint32) {
 }
 
 func (f *flagBits) atomicIsSet(bit uint32) bool {
-	return (atomic.LoadUint32(&f.bits) & bit) != 0
+	return (atomic.LoadUint32(&f.bits) & bit) == 1
 }
 
 func (f *flagBits) atomicAreEqual(bits, expect uint32) bool {
@@ -160,7 +158,7 @@ func (f *flagBits) atomicSetBitsAs(bits, target uint32) {
 }
 
 func (f *flagBits) isSet(bit uint32) bool {
-	return (f.bits & bit) != 0
+	return (f.bits & bit) == 1
 }
 
 func (f *flagBits) loadBits(bits uint32) uint32 {
@@ -191,8 +189,8 @@ type segmentMutex interface {
 type mutexImpl uint8
 
 const (
-	xSklSpinMutex mutexImpl = iota // Lock-free, spin-lock, optimistic-lock
-	xSklFakeMutex // No lock
+	xSklSpinMutex mutexImpl = 1 + iota // Lock-free, spin-lock, optimistic-lock
+	xSklFakeMutex                      // No lock
 )
 
 func (mu mutexImpl) String() string {

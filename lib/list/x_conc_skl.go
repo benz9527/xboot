@@ -9,12 +9,10 @@ import (
 )
 
 const (
-	// Indicating that the skip-list exclusive lock implementation type.
-	xConcSklMutexImplBit = 0x0001 /* 0: no-lock; 1: spin-lock */
 	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
-	xConcSklXNodeModeBits = 0x0006
+	xConcSklXNodeModeBits = 0x0003
 	// Indicating that the skip-list data node mode is rbtree and do delete operation will borrow pred(0) or succ node(1).
-	xConcSklRbtreeRmBorrowFlagBit = 0x0008
+	xConcSklRbtreeRmBorrowFlagBit = 0x0004
 )
 
 var _ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
@@ -182,7 +180,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			return ErrXSklIsFull
 		}
 
-		node := newXConcSklNode(key, val, newLvls, skl.flags.isSet(xConcSklMutexImplBit), skl.loadXNodeMode(), skl.vcmp)
+		node := newXConcSklNode(key, val, newLvls, skl.loadXNodeMode(), skl.vcmp)
 		for /* linking */ l := int32(0); l < newLvls; l++ {
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...

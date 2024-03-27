@@ -188,7 +188,6 @@ func (n *xNode[V]) succ() *xNode[V] {
 const (
 	nodeInsertedFlagBit = 1 << iota
 	nodeRemovingFlagBit
-	nodeSpinLockFlagBit
 	nodeIsHeadFlagBit
 	nodeIsSetFlagBit      /* 0: unique; 1: enable linked-list or rbtree */
 	nodeSetModeFlagBit    /* 0: linked-list; 1: rbtree */
@@ -238,10 +237,6 @@ type xConcSklNode[K infra.OrderedKey, V any] struct {
 }
 
 func (node *xConcSklNode[K, V]) lock(version uint64) {
-	if !node.flags.atomicIsSet(nodeSpinLockFlagBit) {
-		return
-	}
-
 	backoff := uint8(1)
 	for !atomic.CompareAndSwapUint64(&node.mu, unlocked, version) {
 		if backoff <= 32 {
@@ -256,16 +251,10 @@ func (node *xConcSklNode[K, V]) lock(version uint64) {
 }
 
 func (node *xConcSklNode[K, V]) tryLock(version uint64) bool {
-	if !node.flags.atomicIsSet(nodeSpinLockFlagBit) {
-		return true
-	}
 	return atomic.CompareAndSwapUint64(&node.mu, unlocked, version)
 }
 
 func (node *xConcSklNode[K, V]) unlock(version uint64) bool {
-	if !node.flags.atomicIsSet(nodeSpinLockFlagBit) {
-		return true
-	}
 	return atomic.CompareAndSwapUint64(&node.mu, version, unlocked)
 }
 
@@ -1111,7 +1100,6 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	key K,
 	val V,
 	lvl int32,
-	spinLockEnabled bool,
 	mode xNodeMode,
 	vcmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
@@ -1121,9 +1109,6 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	}
 	node.indices = make([]*xConcSklNode[K, V], lvl)
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
-	if spinLockEnabled {
-		node.flags.set(nodeSpinLockFlagBit)
-	}
 	switch mode {
 	case unique:
 		node.root = &xNode[V]{
@@ -1144,13 +1129,13 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	return node
 }
 
-func newXConcSklHead[K infra.OrderedKey, V any](mu mutexImpl, mode xNodeMode) *xConcSklNode[K, V] {
+func newXConcSklHead[K infra.OrderedKey, V any]() *xConcSklNode[K, V] {
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: sklMaxLevel,
 	}
-	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
-	head.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
+	head.flags.set(nodeIsHeadFlagBit | nodeInsertedFlagBit)
+	head.flags.setBitsAs(xNodeModeFlagBits, uint32(unique))
 	head.indices = make([]*xConcSklNode[K, V], sklMaxLevel)
 	return head
 }
