@@ -241,7 +241,7 @@ func (node *xConcSklNode[K, V]) lock(version uint64) {
 	for !atomic.CompareAndSwapUint64(&node.mu, unlocked, version) {
 		if backoff <= 32 {
 			for i := uint8(0); i < backoff; i++ {
-				infra.ProcYield(10)
+				infra.ProcYield(5)
 			}
 		} else {
 			runtime.Gosched()
