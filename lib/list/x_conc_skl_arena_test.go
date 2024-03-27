@@ -28,3 +28,29 @@ func TestXConcSklBuffer(t *testing.T) {
 	op_2_1 := (*xSklObject)(optr2)
 	t.Logf("%p, %p, %p\n", op_2, op_2_1, (*xSklObject)(optr2))
 }
+
+func BenchmarkXConcSklBuffer_xConcSklNode(b *testing.B) {
+	n := b.N
+	node := xConcSklNode[uint64, []byte]{}
+	buffer := newXConcSklBuffer(uintptr(n), unsafe.Sizeof(node), unsafe.Alignof(node))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = buffer.alloc()
+	}
+	b.StopTimer()
+	b.ReportAllocs()
+}
+
+func BenchmarkXConcSklBuffer_xNode(b *testing.B) {
+	n := b.N
+	node := xNode[[]byte]{}
+	buffer := newXConcSklBuffer(uintptr(n), unsafe.Sizeof(node), unsafe.Alignof(node))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = buffer.alloc()
+	}
+	b.StopTimer()
+	b.ReportAllocs()
+}
