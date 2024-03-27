@@ -172,8 +172,8 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			unlockNodes(ver, lockedLevels, aux[0:sklMaxLevel]...)
 			return ErrXSklIsFull
 		}
-
-		node := newXConcSklNode(key, val, newLvls, skl.loadXNodeMode(), skl.vcmp)
+		node := skl.arena.allocateXConcSklNode(uint32(newLvls))
+		node.init(key, val, skl.loadXNodeMode(), skl.vcmp, skl.arena.xNodeArena)
 		for /* linking */ l := int32(0); l < newLvls; l++ {
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...

@@ -512,7 +512,7 @@ func TestXConcSklUnique(t *testing.T) {
 	testByBytes := []byte(`abc`)
 
 	opts := make([]SklOption[int, []byte], 0, 2)
-	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte](), WithXConcSklArenaCap[int, []byte](10_000))
 	skl, err := NewSkl[int, []byte](
 		XConcSkl,
 		func(i, j int) int64 {

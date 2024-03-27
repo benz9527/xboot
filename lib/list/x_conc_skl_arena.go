@@ -177,6 +177,18 @@ type xConcSklArenaPool[K infra.OrderedKey, V any] struct {
 	xNodeArena   *autoGrowthArena[xNode[V]]
 }
 
+func (pool *xConcSklArenaPool[K, V]) allocateXConcSklNode(lvl uint32) *xConcSklNode[K, V] {
+	node, _ := pool.sklNodeArena.allocate()
+	indices := make([]*xConcSklNode[K, V], 0, lvl)
+	for i := uint32(0); i < lvl; i++ {
+		idx, _ := pool.sklNodeArena.allocate()
+		indices = append(indices, idx)
+	}
+	node.level = lvl
+	node.indices = indices
+	return node
+}
+
 func newXConcSklArenaPool[K infra.OrderedKey, V any](unifiedCap uint32) *xConcSklArenaPool[K, V] {
 	return &xConcSklArenaPool[K, V]{
 		sklNodeArena: newAutoGrowthArena[xConcSklNode[K, V]](unifiedCap, 256),

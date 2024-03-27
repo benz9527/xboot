@@ -1096,37 +1096,32 @@ func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
 	return nil
 }
 
-func newXConcSklNode[K infra.OrderedKey, V any](
+func (node *xConcSklNode[K, V]) init(
 	key K,
 	val V,
-	lvl int32,
 	mode xNodeMode,
 	vcmp SklValComparator[V],
-) *xConcSklNode[K, V] {
-	node := &xConcSklNode[K, V]{
-		key:   key,
-		level: uint32(lvl),
-	}
-	node.indices = make([]*xConcSklNode[K, V], lvl)
+	xNodeArena *autoGrowthArena[xNode[V]],
+) {
+	node.key = key
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
 	switch mode {
 	case unique:
-		node.root = &xNode[V]{
-			vptr: &val,
-		}
+		xn, _ := xNodeArena.allocate()
+		xn.vptr = &val
+		node.root = xn
 	case linkedList:
-		node.root = &xNode[V]{
-			parent: &xNode[V]{
-				vptr: &val,
-			},
-		}
+		xn1, _ := xNodeArena.allocate()
+		xn1.vptr = &val
+		xn2, _ := xNodeArena.allocate()
+		xn2.parent = xn1
+		node.root = xn2
 	case rbtree:
 		node.rbInsert(val, vcmp)
 	default:
 		panic("[x-conc-skl] unknown x-node type")
 	}
 	node.count = 1
-	return node
 }
 
 func newXConcSklHead[K infra.OrderedKey, V any]() *xConcSklNode[K, V] {
