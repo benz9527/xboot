@@ -11,39 +11,39 @@ import (
 // https://github.com/dgraph-io/badger/blob/master/skl/arena.go
 
 type xConcSklBuffer struct {
-	ptr        unsafe.Pointer
-	offset     uintptr // current index offset
-	maxCount   uintptr // max element count
-	eSize      uintptr // fixed element size
-	eAlignment uintptr // fixed element alignment
+	ptr      unsafe.Pointer
+	offset   uintptr // current index offset
+	cap      uintptr // capacity, indicates how many objects could be stored
+	objSize  uintptr // fixed object size
+	objAlign uintptr // fixed object alignment
 }
 
 func (buf *xConcSklBuffer) availableBytes() uintptr {
-	return buf.maxCount*buf.eSize - buf.offset
+	return buf.cap*buf.objSize - buf.offset
 }
 
-func (buf *xConcSklBuffer) alloc() (unsafe.Pointer, bool) {
+func (buf *xConcSklBuffer) allocate() (unsafe.Pointer, bool) {
 	if /* lazy init */ buf.ptr == nil {
-		buffer := make([]byte, buf.maxCount*buf.eSize)
+		buffer := make([]byte, buf.cap*buf.objSize)
 		buf.ptr = unsafe.Pointer(unsafe.SliceData(buffer))
 	}
 	alignOffset := uintptr(0)
-	for alignedPtr := uintptr(buf.ptr) + buf.offset; alignedPtr%buf.eAlignment != 0; alignedPtr++ {
+	for alignedPtr := uintptr(buf.ptr) + buf.offset; alignedPtr%buf.objAlign != 0; alignedPtr++ {
 		alignOffset++
 	}
-	allocSize := buf.eSize + alignOffset
+	allocatedSize := buf.objSize + alignOffset
 
-	if /* scale */ buf.availableBytes() < allocSize {
+	if /* scale */ buf.availableBytes() < allocatedSize {
 		return nil, false
 	}
 
 	ptr := unsafe.Pointer(uintptr(buf.ptr) + buf.offset + alignOffset)
-	buf.offset += allocSize
+	buf.offset += allocatedSize
 
 	// Translated into runtime.memclrNoHeapPointers by compiler.
 	// An assembler optimized implementation.
 	// go/src/runtime/memclr_$GOARCH.s (since https://codereview.appspot.com/137880043)
-	bytes := unsafe.Slice((*byte)(ptr), buf.eSize)
+	bytes := unsafe.Slice((*byte)(ptr), buf.objSize)
 	for i := range bytes {
 		bytes[i] = 0
 	}
@@ -63,25 +63,119 @@ func (buf *xConcSklBuffer) free() {
 	buf.ptr = nil
 }
 
-func newXConcSklBuffer(elements, size, alignment uintptr) *xConcSklBuffer {
+func newXConcSklBuffer(cap, size, alignment uintptr) *xConcSklBuffer {
 	return &xConcSklBuffer{
-		maxCount:   elements,
-		eSize:      size,
-		eAlignment: alignment,
-		offset:     uintptr(0),
+		cap:      cap,
+		objSize:  size,
+		objAlign: alignment,
+		offset:   uintptr(0),
 	}
 }
 
+// T must not be a pointer type.
+type autoGrowthArena[T any] struct {
+	buffers  []*xConcSklBuffer
+	recycled []*T
+}
+
+func newAutoGrowthArena[T any](capPerBuf, initRecycleCap uint32) *autoGrowthArena[T] {
+	o := *new(T)
+	objSize, objAlign := unsafe.Sizeof(o), unsafe.Alignof(o)
+	buffers := make([]*xConcSklBuffer, 0, 32)
+	buffers = append(buffers, newXConcSklBuffer(uintptr(capPerBuf), objSize, objAlign))
+	return &autoGrowthArena[T]{
+		buffers:  buffers,
+		recycled: make([]*T, 0, initRecycleCap),
+	}
+}
+
+func (arena *autoGrowthArena[T]) bufLen() int {
+	return len(arena.buffers)
+}
+
+func (arena *autoGrowthArena[T]) recLen() int {
+	return len(arena.recycled)
+}
+
+func (arena *autoGrowthArena[T]) objLen() uint64 {
+	l := uint64(0)
+	for i := 0; i < len(arena.buffers); i++ {
+		if arena.buffers[i].availableBytes() <= uintptr(0) {
+			l += uint64(arena.buffers[i].cap)
+		} else {
+			l += uint64(arena.buffers[i].offset/arena.buffers[i].objSize)
+		}
+	}
+	return l
+}
+
+func (arena *autoGrowthArena[T]) allocate() (*T, bool) {
+	var ptr unsafe.Pointer
+	allocated := false
+	for i := 0; i < len(arena.buffers); i++ {
+		if arena.buffers[i].availableBytes() <= uintptr(0) {
+			continue
+		} else {
+			ptr, allocated = arena.buffers[i].allocate()
+			break
+		}
+	}
+	rl := len(arena.recycled)
+	if !allocated && rl <= 0 {
+		buf := newXConcSklBuffer(
+			arena.buffers[0].cap,
+			arena.buffers[0].objSize,
+			arena.buffers[0].objAlign,
+		)
+		arena.buffers = append(arena.buffers, buf)
+		ptr, allocated = buf.allocate()
+	} else if !allocated && rl > 0 {
+		allocated = true
+		p := arena.recycled[0]
+		arena.recycled = arena.recycled[1:]
+		return p, allocated
+	}
+	if !allocated || ptr == nil {
+		return nil, false
+	}
+	return (*T)(ptr), allocated
+}
+
+func (arena *autoGrowthArena[T]) free() {
+	for _, buf := range arena.buffers {
+		buf.free()
+	}
+}
+
+func (arena *autoGrowthArena[T]) reset(indices ...int) {
+	l := len(arena.buffers)
+	if len(indices) > 0 {
+		for i := range indices {
+			if i < l {
+				arena.buffers[i].reset()
+			}
+		}
+		return
+	}
+	for _, buf := range arena.buffers {
+		buf.reset()
+	}
+}
+
+func (arena *autoGrowthArena[T]) recycle(objs ...*T) {
+	arena.recycled = append(arena.recycled, objs...)
+}
+
 // The pool is used to recycle the auxiliary data structure.
-type xConcSklArena[K infra.OrderedKey, V any] struct {
+type xConcSklArenas[K infra.OrderedKey, V any] struct {
 	preAllocNodes     uint32
 	allocNodesIncr    uint32
 	nodeQueue         []*xConcSklNode[K, V]
 	releasedNodeQueue []*xConcSklNode[K, V]
 }
 
-func newXConcSklArena[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint32) *xConcSklArena[K, V] {
-	p := &xConcSklArena[K, V]{
+func newXConcSklArena[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint32) *xConcSklArenas[K, V] {
+	p := &xConcSklArenas[K, V]{
 		allocNodesIncr: allocNodesIncr,
 		nodeQueue:      make([]*xConcSklNode[K, V], allocNodes),
 	}
