@@ -52,13 +52,13 @@ func (skl *xConcSkl[K, V]) traverse(
 			if res := skl.kcmp(key, nIdx.key); /* horizontal next */ res > 0 {
 				forward = nIdx
 				nIdx = forward.atomicLoadNextNode(l)
+				continue
 			} else if /* found */ res == 0 {
 				aux.storePred(l, forward)
 				aux.storeSucc(l, nIdx)
 				return nIdx
-			} else /* not found, vertical next */ {
-				break
 			}
+			break /* not found, vertical next */
 		}
 
 		aux.storePred(l, forward)
