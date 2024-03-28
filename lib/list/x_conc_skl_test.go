@@ -3,6 +3,7 @@ package list
 import (
 	"errors"
 	"fmt"
+	randv2 "math/rand/v2"
 	"sort"
 	"sync"
 	"testing"
@@ -529,5 +530,38 @@ func TestXConcSklUnique(t *testing.T) {
 
 	for i := 0; i < 3000000; i++ {
 		skl.Insert(i, testByBytes)
+	}
+}
+
+func BenchmarkXSklReadWrite(b *testing.B) {
+	value := []byte(`abc`)
+	for i := 0; i <= 10; i++ {
+		readFrac := float32(i) / 10.0
+		b.Run(fmt.Sprintf("frac_%d", i), func(b *testing.B) {
+			opts := make([]SklOption[int, []byte], 0, 2)
+			opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
+			skl, err := NewSkl[int, []byte](
+				XConcSkl,
+				intKeyComparator,
+				opts...,
+			)
+			if err != nil {
+				panic(err)
+			}
+			b.ResetTimer()
+			var count int
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					if randv2.Float32() < readFrac {
+						v, err := skl.LoadFirst(randv2.Int())
+						if err != nil && v != nil {
+							count++
+						}
+					} else {
+						skl.Insert(randv2.Int(), value)
+					}
+				}
+			})
+		})
 	}
 }
