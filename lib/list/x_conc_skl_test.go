@@ -116,7 +116,6 @@ func TestXConcSkl_DataRace(t *testing.T) {
 func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSklObject]{
 		head:    newXConcSklHead[uint64, *xSklObject](),
-		pool:    newXConcSklPool[uint64, *xSklObject](1000, 1000),
 		levels:  1,
 		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
@@ -353,7 +352,6 @@ func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 	skl := &xConcSkl[uint64, int64]{
 		head:    newXConcSklHead[uint64, int64](),
-		pool:    newXConcSklPool[uint64, int64](1000, 1000),
 		levels:  1,
 		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {

@@ -19,7 +19,6 @@ var _ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
 
 type xConcSkl[K infra.OrderedKey, V any] struct {
 	head       *xConcSklNode[K, V]
-	pool       *xConcSklPool[K, V]           // recycle resources
 	kcmp       infra.OrderedKeyComparator[K] // key comparator
 	vcmp       SklValComparator[V]           // value comparator
 	rand       SklRand
