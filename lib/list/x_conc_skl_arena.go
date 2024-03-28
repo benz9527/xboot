@@ -179,13 +179,14 @@ type xConcSklArenaPool[K infra.OrderedKey, V any] struct {
 
 func (pool *xConcSklArenaPool[K, V]) allocateXConcSklNode(lvl uint32) *xConcSklNode[K, V] {
 	node, _ := pool.sklNodeArena.allocate()
-	indices := make([]*xConcSklNode[K, V], 0, lvl)
+	indices := make([]*xConcSklNode[K, V], lvl)
 	for i := uint32(0); i < lvl; i++ {
 		idx, _ := pool.sklNodeArena.allocate()
 		indices = append(indices, idx)
 	}
+	ptr := unsafe.Pointer(&indices)
 	node.level = lvl
-	node.indices = indices
+	node.indices = *(*[]*xConcSklNode[K,V])(ptr)
 	return node
 }
 

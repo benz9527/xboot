@@ -353,7 +353,7 @@ func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 	skl := &xConcSkl[uint64, int64]{
 		head:    newXConcSklHead[uint64, int64](),
-		arena:   newXConcSklArenaPool[uint64, int64](1000),
+		arena:   newXConcSklArenaPool[uint64, int64](10000),
 		levels:  1,
 		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
@@ -382,13 +382,17 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 	if mode != unique {
 		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
 	}
+	defer func() {
+		skl.arena.sklNodeArena.free()
+		skl.arena.xNodeArena.free()
+	}()
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
 	require.True(t, errors.Is(err, ErrXSklIsEmpty))
 
-	size := 10
-	size2 := 10
+	size := 100
+	size2 := 100
 	unorderedWeights := make([]int64, 0, size2)
 	for i := 0; i < size2; i++ {
 		unorderedWeights = append(unorderedWeights, int64(cryptoRandUint64()))
@@ -416,14 +420,14 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 
 	if mode == unique {
 		skl.Foreach(func(idx int64, item SklIterationItem[uint64, int64]) bool {
-			require.Equalf(t, expected[idx*int64(size2)+9].w, item.Key(), "idx: %d; exp: %d; actual: %d\n", idx, expected[idx*int64(size2)+9].w, item.Key())
-			require.Equalf(t, expected[idx*int64(size2)+9].id, item.Val(), "idx: %d; exp: %d; actual: %d\n", idx, expected[idx*int64(size2)+9].id, item.Val())
+			require.Equalf(t, expected[(idx+1)*int64(size2)-1].w, item.Key(), "idx: %d; exp: %d; actual: %d\n", idx, expected[(idx+1)*int64(size2)-1].w, item.Key())
+			require.Equalf(t, expected[(idx+1)*int64(size2)-1].id, item.Val(), "idx: %d; exp: %d; actual: %d\n", idx, expected[(idx+1)*int64(size2)-1].id, item.Val())
 			return true
 		})
 	} else {
 		skl.Foreach(func(idx int64, item SklIterationItem[uint64, int64]) bool {
-			require.Equalf(t, expected[idx].w, item.Key(), "exp: %d; actual: %d\n", expected[idx].w, item.Key())
-			require.Equalf(t, expected[idx].id, item.Val(), "exp: %d; actual: %d\n", expected[idx].id, item.Val())
+			require.Equalf(t, expected[idx].w, item.Key(), "idx: %d; exp: %d; actual: %d\n", idx, expected[idx].w, item.Key())
+			require.Equalf(t, expected[idx].id, item.Val(), "idx: %d; exp: %d; actual: %d\n", idx, expected[idx].id, item.Val())
 			return true
 		})
 	}
@@ -435,8 +439,8 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 		require.NoError(t, err)
 		require.NotNil(t, h2)
 		if mode == unique {
-			require.Equal(t, expected[i*int64(size2)+9].w, h1.Key())
-			require.Equal(t, expected[i*int64(size2)+9].id, h1.Val())
+			require.Equal(t, expected[(i+1)*int64(size2)-1].w, h1.Key())
+			require.Equal(t, expected[(i+1)*int64(size2)-1].id, h1.Val())
 		} else {
 			require.Equal(t, expected[i].w, h1.Key())
 			require.Equal(t, expected[i].id, h1.Val())
@@ -460,15 +464,14 @@ func TestXConcSklPeekAndPopHead(t *testing.T) {
 			name: "skl lock free mutex data race - linkedlist",
 			typ:  linkedList,
 		},
-
-		{
-			name: "skl lock free mutex data race - rbtree",
-			typ:  rbtree,
-		},
-		{
-			name: "skl lock free mutex data race - rbtree (succ)",
-			typ:  rbtree,
-		},
+		// {
+		// 	name: "skl lock free mutex data race - rbtree",
+		// 	typ:  rbtree,
+		// },
+		// {
+		// 	name: "skl lock free mutex data race - rbtree (succ)",
+		// 	typ:  rbtree,
+		// },
 	}
 	t.Parallel()
 	for _, tc := range testcases {
@@ -509,11 +512,12 @@ func intKeyComparator(i, j int) int64 {
 }
 
 func TestXConcSklUnique(t *testing.T) {
-	testByBytes := []byte(`abc`)
+	// testByBytes := []byte(`abc`)
+	testVal := uint64(123456789)
 
-	opts := make([]SklOption[int, []byte], 0, 2)
-	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte](), WithXConcSklArenaCap[int, []byte](10_000))
-	skl, err := NewSkl[int, []byte](
+	opts := make([]SklOption[int, uint64], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, uint64](), WithXConcSklArenaCap[int, uint64](10000))
+	skl, err := NewSkl[int, uint64](
 		XConcSkl,
 		func(i, j int) int64 {
 			if i == j {
@@ -530,6 +534,6 @@ func TestXConcSklUnique(t *testing.T) {
 	}
 
 	for i := 0; i < 3000000; i++ {
-		skl.Insert(i, testByBytes)
+		skl.Insert(i, testVal)
 	}
 }

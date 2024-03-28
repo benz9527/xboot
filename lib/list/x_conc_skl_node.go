@@ -1103,16 +1103,17 @@ func (node *xConcSklNode[K, V]) init(
 	vcmp SklValComparator[V],
 	xNodeArena *autoGrowthArena[xNode[V]],
 ) {
+	vp := unsafe.Pointer(&val)
 	node.key = key
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
 	switch mode {
 	case unique:
 		xn, _ := xNodeArena.allocate()
-		xn.vptr = &val
+		xn.vptr = (*V)(vp)
 		node.root = xn
 	case linkedList:
 		xn1, _ := xNodeArena.allocate()
-		xn1.vptr = &val
+		xn1.vptr = (*V)(vp)
 		xn2, _ := xNodeArena.allocate()
 		xn2.parent = xn1
 		node.root = xn2
