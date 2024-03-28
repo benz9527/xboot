@@ -13,16 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
+func TestXConcSkl_SerialProcessing(t *testing.T) {
 	opts := make([]SklOption[uint64, *xSklObject], 0, 2)
 	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
-	switch mu {
-	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, *xSklObject]())
-	case xSklSpinMutex:
-		opts = append(opts, WithSklConcBySpin[uint64, *xSklObject]())
-	default:
-	}
 
 	skl, err := NewSkl[uint64, *xSklObject](
 		XConcSkl,
@@ -61,38 +54,9 @@ func xConcSklSerialProcessingRunCore(t *testing.T, mu mutexImpl) {
 	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
-func TestXConcSkl_SerialProcessing(t *testing.T) {
-	type testcase struct {
-		name string
-		me   mutexImpl
-	}
-	testcases := []testcase{
-		{
-			name: "go native sync mutex",
-			me:   xSklGoMutex,
-		}, {
-			name: "skl lock free mutex",
-			me:   xSklSpinMutex,
-		},
-	}
-	t.Parallel()
-	for _, tc := range testcases {
-		t.Run(tc.name, func(tt *testing.T) {
-			xConcSklSerialProcessingRunCore(tt, tc.me)
-		})
-	}
-}
-
-func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
+func TestXConcSkl_DataRace(t *testing.T) {
 	opts := make([]SklOption[uint64, *xSklObject], 0, 2)
 	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
-	switch mu {
-	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, *xSklObject]())
-	case xSklSpinMutex:
-		opts = append(opts, WithSklConcBySpin[uint64, *xSklObject]())
-	default:
-	}
 
 	skl, err := NewSkl[uint64, *xSklObject](
 		XConcSkl,
@@ -149,32 +113,10 @@ func xConcSklDataRaceRunCore(t *testing.T, mu mutexImpl) {
 	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
-func TestXConcSkl_DataRace(t *testing.T) {
-	type testcase struct {
-		name string
-		mu   mutexImpl
-	}
-	testcases := []testcase{
-		{
-			name: "go native sync mutex data race -- unique",
-			mu:   xSklGoMutex,
-		}, {
-			name: "skl lock free mutex data race -- unique",
-			mu:   xSklSpinMutex,
-		},
-	}
-	t.Parallel()
-	for _, tc := range testcases {
-		t.Run(tc.name, func(tt *testing.T) {
-			xConcSklDataRaceRunCore(tt, tc.mu)
-		})
-	}
-}
-
 func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSklObject]{
-		head:    newXConcSklHead[uint64, *xSklObject](xSklGoMutex, linkedList),
-		pool:    newXConcSklPool[uint64, *xSklObject](),
+		head:    newXConcSklHead[uint64, *xSklObject](),
+		pool:    newXConcSklPool[uint64, *xSklObject](1000, 1000),
 		levels:  1,
 		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
@@ -201,7 +143,6 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
-	skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(xSklGoMutex))
 	skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(linkedList))
 
 	ele, err := skl.PopHead()
@@ -273,15 +214,9 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	assert.Equal(t, int32(-1), foundResult)
 }
 
-func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode, rmBySucc bool) {
+func xConcSklDuplicateDataRaceRunCore(t *testing.T, mode xNodeMode, rmBySucc bool) {
 	opts := []SklOption[uint64, int64]{
 		WithSklRandLevelGen[uint64, int64](randomLevelV3),
-	}
-	switch mu {
-	case xSklGoMutex:
-		opts = append(opts, WithSklConcByGoNative[uint64, int64]())
-	case xSklSpinMutex:
-		opts = append(opts, WithSklConcBySpin[uint64, int64]())
 	}
 	switch mode {
 	case linkedList:
@@ -389,40 +324,20 @@ func xConcSklDuplicateDataRaceRunCore(t *testing.T, mu mutexImpl, mode xNodeMode
 func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 	type testcase struct {
 		name       string
-		mu         mutexImpl
 		typ        xNodeMode
 		rbRmBySucc bool
 	}
 	testcases := []testcase{
 		{
 			name: "skl lock free mutex data race - linkedlist",
-			mu:   xSklSpinMutex,
 			typ:  linkedList,
 		},
 		{
 			name: "skl lock free mutex data race - rbtree",
-			mu:   xSklSpinMutex,
 			typ:  rbtree,
 		},
 		{
 			name:       "skl lock free mutex data race - rbtree (succ)",
-			mu:         xSklSpinMutex,
-			typ:        rbtree,
-			rbRmBySucc: true,
-		},
-		{
-			name: "go native sync mutex data race - linkedlist",
-			mu:   xSklGoMutex,
-			typ:  linkedList,
-		},
-		{
-			name: "go native sync mutex data race - rbtree",
-			mu:   xSklGoMutex,
-			typ:  rbtree,
-		},
-		{
-			name:       "go native sync mutex data race - rbtree (succ)",
-			mu:         xSklGoMutex,
 			typ:        rbtree,
 			rbRmBySucc: true,
 		},
@@ -430,15 +345,15 @@ func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSklDuplicateDataRaceRunCore(tt, tc.mu, tc.typ, tc.rbRmBySucc)
+			xConcSklDuplicateDataRaceRunCore(tt, tc.typ, tc.rbRmBySucc)
 		})
 	}
 }
 
-func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
+func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 	skl := &xConcSkl[uint64, int64]{
-		head:    newXConcSklHead[uint64, int64](mu, mode),
-		pool:    newXConcSklPool[uint64, int64](),
+		head:    newXConcSklHead[uint64, int64](),
+		pool:    newXConcSklPool[uint64, int64](1000, 1000),
 		levels:  1,
 		nodeLen: 0,
 		kcmp: func(i, j uint64) int64 {
@@ -465,7 +380,6 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
 	if mode != unique {
-		skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(mu))
 		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
 	}
 
@@ -535,55 +449,87 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mu mutexImpl, mode xNodeMode) {
 func TestXConcSklPeekAndPopHead(t *testing.T) {
 	type testcase struct {
 		name string
-		mu   mutexImpl
 		typ  xNodeMode
 	}
 	testcases := []testcase{
 		{
-			name: "go native sync mutex data race - unique",
-			mu:   xSklGoMutex,
-			typ:  unique,
-		},
-		{
 			name: "skl lock free mutex data race - unique",
-			mu:   xSklSpinMutex,
 			typ:  unique,
-		},
-		{
-			name: "go native sync mutex data race - linkedlist",
-			mu:   xSklGoMutex,
-			typ:  linkedList,
 		},
 		{
 			name: "skl lock free mutex data race - linkedlist",
-			mu:   xSklSpinMutex,
 			typ:  linkedList,
 		},
-		{
-			name: "go native sync mutex data race - rbtree",
-			mu:   xSklGoMutex,
-			typ:  rbtree,
-		},
+
 		{
 			name: "skl lock free mutex data race - rbtree",
-			mu:   xSklSpinMutex,
-			typ:  rbtree,
-		},
-		{
-			name: "go native sync mutex data race - rbtree (succ)",
-			mu:   xSklGoMutex,
 			typ:  rbtree,
 		},
 		{
 			name: "skl lock free mutex data race - rbtree (succ)",
-			mu:   xSklSpinMutex,
 			typ:  rbtree,
 		},
 	}
 	t.Parallel()
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			xConcSklPeekAndPopHeadRunCore(tt, tc.mu, tc.typ)
+			xConcSklPeekAndPopHeadRunCore(tt, tc.typ)
 		})
+	}
+}
+
+func BenchmarkXConcSklUnique(b *testing.B) {
+	testByBytes := []byte(`abc`)
+
+	b.StopTimer()
+	opts := make([]SklOption[int, []byte], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
+	skl, err := NewSkl[int, []byte](
+		XConcSkl,
+		intKeyComparator,
+		opts...,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		skl.Insert(i, testByBytes)
+	}
+}
+
+func intKeyComparator(i, j int) int64 {
+	if i == j {
+		return 0
+	} else if i < j {
+		return -1
+	}
+	return 1
+}
+
+func TestXConcSklUnique(t *testing.T) {
+	testByBytes := []byte(`abc`)
+
+	opts := make([]SklOption[int, []byte], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
+	skl, err := NewSkl[int, []byte](
+		XConcSkl,
+		func(i, j int) int64 {
+			if i == j {
+				return 0
+			} else if i < j {
+				return -1
+			}
+			return 1
+		},
+		opts...,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < 3000000; i++ {
+		skl.Insert(i, testByBytes)
 	}
 }

@@ -1,6 +1,7 @@
 package list
 
 import (
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 
@@ -204,6 +205,10 @@ const (
 	rbtree     xNodeMode = 3
 )
 
+const (
+	unlocked = 0
+)
+
 func (mode xNodeMode) String() string {
 	switch mode {
 	case unique:
@@ -217,20 +222,43 @@ func (mode xNodeMode) String() string {
 	}
 }
 
+// If it is unique x-node type store value directly.
+// Otherwise, it is a sentinel node for linked-list or rbtree.
+// @field count, the number of duplicate elements.
+// @field mu, lock-free, spin-lock, optimistic-lock.
 type xConcSklNode[K infra.OrderedKey, V any] struct {
-	// If it is unique x-node type store value directly.
-	// Otherwise, it is a sentinel node for linked-list or rbtree.
-	root    *xNode[V]
-	key     K
-	vcmp    SklValComparator[V]
-	indices xConcSklIndices[K, V]
-	mu      segmentMutex
-	flags   flagBits
-	count   int64 // The number of duplicate elements
-	level   uint32
+	indices []*xConcSklNode[K, V] // size 24, 3 bytes
+	mu      uint64                // size 8, 2 byte
+	root    *xNode[V]             // size 8, 1 byte
+	key     K                     // size 8, 1 byte
+	count   int64                 // size 8, 1 byte
+	level   uint32                // size 4
+	flags   flagBits              // size 4
 }
 
-func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, ifNotPresent ...bool) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) lock(version uint64) {
+	backoff := uint8(1)
+	for !atomic.CompareAndSwapUint64(&node.mu, unlocked, version) {
+		if backoff <= 32 {
+			for i := uint8(0); i < backoff; i++ {
+				infra.ProcYield(5)
+			}
+		} else {
+			runtime.Gosched()
+		}
+		backoff <<= 1
+	}
+}
+
+func (node *xConcSklNode[K, V]) tryLock(version uint64) bool {
+	return atomic.CompareAndSwapUint64(&node.mu, unlocked, version)
+}
+
+func (node *xConcSklNode[K, V]) unlock(version uint64) bool {
+	return atomic.CompareAndSwapUint64(&node.mu, version, unlocked)
+}
+
+func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
 	switch mode := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits)); mode {
 	case unique:
 		if ifNotPresent[0] {
@@ -239,16 +267,16 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, ifNotPresent ...bool
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
 	case linkedList:
 		// pred
-		node.mu.lock(ver)
+		node.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		isAppend, err = node.llInsert(val, ifNotPresent...)
-		node.mu.unlock(ver)
+		isAppend, err = node.llInsert(val, vcmp, ifNotPresent...)
+		node.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	case rbtree:
-		node.mu.lock(ver)
+		node.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		isAppend, err = node.rbInsert(val)
-		node.mu.unlock(ver)
+		isAppend, err = node.rbInsert(val, vcmp)
+		node.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
 		// impossible run to here
@@ -262,26 +290,26 @@ func (node *xConcSklNode[K, V]) atomicLoadRoot() *xNode[V] {
 }
 
 func (node *xConcSklNode[K, V]) loadNextNode(i int32) *xConcSklNode[K, V] {
-	return node.indices.loadForwardIndex(i)
+	return node.indices[i]
 }
 
 func (node *xConcSklNode[K, V]) storeNextNode(i int32, next *xConcSklNode[K, V]) {
-	node.indices.storeForwardIndex(i, next)
+	node.indices[i] = next
 }
 
 func (node *xConcSklNode[K, V]) atomicLoadNextNode(i int32) *xConcSklNode[K, V] {
-	return node.indices.atomicLoadForwardIndex(i)
+	return (*xConcSklNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.indices[i]))))
 }
 
 func (node *xConcSklNode[K, V]) atomicStoreNextNode(i int32, next *xConcSklNode[K, V]) {
-	node.indices.atomicStoreForwardIndex(i, next)
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.indices[i])), unsafe.Pointer(next))
 }
 
 /* linked-list operation implementation */
 
-func (node *xConcSklNode[K, V]) llInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) llInsert(val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
 	for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
-		if /* replace */ res := node.vcmp(val, *n.vptr); res == 0 {
+		if /* replace */ res := vcmp(val, *n.vptr); res == 0 {
 			if /* disabled */ ifNotPresent[0] {
 				return false, ErrXSklDisabledValReplace
 			}
@@ -404,8 +432,7 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 }
 
 // i1: Empty rbtree, insert directly, but root node is painted to black.
-func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend bool, err error) {
-
+func (node *xConcSklNode[K, V]) rbInsert(val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
 	if /* i1 */ node.root.isNilLeaf() {
 		node.root = &xNode[V]{
 			vptr: &val,
@@ -417,7 +444,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend 
 	var x, y *xNode[V] = node.root, nil
 	for !x.isNilLeaf() {
 		y = x
-		res := node.vcmp(val, *x.vptr)
+		res := vcmp(val, *x.vptr)
 		if /* equal */ res == 0 {
 			break
 		} else /* less */ if res < 0 {
@@ -433,7 +460,7 @@ func (node *xConcSklNode[K, V]) rbInsert(val V, ifNotPresent ...bool) (isAppend 
 	}
 
 	var z *xNode[V]
-	res := node.vcmp(val, *y.vptr)
+	res := vcmp(val, *y.vptr)
 	if /* equal */ res == 0 {
 		if /* disabled */ ifNotPresent[0] {
 			return false, ErrXSklDisabledValReplace
@@ -690,12 +717,12 @@ func (node *xConcSklNode[K, V]) rbRemoveNode(z *xNode[V]) (res *xNode[V], err er
 	return res, nil
 }
 
-func (node *xConcSklNode[K, V]) rbRemove(val V) (*xNode[V], error) {
+func (node *xConcSklNode[K, V]) rbRemove(val V, vcmp SklValComparator[V]) (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
 		return nil, ErrXSklNotFound
 	}
 	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
-		return node.vcmp(val, *vn.vptr)
+		return vcmp(val, *vn.vptr)
 	})
 	if z == nil {
 		return nil, ErrXSklNotFound
@@ -1039,18 +1066,18 @@ func (node *xConcSklNode[K, V]) rbBFSLeaves() []*xNode[V] {
 
 	        [13]
 			/  \
-		 <8>    [17]
-		 / \    /
-	  [1] [11] <15>
-	    \
-		<6>
+		 <8>    [15]
+		 / \    /  \
+	  [6] [11] [14] [17]
+	  /              /
+	<1>            [16]
 
 2-3-4 tree like:
 
-	       <8> --- [13]
-		  /   \       \
-		 /     \       \
-	  [1]-<6> [11] <15>-[17]
+	       <8> --- [13] --- <15>
+		  /  \             /    \
+		 /    \           /      \
+	  <1>-[6][11]      [14] <16>-[17]
 
 Each leaf node to root node black depth are equal.
 */
@@ -1073,17 +1100,14 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	key K,
 	val V,
 	lvl int32,
-	mu mutexImpl,
 	mode xNodeMode,
-	cmp SklValComparator[V],
+	vcmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
 	node := &xConcSklNode[K, V]{
 		key:   key,
 		level: uint32(lvl),
-		mu:    mutexFactory(mu),
-		vcmp:  cmp,
 	}
-	node.indices = newXConcSklIndices[K, V](lvl)
+	node.indices = make([]*xConcSklNode[K, V], lvl)
 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
 	switch mode {
 	case unique:
@@ -1097,7 +1121,7 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 			},
 		}
 	case rbtree:
-		node.rbInsert(val)
+		node.rbInsert(val, vcmp)
 	default:
 		panic("[x-conc-skl] unknown x-node type")
 	}
@@ -1105,15 +1129,14 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	return node
 }
 
-func newXConcSklHead[K infra.OrderedKey, V any](mu mutexImpl, mode xNodeMode) *xConcSklNode[K, V] {
+func newXConcSklHead[K infra.OrderedKey, V any]() *xConcSklNode[K, V] {
 	head := &xConcSklNode[K, V]{
 		key:   *new(K),
 		level: sklMaxLevel,
-		mu:    mutexFactory(mu),
 	}
-	head.flags.atomicSet(nodeIsHeadFlagBit | nodeInsertedFlagBit)
-	head.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
-	head.indices = newXConcSklIndices[K, V](sklMaxLevel)
+	head.flags.set(nodeIsHeadFlagBit | nodeInsertedFlagBit)
+	head.flags.setBitsAs(xNodeModeFlagBits, uint32(unique))
+	head.indices = make([]*xConcSklNode[K, V], sklMaxLevel)
 	return head
 }
 
@@ -1121,7 +1144,7 @@ func unlockNodes[K infra.OrderedKey, V any](version uint64, num int32, nodes ...
 	var prev *xConcSklNode[K, V]
 	for i := num; i >= 0; i-- {
 		if nodes[i] != prev {
-			nodes[i].mu.unlock(version)
+			nodes[i].unlock(version)
 			prev = nodes[i]
 		}
 	}

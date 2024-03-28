@@ -1,8 +1,6 @@
 package list
 
 import (
-	"sync"
-
 	"github.com/benz9527/xboot/lib/infra"
 )
 
@@ -10,25 +8,17 @@ import (
 
 // The pool is used to recycle the auxiliary data structure.
 type xConcSklPool[K infra.OrderedKey, V any] struct {
-	auxPool *sync.Pool
+	preAllocNodes     uint32
+	allocNodesIncr    uint32
+	nodeQueue         []*xConcSklNode[K, V]
+	releasedNodeQueue []*xConcSklNode[K, V]
 }
 
-func newXConcSklPool[K infra.OrderedKey, V any]() *xConcSklPool[K, V] {
+func newXConcSklPool[K infra.OrderedKey, V any](allocNodes, allocNodesIncr uint32) *xConcSklPool[K, V] {
 	p := &xConcSklPool[K, V]{
-		auxPool: &sync.Pool{
-			New: func() any {
-				return make(xConcSklAux[K, V], 2*sklMaxLevel)
-			},
-		},
+		allocNodesIncr: allocNodesIncr,
+		nodeQueue:      make([]*xConcSklNode[K, V], allocNodes),
 	}
 	return p
 }
 
-func (p *xConcSklPool[K, V]) loadAux() xConcSklAux[K, V] {
-	return p.auxPool.Get().(xConcSklAux[K, V])
-}
-
-func (p *xConcSklPool[K, V]) releaseAux(aux xConcSklAux[K, V]) {
-	// Override only
-	p.auxPool.Put(aux)
-}

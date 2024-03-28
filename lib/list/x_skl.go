@@ -93,7 +93,6 @@ type sklOptions[K infra.OrderedKey, V any] struct {
 	comRWMutex               *sync.RWMutex
 	concOptimisticLockVerGen id.UUIDGen
 	concDataNodeMode         *xNodeMode
-	concSegMutexImpl         *mutexImpl
 	sklType                  SklType
 	isConcRbtreeBorrowSucc   bool
 }
@@ -152,7 +151,7 @@ func WithXConcSklOptimisticVersionGen[K infra.OrderedKey, V any](verGen id.UUIDG
 	}
 }
 
-func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V any](disableSegMutex ...bool) SklOption[K, V] {
+func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V any]() SklOption[K, V] {
 	return func(opts *sklOptions[K, V]) error {
 		if opts.sklType != XConcSkl {
 			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
@@ -160,14 +159,6 @@ func WithXConcSklDataNodeUniqueMode[K infra.OrderedKey, V any](disableSegMutex .
 			return fmt.Errorf("[x-conc-skl] unique data node mode set failed, previous mode: %s, %w", *opts.concDataNodeMode, errSklOptionHasBeenEnabled)
 		} else if opts.valComparator != nil {
 			return fmt.Errorf("[x-conc-skl] unique data node mode not support value comparator %w", errSklOptionHasBeenEnabled)
-		}
-
-		if disableSegMutex != nil && disableSegMutex[0] {
-			if opts.concSegMutexImpl != nil {
-				return fmt.Errorf("[x-conc-skl] unique data node mode seg mutex set failed, previous mutex: %s, %w", *opts.concSegMutexImpl, errSklOptionHasBeenEnabled)
-			}
-			mu := xSklFakeMutex
-			opts.concSegMutexImpl = &mu
 		}
 
 		mode := unique
@@ -211,32 +202,6 @@ func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V any](cmp SklValCompara
 		mode := rbtree
 		opts.concDataNodeMode = &mode
 		opts.valComparator = cmp
-		return nil
-	}
-}
-
-func WithSklConcBySpin[K infra.OrderedKey, V any]() SklOption[K, V] {
-	return func(opts *sklOptions[K, V]) error {
-		if opts.sklType != XConcSkl {
-			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
-		} else if opts.concSegMutexImpl != nil {
-			return fmt.Errorf("[x-conc-skl] segment mutex, previous: %s, %w", *opts.concSegMutexImpl, errSklOptionHasBeenEnabled)
-		}
-		impl := xSklSpinMutex
-		opts.concSegMutexImpl = &impl
-		return nil
-	}
-}
-
-func WithSklConcByGoNative[K infra.OrderedKey, V any]() SklOption[K, V] {
-	return func(opts *sklOptions[K, V]) error {
-		if opts.sklType != XConcSkl {
-			return fmt.Errorf("[x-conc-skl] %w", errSklOptionWrongTypeApply)
-		} else if opts.concSegMutexImpl != nil {
-			return fmt.Errorf("[x-conc-skl] segment mutex, previous: %s, %w", *opts.concSegMutexImpl, errSklOptionHasBeenEnabled)
-		}
-		impl := xSklGoMutex
-		opts.concSegMutexImpl = &impl
 		return nil
 	}
 }
@@ -334,10 +299,6 @@ func NewSkl[K infra.OrderedKey, V any](typ SklType, cmp infra.OrderedKeyComparat
 		if sklOpts.concOptimisticLockVerGen == nil {
 			gen, _ := id.MonotonicNonZeroID() // fallback to monotonic non-zero id
 			sklOpts.concOptimisticLockVerGen = gen
-		}
-		if sklOpts.concSegMutexImpl == nil {
-			impl := xSklSpinMutex // fallback to spin mutex
-			sklOpts.concSegMutexImpl = &impl
 		}
 		if sklOpts.concDataNodeMode == nil {
 			mode := unique // fallback to unique
@@ -481,10 +442,6 @@ func NewXSkl[K infra.OrderedKey, V any](typ SklType, cmp infra.OrderedKeyCompara
 			gen, _ := id.MonotonicNonZeroID() // fallback to monotonic non-zero id
 			sklOpts.concOptimisticLockVerGen = gen
 		}
-		if sklOpts.concSegMutexImpl == nil {
-			impl := xSklSpinMutex // fallback to spin mutex
-			sklOpts.concSegMutexImpl = &impl
-		}
 	default:
 		return nil, ErrXSklUnknownType
 	}
@@ -533,15 +490,14 @@ func sklFactory[K infra.OrderedKey, V any](opts *sklOptions[K, V]) (XSkipList[K,
 			// Start from 1 means the x-conc-skl cache levels at least a one level is fixed
 			levels:  1,
 			nodeLen: 0,
-			head:    newXConcSklHead[K, V](*opts.concSegMutexImpl, unique),
-			pool:    newXConcSklPool[K, V](),
+			head:    newXConcSklHead[K, V](),
+			pool:    newXConcSklPool[K, V](1000, 1000),
 			kcmp:    opts.keyComparator,
 			vcmp:    opts.valComparator,
 			optVer:  opts.concOptimisticLockVerGen,
-			rand:    randomLevelV3,
+			rand:    opts.randLevelGen,
 			flags:   flagBits{},
 		}
-		skl.flags.setBitsAs(xConcSklMutexImplBits, uint32(*opts.concSegMutexImpl))
 		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(*opts.concDataNodeMode))
 		if *opts.concDataNodeMode == rbtree && opts.isConcRbtreeBorrowSucc {
 			skl.flags.set(xConcSklRbtreeRmBorrowFlagBit)
