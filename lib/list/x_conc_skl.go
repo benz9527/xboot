@@ -42,7 +42,7 @@ func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
 func (skl *xConcSkl[K, V]) traverse(
 	lvl int32,
 	key K,
-	aux xConcSklAux[K, V],
+	aux []*xConcSklNode[K, V],
 ) *xConcSklNode[K, V] {
 	for /* vertical */ forward, l := skl.atomicLoadHead(), lvl-1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
@@ -70,7 +70,7 @@ func (skl *xConcSkl[K, V]) traverse(
 // Returns with the target key found level index.
 func (skl *xConcSkl[K, V]) rmTraverse(
 	weight K,
-	aux xConcSklAux[K, V],
+	aux []*xConcSklNode[K, V],
 ) (foundAt int32) {
 	// foundAt represents the index of the first layer at which it found a node.
 	foundAt = -1
