@@ -58,23 +58,22 @@ func newXConcSklDataNode[K infra.OrderedKey, V any](
 	node.elementRef = e
 	e.nodeRef = node
 
-	// vp := unsafe.Pointer(&val)
-	// switch mode {
-	// case unique:
-	// 	xn, _ := xNodeArena.allocate()
-	// 	xn.vptr = (*V)(vp)
-	// 	node.root = xn
-	// case linkedList:
-	// 	xn1, _ := xNodeArena.allocate()
-	// 	xn1.vptr = (*V)(vp)
-	// 	xn2, _ := xNodeArena.allocate()
-	// 	xn2.parent = xn1
-	// 	node.root = xn2
-	// case rbtree:
-	// 	node.rbInsert(val, vcmp)
-	// default:
-	// 	panic("[x-conc-skl] unknown x-node type")
-	// }
+	switch mode {
+	case unique:
+		xn, _ := pool.xNodeArena.allocate()
+		xn.vptr = &e.val
+		node.root = xn
+	case linkedList:
+		first, _ := pool.xNodeArena.allocate()
+		first.vptr = &e.val
+		root, _ := pool.xNodeArena.allocate()
+		root.parent = first
+		node.root = root
+	case rbtree:
+		node.rbInsert(pool.xNodeArena, e.val, vcmp)
+	default:
+		panic("[x-conc-skl] unknown x-node type")
+	}
 	node.count = 1
 	return e
 }
@@ -345,7 +344,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparato
 	case rbtree:
 		node.lock(ver)
 		node.flags.atomicUnset(nodeInsertedFlagBit)
-		isAppend, err = node.rbInsert(val, vcmp)
+		// isAppend, err = node.rbInsert(val, vcmp)
 		node.unlock(ver)
 		node.flags.atomicSet(nodeInsertedFlagBit)
 	default:
@@ -502,11 +501,16 @@ func (node *xConcSklNode[K, V]) rbRightRotate(x *xNode[V]) {
 }
 
 // i1: Empty rbtree, insert directly, but root node is painted to black.
-func (node *xConcSklNode[K, V]) rbInsert(val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
+func (node *xConcSklNode[K, V]) rbInsert(
+	arena *autoGrowthArena[xNode[V]],
+	val V,
+	vcmp SklValComparator[V],
+	ifNotPresent ...bool,
+) (isAppend bool, err error) {
 	if /* i1 */ node.root.isNilLeaf() {
-		node.root = &xNode[V]{
-			vptr: &val,
-		}
+		x, _ := arena.allocate()
+		x.vptr = &val
+		node.root = x
 		atomic.AddInt64(&node.count, 1)
 		return true, nil
 	}
@@ -538,18 +542,16 @@ func (node *xConcSklNode[K, V]) rbInsert(val V, vcmp SklValComparator[V], ifNotP
 		y.vptr = &val
 		return false, nil
 	} else /* less */ if res < 0 {
-		z = &xNode[V]{
-			vptr:   &val,
-			color:  red,
-			parent: y,
-		}
+		z, _ = arena.allocate()
+		z.vptr = &val
+		z.color = red
+		z.parent = y
 		y.left = z
 	} else /* greater */ {
-		z = &xNode[V]{
-			vptr:   &val,
-			color:  red,
-			parent: y,
-		}
+		z, _ = arena.allocate()
+		z.vptr = &val
+		z.color = red
+		z.parent = y
 		y.right = z
 	}
 

@@ -62,6 +62,16 @@ func TestAutoGrowthArena_sliceGCRelease(t *testing.T) {
 		arr []byte
 	}
 
+	// If we access the recycled arr mem, occur fatal throw, unable to catch!
+	// Without the holder, here must be panic.
+	// unexpected fault address 0xc000168000
+	// fatal error: fault
+	// [signal 0xc0000005 code=0x0 addr=0xc000168000 pc=0xd76f0e]
+	type testObjWrapper struct {
+		arrRef []byte // attempt to hold arr lifecycle for testObj
+		obj    *testObj
+	}
+
 	arenaCap, total := 100, 1001
 
 	require.Panics(t, func() {
@@ -71,7 +81,7 @@ func TestAutoGrowthArena_sliceGCRelease(t *testing.T) {
 	arena := newAutoGrowthArena[testObj](uint32(arenaCap), 128)
 	defer arena.free()
 
-	objs := make([]*testObj, 0, total)
+	objs := make([]*testObjWrapper, 0, total)
 	for i := 0; i < total; i++ {
 		obj, ok := arena.allocate()
 		require.True(t, ok)
@@ -79,8 +89,13 @@ func TestAutoGrowthArena_sliceGCRelease(t *testing.T) {
 		x := int32(i + 100)
 		buf := bytes.NewBuffer([]byte{})
 		binary.Write(buf, binary.BigEndian, x)
-		obj.arr = buf.Bytes()
-		objs = append(objs, obj)
+
+		w := &testObjWrapper{
+			arrRef: buf.Bytes(),
+		}
+		obj.arr = w.arrRef
+		w.obj = obj
+		objs = append(objs, w)
 	}
 
 	for i := 0; i < 10; i++ {
@@ -89,12 +104,7 @@ func TestAutoGrowthArena_sliceGCRelease(t *testing.T) {
 	}
 	i := 0
 	for ; i < total; i++ {
-		// If we access the recycled arr mem, occur fatal throw, unable to catch!
-		// unexpected fault address 0xc000168000
-		// fatal error: fault
-		// [signal 0xc0000005 code=0x0 addr=0xc000168000 pc=0xd76f0e]
-		// t.Logf("after gc, i: %d; arr len: %d; arr value: %v\n", i, len(objs[i].arr), objs[i].arr) // maybe exit(1)
-		t.Logf("after gc, i: %d; arr len: %d\n", i, len(objs[i].arr)) // okay but abnormal actually.
+		t.Logf("after gc, i: %d; arr len: %d; arr value: %v\n", i, len(objs[i].obj.arr), objs[i].obj.arr) // maybe exit(1)
 	}
 }
 
@@ -105,7 +115,7 @@ func TestAutoGrowthArena_unsafe_sliceGCRelease(t *testing.T) {
 	t.Logf("size of unsafe arr pointer: %d\n", unsafe.Sizeof(testObj{}.arr))
 
 	type testObjWrapper struct {
-		arrRef []byte  // attempt to hold arr lifecycle for testObj
+		arrRef []byte // attempt to hold arr lifecycle for testObj
 		obj    *testObj
 	}
 

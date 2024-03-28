@@ -250,6 +250,9 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 		val   uint64
 	}
 
+	arena := newAutoGrowthArena[xNode[uint64]](100, 100)
+	defer arena.free()
+
 	vcmp := func(i, j uint64) int64 {
 		if i == j {
 			return 0
@@ -260,7 +263,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	}
 
 	node := &xConcSklNode[uint64, uint64]{}
-	node.rbInsert(52, vcmp)
+	node.rbInsert(arena, 52, vcmp)
 	expected := []checkData{
 		{black, 52},
 	}
@@ -272,7 +275,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	node.rbInsert(47, vcmp)
+	node.rbInsert(arena, 47, vcmp)
 	expected = []checkData{
 		{red, 47}, {black, 52},
 	}
@@ -283,7 +286,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	})
 	require.NoError(t, node.rbRedViolationValidate())
 
-	node.rbInsert(3, vcmp)
+	node.rbInsert(arena, 3, vcmp)
 	expected = []checkData{
 		{red, 3}, {black, 47}, {red, 52},
 	}
@@ -295,7 +298,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	node.rbInsert(35, vcmp)
+	node.rbInsert(arena, 35, vcmp)
 	expected = []checkData{
 		{black, 3},
 		{red, 35},
@@ -310,7 +313,7 @@ func TestRbtreeLeftAndRightRotate(t *testing.T) {
 	require.NoError(t, node.rbRedViolationValidate())
 	require.NoError(t, node.rbBlackViolationValidate())
 
-	node.rbInsert(24, vcmp)
+	node.rbInsert(arena, 24, vcmp)
 	expected = []checkData{
 		{red, 3},
 		{black, 24},
@@ -401,6 +404,9 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		val   uint64
 	}
 
+	arena := newAutoGrowthArena[xNode[uint64]](100, 100)
+	defer arena.free()
+
 	vcmp := func(i, j uint64) int64 {
 		if i == j {
 			return 0
@@ -411,11 +417,11 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	}
 
 	node := &xConcSklNode[uint64, uint64]{}
-	node.rbInsert(52, vcmp)
-	node.rbInsert(47, vcmp)
-	node.rbInsert(3, vcmp)
-	node.rbInsert(35, vcmp)
-	node.rbInsert(24, vcmp)
+	node.rbInsert(arena, 52, vcmp)
+	node.rbInsert(arena, 47, vcmp)
+	node.rbInsert(arena, 3, vcmp)
+	node.rbInsert(arena, 35, vcmp)
+	node.rbInsert(arena, 24, vcmp)
 	expected := []checkData{
 		{red, 3},
 		{black, 24},
@@ -503,6 +509,9 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 	insertTotal := uint64(float64(total) * 0.8)
 	removeTotal := uint64(float64(total) * 0.2)
 
+	arena := newAutoGrowthArena[xNode[uint64]](1000, 100)
+	defer arena.free()
+
 	vcmp := func(i, j uint64) int64 {
 		if i == j {
 			return 0
@@ -517,8 +526,10 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 		node.flags.set(nodeRbRmBorrowFlagBit)
 	}
 
+	arr := make([]uint64, 0, total)
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbInsert(i, vcmp)
+		arr = append(arr, i)
+		node.rbInsert(arena, arr[i], vcmp)
 		require.NoError(t, node.rbRedViolationValidate())
 		require.NoError(t, node.rbBlackViolationValidate())
 	}
@@ -528,7 +539,8 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 	})
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
-		node.rbInsert(i, vcmp)
+		arr = append(arr, i)
+		node.rbInsert(arena, arr[i], vcmp)
 		require.NoError(t, node.rbRedViolationValidate())
 		require.NoError(t, node.rbBlackViolationValidate())
 	}
@@ -580,6 +592,9 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
 func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
 	insertTotal := uint64(100000)
 
+	arena := newAutoGrowthArena[xNode[uint64]](1000, 100)
+	defer arena.free()
+
 	vcmp := func(i, j uint64) int64 {
 		if i == j {
 			return 0
@@ -593,7 +608,7 @@ func TestRandomInsertAndRemoveRbtree_SequentialNumber_Release(t *testing.T) {
 
 	rand := uint64(cryptoRandUint32() % 1000)
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbInsert(i, vcmp)
+		node.rbInsert(arena, i, vcmp)
 		if i%1000 == rand {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
@@ -613,6 +628,9 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	insertTotal := int64(float64(total) * 0.8)
 	removeTotal := int64(float64(total) * 0.2)
 
+	arena := newAutoGrowthArena[xNode[int64]](1000, 100)
+	defer arena.free()
+
 	vcmp := func(i, j int64) int64 {
 		if i == j {
 			return 0
@@ -626,7 +644,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 
 	rand := int64(cryptoRandUint32() % 1000)
 	for i := insertTotal - 1; i >= 0; i-- {
-		node.rbInsert(i, vcmp)
+		node.rbInsert(arena, i, vcmp)
 		if i%1000 == rand {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
@@ -638,7 +656,7 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 	})
 
 	for i := removeTotal + insertTotal - 1; i >= insertTotal; i-- {
-		node.rbInsert(i, vcmp)
+		node.rbInsert(arena, i, vcmp)
 	}
 	node.rbDFS(func(idx int64, color color, val int64) bool {
 		require.Equal(t, int64(idx), val)
@@ -699,6 +717,9 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 	shuffle(insertElements)
 	shuffle(removeElements)
 
+	arena := newAutoGrowthArena[xNode[uint64]](1000, 100)
+	defer arena.free()
+
 	vcmp := func(i, j uint64) int64 {
 		if i == j {
 			return 0
@@ -714,7 +735,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {
-		node.rbInsert(insertElements[i], vcmp)
+		node.rbInsert(arena, insertElements[i], vcmp)
 		if violationCheck {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
@@ -729,7 +750,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 	})
 
 	for i := uint64(0); i < removeTotal; i++ {
-		node.rbInsert(removeElements[i], vcmp)
+		node.rbInsert(arena, removeElements[i], vcmp)
 		if violationCheck {
 			require.NoError(t, node.rbRedViolationValidate())
 			require.NoError(t, node.rbBlackViolationValidate())
