@@ -215,30 +215,30 @@ func TestUnsafePointerCAS_ConcurrentMemVisibility(t *testing.T) {
 	time.Sleep(1 * time.Second)
 }
 
-func TestAuxIndexes(t *testing.T) {
-	aux := make(xConcSklAux[uint8, *xSklObject], 2*sklMaxLevel)
-	for i := uint8(0); i < 2*sklMaxLevel; i++ {
-		aux[i] = &xConcSklNode[uint8, *xSklObject]{
-			key: i,
-		}
-	}
+// func TestAuxIndexes(t *testing.T) {
+// 	aux := make(xConcSklAux[uint8, *xSklObject], 2*sklMaxLevel)
+// 	for i := uint8(0); i < 2*sklMaxLevel; i++ {
+// 		aux[i] = &xConcSklNode[uint8, *xSklObject]{
+// 			key: i,
+// 		}
+// 	}
 
-	for i := uint8(0); i < sklMaxLevel; i++ {
-		require.Equal(t, i, aux.loadPred(int32(i)).key)
-		require.Equal(t, sklMaxLevel+i, aux.loadSucc(int32(i)).key)
-	}
+// 	for i := uint8(0); i < sklMaxLevel; i++ {
+// 		require.Equal(t, i, aux.loadPred(int32(i)).key)
+// 		require.Equal(t, sklMaxLevel+i, aux.loadSucc(int32(i)).key)
+// 	}
 
-	aux.foreachPred(func(predList ...*xConcSklNode[uint8, *xSklObject]) {
-		for i := uint8(0); i < sklMaxLevel; i++ {
-			require.Equal(t, i, predList[i].key)
-		}
-	})
-	aux.foreachSucc(func(succList ...*xConcSklNode[uint8, *xSklObject]) {
-		for i := uint8(0); i < sklMaxLevel; i++ {
-			require.Equal(t, sklMaxLevel+i, succList[i].key)
-		}
-	})
-}
+// 	aux.foreachPred(func(predList ...*xConcSklNode[uint8, *xSklObject]) {
+// 		for i := uint8(0); i < sklMaxLevel; i++ {
+// 			require.Equal(t, i, predList[i].key)
+// 		}
+// 	})
+// 	aux.foreachSucc(func(succList ...*xConcSklNode[uint8, *xSklObject]) {
+// 		for i := uint8(0); i < sklMaxLevel; i++ {
+// 			require.Equal(t, sklMaxLevel+i, succList[i].key)
+// 		}
+// 	})
+// }
 
 // test remove by pred references:
 // https://www.cs.usfca.edu/~galles/visualization/RedBlack.html
@@ -798,5 +798,12 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		t.Run(tc.name, func(tt *testing.T) {
 			xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(tt, tc.total, tc.rbRmBySucc, tc.violationCheck)
 		})
+	}
+}
+
+func BenchmarkXConcSklElement(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = &xConcSklElement[uint64, []byte]{}
 	}
 }

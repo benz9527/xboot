@@ -510,7 +510,7 @@ func sklFactory[K infra.OrderedKey, V any](opts *sklOptions[K, V]) (XSkipList[K,
 			// Start from 1 means the x-conc-skl cache levels at least a one level is fixed
 			levels:  1,
 			nodeLen: 0,
-			head:    newXConcSklHead[K, V](),
+			// head:    newXConcSklHeadNode[K, V](),
 			arena:   newXConcSklArenaPool[K, V](opts.arenaUnifiedCap),
 			kcmp:    opts.keyComparator,
 			vcmp:    opts.valComparator,

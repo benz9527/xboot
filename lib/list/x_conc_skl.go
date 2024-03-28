@@ -47,7 +47,7 @@ func (skl *xConcSkl[K, V]) traverse(
 	for /* vertical */ forward, l := skl.atomicLoadHead(), lvl-1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
 		for /* horizontal */ nIdx != nil {
-			if res := skl.kcmp(key, nIdx.key); /* horizontal next */ res > 0 {
+			if res := skl.kcmp(key, nIdx.elementRef.key); /* horizontal next */ res > 0 {
 				forward = nIdx
 				nIdx = forward.atomicLoadNextNode(l)
 			} else if /* found */ res == 0 {
@@ -77,7 +77,7 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 	forward := skl.atomicLoadHead()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && skl.kcmp(weight, nIdx.elementRef.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
@@ -85,7 +85,7 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 		aux[l] = forward
 		aux[sklMaxLevel+l] = nIdx
 
-		if foundAt == -1 && nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
+		if foundAt == -1 && nIdx != nil && skl.kcmp(weight, nIdx.elementRef.key) == 0 {
 			foundAt = l
 		}
 		// Downward to next level.
@@ -172,8 +172,9 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			unlockNodes(ver, lockedLevels, aux[0:sklMaxLevel]...)
 			return ErrXSklIsFull
 		}
-		node := skl.arena.allocateXConcSklNode(uint32(newLvls))
-		node.init(key, val, skl.loadXNodeMode(), skl.vcmp, skl.arena.xNodeArena)
+		// node := skl.arena.allocateXConcSklNode(uint32(newLvls))
+		// node.init(key, val, skl.loadXNodeMode(), skl.vcmp, skl.arena.xNodeArena)
+		var node *xConcSklNode[K, V]
 		for /* linking */ l := int32(0); l < newLvls; l++ {
 			//      +------+       +------+      +------+
 			// ...  | pred |------>|  new |----->| succ | ...
@@ -214,7 +215,7 @@ func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K,
 				return atomic.LoadInt64(&forward.count)
 			}
 			item.keyFn = func() K {
-				return forward.key
+				return forward.elementRef.key
 			}
 			item.valFn = func() V {
 				node := forward.atomicLoadRoot()
@@ -242,7 +243,7 @@ func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K,
 				return atomic.LoadInt64(&forward.count)
 			}
 			item.keyFn = func() K {
-				return forward.key
+				return forward.elementRef.key
 			}
 			for x := forward.atomicLoadRoot().parent; x != nil; x = x.parent {
 				item.valFn = func() V {
@@ -268,7 +269,7 @@ func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K,
 				return atomic.LoadInt64(&forward.count)
 			}
 			item.keyFn = func() K {
-				return forward.key
+				return forward.elementRef.key
 			}
 			forward.rbDFS(func(idx int64, color color, val V) bool {
 				item.valFn = func() V {
@@ -298,12 +299,12 @@ func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err error
 	mode := skl.loadXNodeMode()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.elementRef.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
 
-		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
+		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.elementRef.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw empty */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return nil, ErrXSklConcRWLoadEmpty
@@ -539,7 +540,7 @@ func (skl *xConcSkl[K, V]) PeekHead() (element SklElement[K, V]) {
 				return nil
 			}
 			element = &xSklElement[K, V]{
-				key: forward.key,
+				key: forward.elementRef.key,
 				val: *node.vptr,
 			}
 			break
@@ -555,7 +556,7 @@ func (skl *xConcSkl[K, V]) PeekHead() (element SklElement[K, V]) {
 				return nil
 			}
 			element = &xSklElement[K, V]{
-				key: forward.key,
+				key: forward.elementRef.key,
 				val: *x.vptr,
 			}
 			break
@@ -571,7 +572,7 @@ func (skl *xConcSkl[K, V]) PeekHead() (element SklElement[K, V]) {
 				return nil
 			}
 			element = &xSklElement[K, V]{
-				key: forward.key,
+				key: forward.elementRef.key,
 				val: *x.vptr,
 			}
 			break
@@ -587,7 +588,7 @@ func (skl *xConcSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 	if forward == nil {
 		return nil, ErrXSklIsEmpty
 	}
-	return skl.RemoveFirst(forward.key)
+	return skl.RemoveFirst(forward.elementRef.key)
 }
 
 // Duplicated element Skip-List basic APIs
@@ -604,12 +605,12 @@ func (skl *xConcSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklE
 	)
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.elementRef.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
 
-		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
+		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.elementRef.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return nil, ErrXSklConcRWLoadEmpty
@@ -661,12 +662,12 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	)
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.elementRef.key) > 0 {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
 
-		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
+		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.elementRef.key) == 0 {
 			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return nil, ErrXSklConcRWLoadEmpty

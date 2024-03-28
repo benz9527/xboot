@@ -115,7 +115,7 @@ func TestXConcSkl_DataRace(t *testing.T) {
 
 func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSklObject]{
-		head:    newXConcSklHead[uint64, *xSklObject](),
+		// head:    newXConcSklHead[uint64, *xSklObject](),
 		arena:   newXConcSklArenaPool[uint64, *xSklObject](1000),
 		levels:  1,
 		nodeLen: 0,
@@ -183,28 +183,28 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	foundResult := skl.rmTraverse(1, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.True(t, aux.loadPred(0).flags.isSet(nodeIsHeadFlagBit))
-	require.Equal(t, uint64(1), aux.loadSucc(0).key)
+	require.Equal(t, uint64(1), aux.loadSucc(0).elementRef.key)
 	require.Equal(t, "9", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(2, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
-	require.Equal(t, uint64(1), aux.loadPred(0).key)
+	require.Equal(t, uint64(1), aux.loadPred(0).elementRef.key)
 	require.Equal(t, "9", (*aux.loadPred(0).atomicLoadRoot().linkedListNext().vptr).id)
-	require.Equal(t, uint64(2), aux.loadSucc(0).key)
+	require.Equal(t, uint64(2), aux.loadSucc(0).elementRef.key)
 	require.Equal(t, "9", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(3, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
-	require.Equal(t, uint64(2), aux.loadPred(0).key)
+	require.Equal(t, uint64(2), aux.loadPred(0).elementRef.key)
 	require.Equal(t, "9", (*aux.loadPred(0).atomicLoadRoot().linkedListNext().vptr).id)
-	require.Equal(t, uint64(3), aux.loadSucc(0).key)
+	require.Equal(t, uint64(3), aux.loadSucc(0).elementRef.key)
 	require.Equal(t, "2", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(4, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
-	require.Equal(t, uint64(3), aux.loadPred(0).key)
+	require.Equal(t, uint64(3), aux.loadPred(0).elementRef.key)
 	require.Equal(t, "2", (*aux.loadPred(0).atomicLoadRoot().linkedListNext().vptr).id)
-	require.Equal(t, uint64(4), aux.loadSucc(0).key)
+	require.Equal(t, uint64(4), aux.loadSucc(0).elementRef.key)
 	require.Equal(t, "9", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
 	foundResult = skl.rmTraverse(100, aux)
@@ -352,7 +352,7 @@ func TestXConcSkl_Duplicate_DataRace(t *testing.T) {
 
 func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 	skl := &xConcSkl[uint64, int64]{
-		head:    newXConcSklHead[uint64, int64](),
+		// head:    newXConcSklHead[uint64, int64](),
 		arena:   newXConcSklArenaPool[uint64, int64](10000),
 		levels:  1,
 		nodeLen: 0,

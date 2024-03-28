@@ -8,6 +8,77 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
+var _ SklElement[uint8, uint8] = (*xSklElement[uint8, uint8])(nil)
+
+// xConcSklElement is used to keepalive of the Go memory objects' lifecycle.
+type xConcSklElement[K infra.OrderedKey, V any] struct {
+	indices []*xConcSklNode[K, V]
+	nodeRef *xConcSklNode[K, V]
+	key     K
+	val     V
+}
+
+func (e *xConcSklElement[K, V]) Key() K {
+	return e.key
+}
+
+func (e *xConcSklElement[K, V]) Val() V {
+	return e.val
+}
+
+func newXConcSklHeadNode[K infra.OrderedKey, V any]() *xConcSklElement[K, V] {
+	node := &xConcSklNode[K, V]{
+		level: sklMaxLevel,
+	}
+	node.flags.set(nodeIsHeadFlagBit | nodeInsertedFlagBit)
+	node.flags.setBitsAs(xNodeModeFlagBits, uint32(unique))
+	head := &xConcSklElement[K, V]{
+		indices: make([]*xConcSklNode[K, V], sklMaxLevel),
+	}
+	head.nodeRef = node
+	return head
+}
+
+func newXConcSklDataNode[K infra.OrderedKey, V any](
+	key K,
+	val V,
+	lvl uint32,
+	mode xNodeMode,
+	vcmp SklValComparator[V],
+	pool *xConcSklArenaPool[K, V],
+) *xConcSklElement[K, V] {
+	e := &xConcSklElement[K, V]{
+		key:     key,
+		val:     val,
+		indices: make([]*xConcSklNode[K, V], lvl),
+	}
+
+	node, _ := pool.sklNodeArena.allocate()
+	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
+	node.elementRef = e
+	e.nodeRef = node
+
+	// vp := unsafe.Pointer(&val)
+	// switch mode {
+	// case unique:
+	// 	xn, _ := xNodeArena.allocate()
+	// 	xn.vptr = (*V)(vp)
+	// 	node.root = xn
+	// case linkedList:
+	// 	xn1, _ := xNodeArena.allocate()
+	// 	xn1.vptr = (*V)(vp)
+	// 	xn2, _ := xNodeArena.allocate()
+	// 	xn2.parent = xn1
+	// 	node.root = xn2
+	// case rbtree:
+	// 	node.rbInsert(val, vcmp)
+	// default:
+	// 	panic("[x-conc-skl] unknown x-node type")
+	// }
+	node.count = 1
+	return e
+}
+
 type color bool
 
 const (
@@ -22,9 +93,9 @@ const (
 // And it is easy way for us to debug the value.
 type xNode[V any] struct {
 	// parent It is easy for us to backward to access upper level node info.
-	parent *xNode[V] // Linked-list & rbtree
-	left   *xNode[V] // rbtree only
-	right  *xNode[V] // rbtree only
+	parent *xNode[V] // Linked-list & rbtree; size 8, 1 byte
+	left   *xNode[V] // rbtree only; size 8, 1 byte
+	right  *xNode[V] // rbtree only; size 8, 1 byte
 	vptr   *V        // value pointer. Dangerous!
 	color  color
 }
@@ -227,13 +298,12 @@ func (mode xNodeMode) String() string {
 // @field count, the number of duplicate elements.
 // @field mu, lock-free, spin-lock, optimistic-lock.
 type xConcSklNode[K infra.OrderedKey, V any] struct {
-	indices []*xConcSklNode[K, V] // size 24, 3 bytes
-	mu      uint64                // size 8, 2 byte
-	root    *xNode[V]             // size 8, 1 byte
-	key     K                     // size 8, 1 byte
-	count   int64                 // size 8, 1 byte
-	level   uint32                // size 4
-	flags   flagBits              // size 4
+	elementRef *xConcSklElement[K, V] // size 8, 1 byte, recursive
+	mu         uint64                 // size 8, 2 byte
+	root       *xNode[V]              // size 8, 1 byte
+	count      int64                  // size 8, 1 byte
+	level      uint32                 // size 4
+	flags      flagBits               // size 4
 }
 
 func (node *xConcSklNode[K, V]) lock(version uint64) {
@@ -290,19 +360,19 @@ func (node *xConcSklNode[K, V]) atomicLoadRoot() *xNode[V] {
 }
 
 func (node *xConcSklNode[K, V]) loadNextNode(i int32) *xConcSklNode[K, V] {
-	return node.indices[i]
+	return node.elementRef.indices[i]
 }
 
 func (node *xConcSklNode[K, V]) storeNextNode(i int32, next *xConcSklNode[K, V]) {
-	node.indices[i] = next
+	node.elementRef.indices[i] = next
 }
 
 func (node *xConcSklNode[K, V]) atomicLoadNextNode(i int32) *xConcSklNode[K, V] {
-	return (*xConcSklNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.indices[i]))))
+	return (*xConcSklNode[K, V])(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&node.elementRef.indices[i]))))
 }
 
 func (node *xConcSklNode[K, V]) atomicStoreNextNode(i int32, next *xConcSklNode[K, V]) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.indices[i])), unsafe.Pointer(next))
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.elementRef.indices[i])), unsafe.Pointer(next))
 }
 
 /* linked-list operation implementation */
@@ -1096,45 +1166,34 @@ func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
 	return nil
 }
 
-func (node *xConcSklNode[K, V]) init(
-	key K,
-	val V,
-	mode xNodeMode,
-	vcmp SklValComparator[V],
-	xNodeArena *autoGrowthArena[xNode[V]],
-) {
-	vp := unsafe.Pointer(&val)
-	node.key = key
-	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
-	switch mode {
-	case unique:
-		xn, _ := xNodeArena.allocate()
-		xn.vptr = (*V)(vp)
-		node.root = xn
-	case linkedList:
-		xn1, _ := xNodeArena.allocate()
-		xn1.vptr = (*V)(vp)
-		xn2, _ := xNodeArena.allocate()
-		xn2.parent = xn1
-		node.root = xn2
-	case rbtree:
-		node.rbInsert(val, vcmp)
-	default:
-		panic("[x-conc-skl] unknown x-node type")
-	}
-	node.count = 1
-}
-
-func newXConcSklHead[K infra.OrderedKey, V any]() *xConcSklNode[K, V] {
-	head := &xConcSklNode[K, V]{
-		key:   *new(K),
-		level: sklMaxLevel,
-	}
-	head.flags.set(nodeIsHeadFlagBit | nodeInsertedFlagBit)
-	head.flags.setBitsAs(xNodeModeFlagBits, uint32(unique))
-	head.indices = make([]*xConcSklNode[K, V], sklMaxLevel)
-	return head
-}
+// func (node *xConcSklNode[K, V]) init(
+// 	key K,
+// 	val V,
+// 	mode xNodeMode,
+// 	vcmp SklValComparator[V],
+// 	xNodeArena *autoGrowthArena[xNode[V]],
+// ) {
+// 	vp := unsafe.Pointer(&val)
+// 	node.key = key
+// 	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
+// 	switch mode {
+// 	case unique:
+// 		xn, _ := xNodeArena.allocate()
+// 		xn.vptr = (*V)(vp)
+// 		node.root = xn
+// 	case linkedList:
+// 		xn1, _ := xNodeArena.allocate()
+// 		xn1.vptr = (*V)(vp)
+// 		xn2, _ := xNodeArena.allocate()
+// 		xn2.parent = xn1
+// 		node.root = xn2
+// 	case rbtree:
+// 		node.rbInsert(val, vcmp)
+// 	default:
+// 		panic("[x-conc-skl] unknown x-node type")
+// 	}
+// 	node.count = 1
+// }
 
 func unlockNodes[K infra.OrderedKey, V any](version uint64, num int32, nodes ...*xConcSklNode[K, V]) {
 	var prev *xConcSklNode[K, V]
