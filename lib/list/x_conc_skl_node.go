@@ -228,9 +228,9 @@ func (mode xNodeMode) String() string {
 // @field mu, lock-free, spin-lock, optimistic-lock.
 type xConcSklNode[K infra.OrderedKey, V any] struct {
 	indices []*xConcSklNode[K, V] // size 24, 3 bytes
-	mu      uint64                // size 8, 2 byte
 	root    *xNode[V]             // size 8, 1 byte
 	key     K                     // size 8, 1 byte
+	mu      uint64                // size 8, 2 byte
 	count   int64                 // size 8, 1 byte
 	level   uint32                // size 4
 	flags   uint32                // size 4

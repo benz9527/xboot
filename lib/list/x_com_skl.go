@@ -56,7 +56,7 @@ func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSk
 	for /* vertical */ i := skl.Levels() - 1; i >= 0; i-- {
 		for /* horizontal */ forward.levels()[i].forward() != nil {
 			cur := forward.levels()[i].forward()
-			if /* greater, forward next */ cur != nil && (key > cur.Element().Key() && !skl.isKeyCmpDesc) || (key < cur.Element().Key() && skl.isKeyCmpDesc) {
+			if /* greater, forward next */ cur != nil && (!skl.isKeyCmpDesc && key > cur.Element().Key()) || (skl.isKeyCmpDesc && key < cur.Element().Key()) {
 				// Linear probing (forward next) at level 0 most likely.
 				forward = cur
 			} else /* lower or equal, downward to next level */ {
@@ -132,7 +132,7 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			cur := pred.levels()[i].forward()
 			res := func() int64 {
 				curKey := cur.Element().Key()
-				if (key > curKey && !skl.isKeyCmpDesc) || (key < curKey && skl.isKeyCmpDesc) {
+				if (!skl.isKeyCmpDesc && key > curKey) || (skl.isKeyCmpDesc && key < curKey) {
 					return 1
 				} else if key == curKey {
 					return 0
