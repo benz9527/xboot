@@ -116,7 +116,7 @@ func (skl *xArenaSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 
 	for {
 		if node := skl.traverse(max(oldLvls, newLvls), key, aux); node != nil {
-			if /* conc rm */ node.flags.atomicIsSet(nodeRemovingFlagBit) {
+			if /* conc rm */ atomicIsSet(&node.flags, nodeRemovingFlagBit) {
 				continue
 			} else if /* conc d-check */ skl.Len() >= sklMaxSize {
 				return ErrXSklIsFull
@@ -148,8 +148,8 @@ func (skl *xArenaSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			//      +------+       +------+      +------+
 			// 1. Both the pred and succ isn't removing.
 			// 2. The pred's next node is the succ in this level.
-			isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) &&
-				(succ == nil || !succ.flags.atomicIsSet(nodeRemovingFlagBit)) &&
+			isValid = !atomicIsSet(&pred.flags, nodeRemovingFlagBit) &&
+				(succ == nil || !atomicIsSet(&succ.flags, nodeRemovingFlagBit)) &&
 				pred.atomicLoadNextNode(l) == succ
 		}
 		if /* conc insert */ !isValid {
@@ -175,7 +175,7 @@ func (skl *xArenaSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			e.nodeRef.storeNextNode(l, aux[sklMaxLevel+l]) // Useless to use atomic here.
 			aux[l].atomicStoreNextNode(l, e.nodeRef)       // Memory barrier, concurrency safety.
 		}
-		e.nodeRef.flags.atomicSet(nodeInsertedFlagBit)
+		atomicSet(&e.nodeRef.flags, nodeInsertedFlagBit)
 		if oldLvls = skl.Levels(); oldLvls < newLvls {
 			atomic.StoreInt32(&skl.levels, newLvls)
 		}
@@ -196,7 +196,7 @@ func (skl *xArenaSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K
 	item := &xSklIter[K, V]{}
 	forward := skl.atomicLoadHead().nodeRef.atomicLoadNextNode(0)
 	for forward != nil {
-		if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
+		if !atomicAreEqual(&forward.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 			forward = forward.atomicLoadNextNode(0)
 			continue
 		}
@@ -240,7 +240,7 @@ func (skl *xArenaSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err erro
 		}
 
 		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.elementRef.key) == 0 {
-			if nIdx.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
+			if atomicAreEqual(&nIdx.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw empty */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return nil, ErrXSklConcRWLoadEmpty
 				}
@@ -277,25 +277,25 @@ func (skl *xArenaSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err er
 	for {
 		foundAt = skl.rmTraverse(key, aux)
 		if isMarked || foundAt != -1 &&
-			aux[sklMaxLevel+foundAt].flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) &&
+			atomicAreEqual(&aux[sklMaxLevel+foundAt].flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) &&
 			(int32(aux[sklMaxLevel+foundAt].level)-1) == foundAt {
 			if !isMarked {
 				rmNode = aux[sklMaxLevel+foundAt]
 				topLevel = foundAt
 				if !rmNode.tryLock(ver) {
-					if /* d-check */ rmNode.flags.atomicIsSet(nodeRemovingFlagBit) {
+					if /* d-check */ atomicIsSet(&rmNode.flags, nodeRemovingFlagBit) {
 						return nil, ErrXSklConcRemoveTryLock
 					}
 					isMarked = false
 					continue
 				}
 
-				if /* node locked, d-check */ rmNode.flags.atomicIsSet(nodeRemovingFlagBit) {
+				if /* node locked, d-check */ atomicIsSet(&rmNode.flags, nodeRemovingFlagBit) {
 					rmNode.unlock(ver)
 					return nil, ErrXSklConcRemoving
 				}
 
-				rmNode.flags.atomicSet(nodeRemovingFlagBit)
+				atomicSet(&rmNode.flags, nodeRemovingFlagBit)
 				isMarked = true
 			}
 
@@ -314,7 +314,7 @@ func (skl *xArenaSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err er
 				// Check:
 				// 1. the previous node exists.
 				// 2. no other nodes are inserted into the skip list in this layer.
-				isValid = !pred.flags.atomicIsSet(nodeRemovingFlagBit) && pred.atomicLoadNextNode(l) == succ
+				isValid = !atomicIsSet(&pred.flags, nodeRemovingFlagBit) && pred.atomicLoadNextNode(l) == succ
 			}
 			if /* conc rm */ !isValid {
 				unlockArenaNodes(ver, lockedLayers, aux[0:sklMaxLevel]...)
@@ -351,7 +351,7 @@ func (skl *xArenaSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err er
 func (skl *xArenaSkl[K, V]) PeekHead() (element SklElement[K, V]) {
 	forward := skl.atomicLoadHead().nodeRef.atomicLoadNextNode(0)
 	for {
-		if !forward.flags.atomicAreEqual(nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
+		if !atomicAreEqual(&forward.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 			forward = forward.atomicLoadNextNode(0)
 			continue
 		}

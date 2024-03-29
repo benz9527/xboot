@@ -139,11 +139,11 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 			return -1
 		},
 		rand:  randomLevelV3,
-		flags: flagBits{},
+		flags: 0,
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
-	skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(linkedList))
+	skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeBits, uint32(linkedList))
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
@@ -182,7 +182,7 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	aux := make(xConcSklAux[uint64, *xSklObject], 2*sklMaxLevel)
 	foundResult := skl.rmTraverse(1, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
-	require.True(t, aux.loadPred(0).flags.isSet(nodeIsHeadFlagBit))
+	require.True(t, isSet(aux.loadPred(0).flags, nodeIsHeadFlagBit))
 	require.Equal(t, uint64(1), aux.loadSucc(0).key)
 	require.Equal(t, "9", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
@@ -374,12 +374,12 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 			return -1
 		},
 		rand:  randomLevelV3,
-		flags: flagBits{},
+		flags: 0,
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
 	if mode != unique {
-		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(mode))
+		skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeBits, uint32(mode))
 	}
 
 	ele, err := skl.PopHead()

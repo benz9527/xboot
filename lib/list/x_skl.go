@@ -206,9 +206,7 @@ func WithXConcSklDataNodeRbtreeMode[K infra.OrderedKey, V any](cmp SklValCompara
 	}
 }
 
-var (
-	_ SkipList[uint8, struct{}] = (*sklDelegator[uint8, struct{}])(nil)
-)
+var _ SkipList[uint8, struct{}] = (*sklDelegator[uint8, struct{}])(nil)
 
 // sklDelegator is the skip list delegator.
 // It does not support duplicate keys and values.
@@ -228,6 +226,7 @@ func (skl *sklDelegator[K, V]) Insert(key K, val V, ifNotPresent ...bool) error 
 	}
 	return skl.impl.Insert(key, val, ifNotPresent...)
 }
+
 func (skl *sklDelegator[K, V]) Foreach(action func(int64, SklIterationItem[K, V]) bool) {
 	if skl.rwmu != nil {
 		skl.rwmu.RLock()
@@ -235,6 +234,7 @@ func (skl *sklDelegator[K, V]) Foreach(action func(int64, SklIterationItem[K, V]
 	}
 	skl.impl.Foreach(action)
 }
+
 func (skl *sklDelegator[K, V]) LoadFirst(key K) (SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.RLock()
@@ -250,6 +250,7 @@ func (skl *sklDelegator[K, V]) PopHead() (SklElement[K, V], error) {
 	}
 	return skl.impl.PopHead()
 }
+
 func (skl *sklDelegator[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
@@ -321,9 +322,7 @@ func NewSkl[K infra.OrderedKey, V any](typ SklType, cmp infra.OrderedKeyComparat
 	return d, nil
 }
 
-var (
-	_ XSkipList[uint8, struct{}] = (*xSklDelegator[uint8, struct{}])(nil)
-)
+var _ XSkipList[uint8, struct{}] = (*xSklDelegator[uint8, struct{}])(nil)
 
 // xSklDelegator is the skip list delegator.
 // It supports duplicate keys and values.
@@ -343,6 +342,7 @@ func (skl *xSklDelegator[K, V]) Insert(key K, val V, ifNotPresent ...bool) error
 	}
 	return skl.impl.Insert(key, val, ifNotPresent...)
 }
+
 func (skl *xSklDelegator[K, V]) Foreach(action func(int64, SklIterationItem[K, V]) bool) {
 	if skl.rwmu != nil {
 		skl.rwmu.RLock()
@@ -350,6 +350,7 @@ func (skl *xSklDelegator[K, V]) Foreach(action func(int64, SklIterationItem[K, V
 	}
 	skl.impl.Foreach(action)
 }
+
 func (skl *xSklDelegator[K, V]) LoadFirst(key K) (SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.RLock()
@@ -365,6 +366,7 @@ func (skl *xSklDelegator[K, V]) PopHead() (SklElement[K, V], error) {
 	}
 	return skl.impl.PopHead()
 }
+
 func (skl *xSklDelegator[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
@@ -372,6 +374,7 @@ func (skl *xSklDelegator[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	}
 	return skl.impl.RemoveFirst(key)
 }
+
 func (skl *xSklDelegator[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.RLock()
@@ -379,6 +382,7 @@ func (skl *xSklDelegator[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	}
 	return skl.impl.LoadAll(key)
 }
+
 func (skl *xSklDelegator[K, V]) LoadIfMatch(key K, matcher func(V) bool) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.RLock()
@@ -386,6 +390,7 @@ func (skl *xSklDelegator[K, V]) LoadIfMatch(key K, matcher func(V) bool) ([]SklE
 	}
 	return skl.impl.LoadIfMatch(key, matcher)
 }
+
 func (skl *xSklDelegator[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
@@ -393,6 +398,7 @@ func (skl *xSklDelegator[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	}
 	return skl.impl.RemoveAll(key)
 }
+
 func (skl *xSklDelegator[K, V]) RemoveIfMatch(key K, matcher func(V) bool) ([]SklElement[K, V], error) {
 	if skl.rwmu != nil {
 		skl.rwmu.Lock()
@@ -495,11 +501,11 @@ func sklFactory[K infra.OrderedKey, V any](opts *sklOptions[K, V]) (XSkipList[K,
 			vcmp:    opts.valComparator,
 			optVer:  opts.concOptimisticLockVerGen,
 			rand:    opts.randLevelGen,
-			flags:   flagBits{},
+			flags:   0,
 		}
-		skl.flags.setBitsAs(xConcSklXNodeModeBits, uint32(*opts.concDataNodeMode))
+		skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeBits, uint32(*opts.concDataNodeMode))
 		if *opts.concDataNodeMode == rbtree && opts.isConcRbtreeBorrowSucc {
-			skl.flags.set(xConcSklRbtreeRmBorrowFlagBit)
+			skl.flags = set(skl.flags, xConcSklRbtreeRmBorrowFlagBit)
 		}
 		impl = skl
 	default:

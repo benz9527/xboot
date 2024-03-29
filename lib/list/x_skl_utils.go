@@ -44,17 +44,14 @@ func (x *xSklIter[K, V]) NodeLevel() uint32    { return x.nodeLevelFn() }
 func (x *xSklIter[K, V]) NodeItemCount() int64 { return x.nodeItemCountFn() }
 
 // Store the concurrent state.
-type flagBits struct {
-	bits uint32
-}
 
 // Bit flag set from 0 to 1.
-func (f *flagBits) atomicSet(bits uint32) {
+func atomicSet(flagBits *uint32, bits uint32) {
 	for {
-		old := atomic.LoadUint32(&f.bits)
+		old := atomic.LoadUint32(flagBits)
 		if old&bits != bits {
 			n := old | bits
-			if atomic.CompareAndSwapUint32(&f.bits, old, n) {
+			if atomic.CompareAndSwapUint32(flagBits, old, n) {
 				return
 			}
 			continue
@@ -63,18 +60,18 @@ func (f *flagBits) atomicSet(bits uint32) {
 	}
 }
 
-func (f *flagBits) set(bits uint32) {
-	f.bits = f.bits | bits
+func set(flagBits, bits uint32) uint32 {
+	return flagBits | bits
 }
 
 // Bit flag set from 1 to 0.
-func (f *flagBits) atomicUnset(bits uint32) {
+func atomicUnset(flagBits *uint32, bits uint32) {
 	for {
-		old := atomic.LoadUint32(&f.bits)
+		old := atomic.LoadUint32(flagBits)
 		check := old & bits
 		if check != 0 {
 			n := old ^ check
-			if atomic.CompareAndSwapUint32(&f.bits, old, n) {
+			if atomic.CompareAndSwapUint32(flagBits, old, n) {
 				return
 			}
 			continue
@@ -83,11 +80,11 @@ func (f *flagBits) atomicUnset(bits uint32) {
 	}
 }
 
-func (f *flagBits) atomicIsSet(bit uint32) bool {
-	return (atomic.LoadUint32(&f.bits) & bit) != 0
+func atomicIsSet(flagBits *uint32, bit uint32) bool {
+	return (atomic.LoadUint32(flagBits) & bit) != 0
 }
 
-func (f *flagBits) atomicAreEqual(bits, expect uint32) bool {
+func atomicAreEqual(flagBits *uint32, bits, expect uint32) bool {
 	if ibits.HammingWeightBySWARV2[uint32](bits) <= 1 {
 		panic("it is not a multi-bits")
 	}
@@ -98,10 +95,10 @@ func (f *flagBits) atomicAreEqual(bits, expect uint32) bool {
 	if n > 0 {
 		expect <<= n
 	}
-	return (atomic.LoadUint32(&f.bits) & bits) == expect
+	return (atomic.LoadUint32(flagBits) & bits) == expect
 }
 
-func (f *flagBits) atomicLoadBits(bits uint32) uint32 {
+func atomicLoadBits(flagBits *uint32, bits uint32) uint32 {
 	if ibits.HammingWeightBySWARV2[uint32](bits) <= 1 {
 		panic("it is not a multi-bits")
 	}
@@ -109,14 +106,14 @@ func (f *flagBits) atomicLoadBits(bits uint32) uint32 {
 	for (bits>>n)&0x1 != 0x1 {
 		n++
 	}
-	res := atomic.LoadUint32(&f.bits) & bits
+	res := atomic.LoadUint32(flagBits) & bits
 	if n > 0 {
 		res >>= n
 	}
 	return res
 }
 
-func (f *flagBits) setBitsAs(bits, target uint32) {
+func setBitsAs(flagBits, bits, target uint32) uint32 {
 	if ibits.HammingWeightBySWARV2[uint32](bits) <= 1 {
 		panic("it is not a multi-bits")
 	}
@@ -127,12 +124,12 @@ func (f *flagBits) setBitsAs(bits, target uint32) {
 	if n > 0 {
 		target <<= n
 	}
-	check := f.bits & bits
-	f.bits = f.bits ^ check
-	f.bits = f.bits | target
+	check := flagBits & bits
+	flagBits = flagBits ^ check
+	return flagBits | target
 }
 
-func (f *flagBits) atomicSetBitsAs(bits, target uint32) {
+func atomicSetBitsAs(flagBits *uint32, bits, target uint32) {
 	if ibits.HammingWeightBySWARV2[uint32](bits) <= 1 {
 		panic("it is not a multi-bits")
 	}
@@ -145,12 +142,12 @@ func (f *flagBits) atomicSetBitsAs(bits, target uint32) {
 	}
 
 	for {
-		old := atomic.LoadUint32(&f.bits)
+		old := atomic.LoadUint32(flagBits)
 		check := old & bits
 		if check != 0 {
 			n := old ^ check
 			n = n | target
-			if atomic.CompareAndSwapUint32(&f.bits, old, n) {
+			if atomic.CompareAndSwapUint32(flagBits, old, n) {
 				return
 			}
 			continue
@@ -159,11 +156,11 @@ func (f *flagBits) atomicSetBitsAs(bits, target uint32) {
 	}
 }
 
-func (f *flagBits) isSet(bit uint32) bool {
-	return (f.bits & bit) != 0
+func isSet(flagBits, bit uint32) bool {
+	return (flagBits & bit) != 0
 }
 
-func (f *flagBits) loadBits(bits uint32) uint32 {
+func loadBits(flagBits, bits uint32) uint32 {
 	if ibits.HammingWeightBySWARV2[uint32](bits) <= 1 {
 		panic("it is not a multi-bits")
 	}
@@ -171,15 +168,15 @@ func (f *flagBits) loadBits(bits uint32) uint32 {
 	for (bits>>n)&0x1 != 0x1 {
 		n++
 	}
-	res := f.bits & bits
+	res := flagBits & bits
 	if n > 0 {
 		res >>= n
 	}
 	return res
 }
 
-func (f *flagBits) areEqual(bits, expect uint32) bool {
-	return f.loadBits(bits) == expect
+func areEqual(flagBits, bits, expect uint32) bool {
+	return loadBits(flagBits, bits) == expect
 }
 
 type segmentMutex interface {

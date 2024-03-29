@@ -233,7 +233,7 @@ type xConcSklNode[K infra.OrderedKey, V any] struct {
 	key     K                     // size 8, 1 byte
 	count   int64                 // size 8, 1 byte
 	level   uint32                // size 4
-	flags   flagBits              // size 4
+	flags   uint32                // size 4
 }
 
 func (node *xConcSklNode[K, V]) lock(version uint64) {
@@ -259,7 +259,7 @@ func (node *xConcSklNode[K, V]) unlock(version uint64) bool {
 }
 
 func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparator[V], ifNotPresent ...bool) (isAppend bool, err error) {
-	switch mode := xNodeMode(node.flags.atomicLoadBits(xNodeModeFlagBits)); mode {
+	switch mode := xNodeMode(atomicLoadBits(&node.flags, xNodeModeFlagBits)); mode {
 	case unique:
 		if ifNotPresent[0] {
 			return false, ErrXSklDisabledValReplace
@@ -268,16 +268,16 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparato
 	case linkedList:
 		// pred
 		node.lock(ver)
-		node.flags.atomicUnset(nodeInsertedFlagBit)
+		atomicUnset(&node.flags, nodeInsertedFlagBit)
 		isAppend, err = node.llInsert(val, vcmp, ifNotPresent...)
 		node.unlock(ver)
-		node.flags.atomicSet(nodeInsertedFlagBit)
+		atomicSet(&node.flags, nodeInsertedFlagBit)
 	case rbtree:
 		node.lock(ver)
-		node.flags.atomicUnset(nodeInsertedFlagBit)
+		atomicUnset(&node.flags, nodeInsertedFlagBit)
 		isAppend, err = node.rbInsert(val, vcmp)
 		node.unlock(ver)
-		node.flags.atomicSet(nodeInsertedFlagBit)
+		atomicSet(&node.flags, nodeInsertedFlagBit)
 	default:
 		// impossible run to here
 		panic( /* debug assertion */ "[x-conc-skl] unknown x-node type")
@@ -643,7 +643,7 @@ func (node *xConcSklNode[K, V]) rbRemoveNode(z *xNode[V]) (res *xNode[V], err er
 
 	y := z
 	if /* r2 */ !y.left.isNilLeaf() && !y.right.isNilLeaf() {
-		if node.flags.isSet(nodeRbRmBorrowFlagBit) {
+		if isSet(node.flags, nodeRbRmBorrowFlagBit) {
 			y = z.succ() // enter r3-r4
 		} else {
 			y = z.pred() // enter r3-r4
@@ -1108,7 +1108,7 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 		level: uint32(lvl),
 	}
 	node.indices = make([]*xConcSklNode[K, V], lvl)
-	node.flags.setBitsAs(xNodeModeFlagBits, uint32(mode))
+	node.flags = setBitsAs(node.flags, xNodeModeFlagBits, uint32(mode))
 	switch mode {
 	case unique:
 		node.root = &xNode[V]{
@@ -1134,8 +1134,8 @@ func newXConcSklHead[K infra.OrderedKey, V any]() *xConcSklNode[K, V] {
 		key:   *new(K),
 		level: sklMaxLevel,
 	}
-	head.flags.set(nodeIsHeadFlagBit | nodeInsertedFlagBit)
-	head.flags.setBitsAs(xNodeModeFlagBits, uint32(unique))
+	head.flags = set(head.flags, nodeIsHeadFlagBit|nodeInsertedFlagBit)
+	head.flags = setBitsAs(head.flags, xNodeModeFlagBits, uint32(unique))
 	head.indices = make([]*xConcSklNode[K, V], sklMaxLevel)
 	return head
 }

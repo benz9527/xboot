@@ -49,7 +49,7 @@ func TestFlagBitSetBitsAs(t *testing.T) {
 		name        string
 		targetBits  uint32
 		value       uint32
-		fb          flagBits
+		fb          uint32
 		expectValue uint32
 	}
 	testcases := []testcase{
@@ -57,44 +57,44 @@ func TestFlagBitSetBitsAs(t *testing.T) {
 			name:        "0x0000 set 0x0001 to 0x00FF as 0x0001",
 			targetBits:  0x00FF,
 			value:       0x0001,
-			fb:          flagBits{},
+			fb:          0,
 			expectValue: 0x0001,
 		}, {
 			name:        "0x0000 set 0x00FF to 0x00FF as 0x00FF",
 			targetBits:  0x00FF,
 			value:       0x00FF,
-			fb:          flagBits{},
+			fb:          0,
 			expectValue: 0x00FF,
 		}, {
 			name:        "0x01FF set 0x00FF to 0x00FF as 0x01FF",
 			targetBits:  0x00FF,
 			value:       0x00FF,
-			fb:          flagBits{bits: 0x01FF},
+			fb:          0x01FF,
 			expectValue: 0x01FF,
 		}, {
 			name:        "0x01FF set 0x00FF to 0x0000 as 0x0100",
 			targetBits:  0x00FF,
 			value:       0x0000,
-			fb:          flagBits{bits: 0x01FF},
+			fb:          0x01FF,
 			expectValue: 0x0100,
 		}, {
 			name:        "0x03FF set 0x0300 to 0x0001 as 0x01FF",
 			targetBits:  0x0300,
 			value:       0x0001,
-			fb:          flagBits{bits: 0x03FF},
+			fb:          0x03FF,
 			expectValue: 0x01FF,
 		}, {
 			name:        "0x00FF set 0x0300 to 0x0003 as 0x03FF",
 			targetBits:  0x0300,
 			value:       0x0003,
-			fb:          flagBits{bits: 0x00FF},
+			fb:          0x00FF,
 			expectValue: 0x03FF,
 		},
 	}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			tc.fb.setBitsAs(tc.targetBits, tc.value)
-			require.Equal(tt, tc.expectValue, tc.fb.bits)
+			tc.fb = setBitsAs(tc.fb, tc.targetBits, tc.value)
+			require.Equal(tt, tc.expectValue, tc.fb)
 		})
 	}
 }
@@ -104,7 +104,7 @@ func TestFlagBitBitsAreEqualTo(t *testing.T) {
 		name        string
 		targetBits  uint32
 		value       uint32
-		fb          flagBits
+		fb          uint32
 		expectValue bool
 	}
 	testcases := []testcase{
@@ -112,19 +112,19 @@ func TestFlagBitBitsAreEqualTo(t *testing.T) {
 			name:        "0x0001 get 0x00FF are equal to 0x0001",
 			targetBits:  0x00FF,
 			value:       0x0001,
-			fb:          flagBits{bits: 0x0001},
+			fb:          0x0001,
 			expectValue: true,
 		}, {
 			name:        "0x0301 get 0x0700 are equal to 0x0003",
 			targetBits:  0x0700,
 			value:       0x0003,
-			fb:          flagBits{bits: 0x0301},
+			fb:          0x0301,
 			expectValue: true,
 		},
 	}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(tt *testing.T) {
-			res := tc.fb.areEqual(tc.targetBits, tc.value)
+			res := areEqual(tc.fb, tc.targetBits, tc.value)
 			require.True(tt, res)
 		})
 	}
