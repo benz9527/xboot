@@ -16,18 +16,11 @@ import (
 
 func TestXConcSkl_SerialProcessing(t *testing.T) {
 	opts := make([]SklOption[uint64, *xSklObject], 0, 2)
-	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject]())
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[uint64, *xSklObject](),
+		WithSklKeyCmpDesc[uint64, *xSklObject]())
 
 	skl, err := NewSkl[uint64, *xSklObject](
 		XConcSkl,
-		func(i, j uint64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return -1
-			}
-			return 1
-		},
 		opts...,
 	)
 	require.NoError(t, err)
@@ -61,14 +54,6 @@ func TestXConcSkl_DataRace(t *testing.T) {
 
 	skl, err := NewSkl[uint64, *xSklObject](
 		XConcSkl,
-		func(i, j uint64) int64 {
-			if i == j {
-				return 0
-			} else if i > j {
-				return -1
-			}
-			return 1
-		},
 		opts...,
 	)
 	require.NoError(t, err)
@@ -119,15 +104,6 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 		head:    newXConcSklHead[uint64, *xSklObject](),
 		levels:  1,
 		nodeLen: 0,
-		kcmp: func(i, j uint64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
 		vcmp: func(i, j *xSklObject) int64 {
 			// avoid calculation overflow
 			_i, _j := i.Hash(), j.Hash()
@@ -143,7 +119,7 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	}
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
-	skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeBits, uint32(linkedList))
+	skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeFlagBits, uint32(linkedList))
 
 	ele, err := skl.PopHead()
 	require.Nil(t, ele)
@@ -180,37 +156,37 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 	})
 
 	aux := make(xConcSklAux[uint64, *xSklObject], 2*sklMaxLevel)
-	foundResult := skl.rmTraverse(1, aux)
+	foundResult := skl.rmTraverse(1, false, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.True(t, isSet(aux.loadPred(0).flags, nodeIsHeadFlagBit))
 	require.Equal(t, uint64(1), aux.loadSucc(0).key)
 	require.Equal(t, "9", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
-	foundResult = skl.rmTraverse(2, aux)
+	foundResult = skl.rmTraverse(2, false, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.Equal(t, uint64(1), aux.loadPred(0).key)
 	require.Equal(t, "9", (*aux.loadPred(0).atomicLoadRoot().linkedListNext().vptr).id)
 	require.Equal(t, uint64(2), aux.loadSucc(0).key)
 	require.Equal(t, "9", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
-	foundResult = skl.rmTraverse(3, aux)
+	foundResult = skl.rmTraverse(3, false, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.Equal(t, uint64(2), aux.loadPred(0).key)
 	require.Equal(t, "9", (*aux.loadPred(0).atomicLoadRoot().linkedListNext().vptr).id)
 	require.Equal(t, uint64(3), aux.loadSucc(0).key)
 	require.Equal(t, "2", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
-	foundResult = skl.rmTraverse(4, aux)
+	foundResult = skl.rmTraverse(4, false, aux)
 	assert.LessOrEqual(t, int32(0), foundResult)
 	require.Equal(t, uint64(3), aux.loadPred(0).key)
 	require.Equal(t, "2", (*aux.loadPred(0).atomicLoadRoot().linkedListNext().vptr).id)
 	require.Equal(t, uint64(4), aux.loadSucc(0).key)
 	require.Equal(t, "9", (*aux.loadSucc(0).atomicLoadRoot().linkedListNext().vptr).id)
 
-	foundResult = skl.rmTraverse(100, aux)
+	foundResult = skl.rmTraverse(100, false, aux)
 	assert.Equal(t, int32(-1), foundResult)
 
-	foundResult = skl.rmTraverse(0, aux)
+	foundResult = skl.rmTraverse(0, false, aux)
 	assert.Equal(t, int32(-1), foundResult)
 }
 
@@ -245,15 +221,6 @@ func xConcSklDuplicateDataRaceRunCore(t *testing.T, mode xNodeMode, rmBySucc boo
 
 	skl, err := NewXSkl[uint64, int64](
 		XConcSkl,
-		func(i, j uint64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
 		opts...,
 	)
 	require.NoError(t, err)
@@ -355,15 +322,6 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 		head:    newXConcSklHead[uint64, int64](),
 		levels:  1,
 		nodeLen: 0,
-		kcmp: func(i, j uint64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
 		vcmp: func(i, j int64) int64 {
 			// avoid calculation overflow
 			if i == j {
@@ -379,7 +337,7 @@ func xConcSklPeekAndPopHeadRunCore(t *testing.T, mode xNodeMode) {
 	idGen, _ := id.MonotonicNonZeroID()
 	skl.optVer = idGen
 	if mode != unique {
-		skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeBits, uint32(mode))
+		skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeFlagBits, uint32(mode))
 	}
 
 	ele, err := skl.PopHead()
@@ -477,7 +435,7 @@ func TestXConcSklPeekAndPopHead(t *testing.T) {
 	}
 }
 
-func BenchmarkXConcSklUnique(b *testing.B) {
+func BenchmarkXConcSklUnique_Random(b *testing.B) {
 	testByBytes := []byte(`abc`)
 
 	b.StopTimer()
@@ -485,7 +443,34 @@ func BenchmarkXConcSklUnique(b *testing.B) {
 	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
 	skl, err := NewSkl[int, []byte](
 		XConcSkl,
-		intKeyComparator,
+		opts...,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	rngArr := make([]int, 0, b.N)
+	for i := 0; i < b.N; i++ {
+		rngArr = append(rngArr, randv2.Int())
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		err := skl.Insert(rngArr[i], testByBytes)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkXConcSklUnique_Serial(b *testing.B) {
+	testByBytes := []byte(`abc`)
+
+	b.StopTimer()
+	opts := make([]SklOption[int, []byte], 0, 2)
+	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
+	skl, err := NewSkl[int, []byte](
+		XConcSkl,
 		opts...,
 	)
 	if err != nil {
@@ -498,15 +483,6 @@ func BenchmarkXConcSklUnique(b *testing.B) {
 	}
 }
 
-func intKeyComparator(i, j int) int64 {
-	if i == j {
-		return 0
-	} else if i < j {
-		return -1
-	}
-	return 1
-}
-
 func TestXConcSklUnique(t *testing.T) {
 	testByBytes := []byte(`abc`)
 
@@ -514,14 +490,6 @@ func TestXConcSklUnique(t *testing.T) {
 	opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
 	skl, err := NewSkl[int, []byte](
 		XConcSkl,
-		func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i < j {
-				return -1
-			}
-			return 1
-		},
 		opts...,
 	)
 	if err != nil {
@@ -542,7 +510,6 @@ func BenchmarkXSklReadWrite(b *testing.B) {
 			opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
 			skl, err := NewSkl[int, []byte](
 				XConcSkl,
-				intKeyComparator,
 				opts...,
 			)
 			if err != nil {

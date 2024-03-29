@@ -7,9 +7,7 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-var (
-	_ XSkipList[uint8, uint8] = (*xComSkl[uint8, uint8])(nil)
-)
+var _ XSkipList[uint8, uint8] = (*xComSkl[uint8, uint8])(nil)
 
 // A common (not thread safe) implementation of skip-list.
 // @field head A sentinel node.
@@ -17,15 +15,15 @@ var (
 // From head.indices[1], all of them are cache used to implement binary search.
 // @field tail A sentinel node. Points the skip-list tail node.
 type xComSkl[K infra.OrderedKey, V any] struct {
-	kcmp       infra.OrderedKeyComparator[K] // key comparator
-	vcmp       SklValComparator[V]           // value comparator
-	rand       SklRand
-	pool       *sync.Pool
-	head       *xComSklNode[K, V]
-	tail       *xComSklNode[K, V]
-	nodeLen    int64  // skip-list's node count.
-	indexCount uint64 // skip-list's index count.
-	levels     int32  // skip-list's max height value inside the indexCount.
+	vcmp         SklValComparator[V] // value comparator
+	rand         SklRand
+	pool         *sync.Pool
+	head         *xComSklNode[K, V]
+	tail         *xComSklNode[K, V]
+	nodeLen      int64  // skip-list's node count.
+	indexCount   uint64 // skip-list's index count.
+	levels       int32  // skip-list's max height value inside the indexCount.
+	isKeyCmpDesc bool
 }
 
 // loadAux is to load auxiliary array for traversal.
@@ -58,7 +56,7 @@ func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSk
 	for /* vertical */ i := skl.Levels() - 1; i >= 0; i-- {
 		for /* horizontal */ forward.levels()[i].forward() != nil {
 			cur := forward.levels()[i].forward()
-			if /* greater, forward next */ cur != nil && skl.kcmp(key, cur.Element().Key()) > 0 {
+			if /* greater, forward next */ cur != nil && (key > cur.Element().Key() && !skl.isKeyCmpDesc) || (key < cur.Element().Key() && skl.isKeyCmpDesc) {
 				// Linear probing (forward next) at level 0 most likely.
 				forward = cur
 			} else /* lower or equal, downward to next level */ {
@@ -73,7 +71,7 @@ func (skl *xComSkl[K, V]) findPredecessor0(key K) (*xComSklNode[K, V], []*xComSk
 	}
 
 	target := forward.levels()[0].forward()
-	if /* found */ target != nil && skl.kcmp(key, target.Element().Key()) == 0 {
+	if /* found */ target != nil && key == target.Element().Key() {
 		return forward, aux
 	}
 	return /* not found */ nil, aux
@@ -132,7 +130,15 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	for /* vertical */ i := atomic.LoadInt32(&skl.levels) - 1; i >= 0; i-- {
 		for /* horizontal */ pred.levels()[i].forward() != nil {
 			cur := pred.levels()[i].forward()
-			res := skl.kcmp(key, cur.Element().Key())
+			res := func() int64 {
+				curKey := cur.Element().Key()
+				if (key > curKey && !skl.isKeyCmpDesc) || (key < curKey && skl.isKeyCmpDesc) {
+					return 1
+				} else if key == curKey {
+					return 0
+				}
+				return -1
+			}()
 			if /* next insert position */ res > 0 || (res == 0 && skl.vcmp(val, cur.Element().Val()) > 0) {
 				pred = cur
 			} else /* replace */ if res == 0 && skl.vcmp(val, cur.Element().Val()) == 0 {
@@ -219,7 +225,7 @@ func (skl *xComSkl[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	}
 
 	target := pred.levels()[0].forward()
-	if target != nil && skl.kcmp(key, target.Element().Key()) == 0 {
+	if target != nil && key == target.Element().Key() {
 		skl.removeNode(target, aux)
 		return target.Element(), nil
 	}
@@ -294,7 +300,7 @@ func (skl *xComSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklEl
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
-	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; cur = cur.levels()[0].forward() {
+	for cur := pred.levels()[0].forward(); cur != nil && key == cur.Element().Key(); cur = cur.levels()[0].forward() {
 		if matcher(cur.Element().Val()) {
 			elements = append(elements, cur.Element())
 		}
@@ -316,7 +322,7 @@ func (skl *xComSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
-	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; cur = cur.levels()[0].forward() {
+	for cur := pred.levels()[0].forward(); cur != nil && key == cur.Element().Key(); cur = cur.levels()[0].forward() {
 		elements = append(elements, cur.Element())
 	}
 	return elements, nil
@@ -336,7 +342,7 @@ func (skl *xComSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Skl
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
-	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; {
+	for cur := pred.levels()[0].forward(); cur != nil && key == cur.Element().Key(); {
 		if matcher(cur.Element().Val()) {
 			skl.removeNode(cur, aux)
 			elements = append(elements, cur.Element())
@@ -368,7 +374,7 @@ func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
-	for cur := pred.levels()[0].forward(); cur != nil && skl.kcmp(key, cur.Element().Key()) == 0; {
+	for cur := pred.levels()[0].forward(); cur != nil && key == cur.Element().Key(); {
 		skl.removeNode(cur, aux)
 		elements = append(elements, cur.Element())
 		free := cur

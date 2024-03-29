@@ -83,14 +83,6 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 
 	skl, err := NewXSkl[int, int](
 		XComSkl,
-		func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i < j {
-				return -1
-			}
-			return 1
-		},
 		WithXComSklValComparator[int, int](
 			func(i, j int) int64 {
 				if i == j {
@@ -116,7 +108,7 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 	skl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		require.Equal(t, orders[i].w, item.Key())
 		require.Equal(t, orders[i].id, item.Val())
-		t.Logf("key: %d, levels: %d\n", item.Key(), item.NodeLevel())
+		t.Logf("key: %d, value: %v, levels: %d\n", item.Key(), item.Val(), item.NodeLevel())
 		return true
 	})
 	assert.Equal(t, int64(len(orders)), skl.Len())
@@ -281,14 +273,6 @@ func TestXComSkl_PopHead(t *testing.T) {
 
 	skl, err := NewSkl[int, *xSklObject](
 		XComSkl,
-		func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i < j {
-				return -1
-			}
-			return 1
-		},
 		WithSklRandLevelGen[int, *xSklObject](randomLevelV2),
 	)
 	require.NoError(t, err)
@@ -334,14 +318,6 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 
 	skl, err := NewXSkl[int, *xSklObject](
 		XComSkl,
-		func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i < j {
-				return -1
-			}
-			return 1
-		},
 		WithXComSklValComparator[int, *xSklObject](
 			func(i, j *xSklObject) int64 {
 				_i, _j := i.Hash(), j.Hash()
@@ -377,7 +353,7 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 
 func TestXComSklDuplicateDataRace(t *testing.T) {
 	opts := []SklOption[uint64, int64]{
-		WithSklRandLevelGen[uint64, int64](randomLevelV3),
+		WithSklRandLevelGen[uint64, int64](randomLevelV2),
 		WithXComSklEnableConc[uint64, int64](),
 		WithXComSklValComparator[uint64, int64](
 			func(i, j int64) int64 {
@@ -393,15 +369,6 @@ func TestXComSklDuplicateDataRace(t *testing.T) {
 	}
 	skl, err := NewXSkl[uint64, int64](
 		XComSkl,
-		func(i, j uint64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
 		opts...,
 	)
 	require.NoError(t, err)

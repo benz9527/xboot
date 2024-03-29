@@ -10,17 +10,18 @@ import (
 
 const (
 	// Indicating that the skip-list data node type, including unique, linkedList and rbtree.
-	xConcSklXNodeModeBits = 0x0003
+	xConcSklXNodeModeFlagBits = 0x0003
 	// Indicating that the skip-list data node mode is rbtree and do delete operation will borrow pred(0) or succ node(1).
 	xConcSklRbtreeRmBorrowFlagBit = 0x0004
+	// Indication that the skip-list key sort direction.
+	xConcSklKeyCmpFlagBit = 0x0008 /* 0: asc; 1: desc */
 )
 
 var _ XSkipList[uint8, uint8] = (*xConcSkl[uint8, uint8])(nil)
 
 type xConcSkl[K infra.OrderedKey, V any] struct {
 	head       *xConcSklNode[K, V]
-	kcmp       infra.OrderedKeyComparator[K] // key comparator
-	vcmp       SklValComparator[V]           // value comparator
+	vcmp       SklValComparator[V] // value comparator
 	rand       SklRand
 	optVer     id.UUIDGen // optimistic version generator
 	nodeLen    int64      // skip-list's node count.
@@ -30,7 +31,7 @@ type xConcSkl[K infra.OrderedKey, V any] struct {
 }
 
 func (skl *xConcSkl[K, V]) loadXNodeMode() xNodeMode {
-	return xNodeMode(atomicLoadBits(&skl.flags, xConcSklXNodeModeBits))
+	return xNodeMode(atomicLoadBits(&skl.flags, xConcSklXNodeModeFlagBits))
 }
 
 func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
@@ -41,18 +42,19 @@ func (skl *xConcSkl[K, V]) atomicLoadHead() *xConcSklNode[K, V] {
 func (skl *xConcSkl[K, V]) traverse(
 	lvl int32,
 	key K,
+	isDesc bool,
 	aux []*xConcSklNode[K, V],
 ) *xConcSklNode[K, V] {
 	for /* vertical */ forward, l := skl.atomicLoadHead(), lvl-1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
 		for /* horizontal */ nIdx != nil {
-			if /* horizontal next */ key > nIdx.key {
-				forward = nIdx
-				nIdx = forward.atomicLoadNextNode(l)
-			} else if /* found */ key == nIdx.key {
+			if /* found */ key == nIdx.key {
 				aux[l] = forward          /* pred */
 				aux[sklMaxLevel+l] = nIdx /* succ */
 				return nIdx
+			} else if /* horizontal next */ (!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key) {
+				forward = nIdx
+				nIdx = forward.atomicLoadNextNode(l)
 			} else /* not found, vertical next */ {
 				break
 			}
@@ -68,7 +70,8 @@ func (skl *xConcSkl[K, V]) traverse(
 // during the indices traversal.
 // Returns with the target key found level index.
 func (skl *xConcSkl[K, V]) rmTraverse(
-	weight K,
+	key K,
+	isDesc bool,
 	aux []*xConcSklNode[K, V],
 ) (foundAt int32) {
 	// foundAt represents the index of the first layer at which it found a node.
@@ -76,7 +79,7 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 	forward := skl.atomicLoadHead()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(weight, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && ((!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key)) {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
@@ -84,7 +87,7 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 		aux[l] = forward
 		aux[sklMaxLevel+l] = nIdx
 
-		if foundAt == -1 && nIdx != nil && skl.kcmp(weight, nIdx.key) == 0 {
+		if foundAt == -1 && nIdx != nil && key == nIdx.key {
 			foundAt = l
 		}
 		// Downward to next level.
@@ -120,6 +123,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 		oldLvls = skl.Levels()
 		newLvls = skl.rand(int(oldLvls), skl.Len()) // avoid loop call
 		ver     = skl.optVer.Number()
+		isDesc  = isSet(skl.flags, xConcSklKeyCmpFlagBit)
 	)
 
 	if len(ifNotPresent) <= 0 {
@@ -127,7 +131,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	}
 
 	for {
-		if node := skl.traverse(max(oldLvls, newLvls), key, aux); node != nil {
+		if node := skl.traverse(max(oldLvls, newLvls), key, isDesc, aux); node != nil {
 			if /* conc rm */ atomicIsSet(&node.flags, nodeRemovingFlagBit) {
 				continue
 			} else if /* conc d-check */ skl.Len() >= sklMaxSize {
@@ -292,17 +296,18 @@ func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err error
 	if skl.Len() <= 0 {
 		return nil, ErrXSklIsEmpty
 	}
+	isDesc := isSet(skl.flags, xConcSklKeyCmpFlagBit)
 
 	forward := skl.atomicLoadHead()
 	mode := skl.loadXNodeMode()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && ((!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key)) {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
 
-		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
+		if /* found */ nIdx != nil && key == nIdx.key {
 			if atomicAreEqual(&nIdx.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw empty */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return nil, ErrXSklConcRWLoadEmpty
@@ -358,13 +363,14 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 		topLevel = int32(-1)
 		ver      = skl.optVer.Number()
 		foundAt  = int32(-1)
+		isDesc   = isSet(skl.flags, xConcSklKeyCmpFlagBit)
 	)
 
 	switch mode := skl.loadXNodeMode(); mode {
 	// FIXME: Merge these 2 deletion loops logic
 	case unique:
 		for {
-			foundAt = skl.rmTraverse(key, aux)
+			foundAt = skl.rmTraverse(key, isDesc, aux)
 			if isMarked || foundAt != -1 &&
 				atomicAreEqual(&aux[sklMaxLevel+foundAt].flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) &&
 				(int32(aux[sklMaxLevel+foundAt].level)-1) == foundAt {
@@ -432,7 +438,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 		}
 	case linkedList, rbtree:
 		for {
-			foundAt = skl.rmTraverse(key, aux)
+			foundAt = skl.rmTraverse(key, isDesc, aux)
 			if isMarked || foundAt != -1 {
 				fullyLinkedButNotRemove := atomicAreEqual(&aux[sklMaxLevel+foundAt].flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
 				succMatch := (int32(aux[sklMaxLevel+foundAt].level) - 1) == foundAt
@@ -600,15 +606,16 @@ func (skl *xConcSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklE
 		forward  = skl.atomicLoadHead()
 		mode     = skl.loadXNodeMode()
 		elements = make([]SklElement[K, V], 0, 32)
+		isDesc   = isSet(skl.flags, xConcSklKeyCmpFlagBit)
 	)
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && ((!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key)) {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
 
-		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
+		if /* found */ nIdx != nil && key == nIdx.key {
 			if atomicAreEqual(&nIdx.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return nil, ErrXSklConcRWLoadEmpty
@@ -657,15 +664,16 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 		forward  = skl.atomicLoadHead()
 		mode     = skl.loadXNodeMode()
 		elements = make([]SklElement[K, V], 0, 32)
+		isDesc   = isSet(skl.flags, xConcSklKeyCmpFlagBit)
 	)
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && skl.kcmp(key, nIdx.key) > 0 {
+		for /* horizontal */ nIdx != nil && ((!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key)) {
 			forward = nIdx
 			nIdx = forward.atomicLoadNextNode(l)
 		}
 
-		if /* found */ nIdx != nil && skl.kcmp(key, nIdx.key) == 0 {
+		if /* found */ nIdx != nil && key == nIdx.key {
 			if atomicAreEqual(&nIdx.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
 					return nil, ErrXSklConcRWLoadEmpty
@@ -713,6 +721,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 		ver      = skl.optVer.Number()
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
+		isDesc   = isSet(skl.flags, xConcSklKeyCmpFlagBit)
 	)
 
 	switch mode := skl.loadXNodeMode(); mode {
@@ -721,7 +730,7 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 		panic("[x-conc-skl] unique mode skip-list not implements the remove if match method")
 	case linkedList, rbtree:
 		for {
-			foundAt = skl.rmTraverse(key, aux)
+			foundAt = skl.rmTraverse(key, isDesc, aux)
 			if isMarked || foundAt != -1 {
 				fullyLinkedButNotRemove := atomicAreEqual(&aux[sklMaxLevel+foundAt].flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
 				succMatch := (int32(aux[sklMaxLevel+foundAt].level) - 1) == foundAt
@@ -848,6 +857,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		ver      = skl.optVer.Number()
 		foundAt  = int32(-1)
 		elements = make([]SklElement[K, V], 0, 32)
+		isDesc   = isSet(skl.flags, xConcSklKeyCmpFlagBit)
 	)
 
 	switch mode := skl.loadXNodeMode(); mode {
@@ -856,7 +866,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		panic("[x-conc-skl] unique mode skip-list not implements the remove all method")
 	case linkedList, rbtree:
 		for {
-			foundAt = skl.rmTraverse(key, aux)
+			foundAt = skl.rmTraverse(key, isDesc, aux)
 			if isMarked || foundAt != -1 {
 				fullyLinkedButNotRemove := atomicAreEqual(&aux[sklMaxLevel+foundAt].flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked)
 				succMatch := (int32(aux[sklMaxLevel+foundAt].level) - 1) == foundAt
