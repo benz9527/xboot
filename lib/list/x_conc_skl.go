@@ -48,13 +48,13 @@ func (skl *xConcSkl[K, V]) traverse(
 	for /* vertical */ forward, l := skl.atomicLoadHead(), lvl-1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
 		for /* horizontal */ nIdx != nil {
-			if /* found */ key == nIdx.key {
+			if /* horizontal next */ (!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key) {
+				forward = nIdx
+				nIdx = forward.atomicLoadNextNode(l)
+			} else if /* found */ key == nIdx.key {
 				aux[l] = forward          /* pred */
 				aux[sklMaxLevel+l] = nIdx /* succ */
 				return nIdx
-			} else if /* horizontal next */ (!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key) {
-				forward = nIdx
-				nIdx = forward.atomicLoadNextNode(l)
 			} else /* not found, vertical next */ {
 				break
 			}
