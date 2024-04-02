@@ -447,6 +447,20 @@ func genXConcSklUniqueNode[K infra.OrderedKey, V any](
 	  n.node.root = &n.xN
 	  n.node.count = 1
 	  return &n.node
+	case 32: 
+	  n := struct {
+		node    xConcSklNode[K, V]
+		indices [32]*xConcSklNode[K, V]
+		xN      xNode[V]
+	  }{}
+	  n.node.indices = n.indices[:]
+	  n.node.key = key
+	  n.node.level = uint32(lvl)
+	  n.node.flags = setBitsAs(0, xNodeModeFlagBits, uint32(unique))
+	  n.xN.vptr = &val
+	  n.node.root = &n.xN
+	  n.node.count = 1
+	  return &n.node
 	default:
 	}
 	panic("unable to generate ")
@@ -923,6 +937,21 @@ func genXConcSklLinkedListNode[K infra.OrderedKey, V any](
 	  n.node.root.parent = &n.xN[1]
 	  n.node.count = 1
 	  return &n.node
+	case 32: 
+	  n := struct {
+		node    xConcSklNode[K, V]
+		indices [32]*xConcSklNode[K, V]
+		xN      [2]xNode[V]
+	  }{}
+	  n.node.indices = n.indices[:]
+	  n.node.key = key
+	  n.node.level = uint32(lvl)
+	  n.node.flags = setBitsAs(0, xNodeModeFlagBits, uint32(linkedList))
+	  n.xN[1].vptr = &val
+	  n.node.root = &n.xN[0]
+	  n.node.root.parent = &n.xN[1]
+	  n.node.count = 1
+	  return &n.node
 	default:
 	}
 	panic("unable to generate ")
@@ -1299,6 +1328,18 @@ func genXConcSklRbtreeNode[K infra.OrderedKey, V any](
 	  n := struct {
 		node    xConcSklNode[K, V]
 		indices [31]*xConcSklNode[K, V]
+	  }{}
+	  n.node.indices = n.indices[:]
+	  n.node.key = key
+	  n.node.level = uint32(lvl)
+	  n.node.flags = setBitsAs(0, xNodeModeFlagBits, uint32(rbtree))
+	  n.node.rbInsert(val, vcmp)
+	  n.node.count = 1
+	  return &n.node
+	case 32: 
+	  n := struct {
+		node    xConcSklNode[K, V]
+		indices [32]*xConcSklNode[K, V]
 	  }{}
 	  n.node.indices = n.indices[:]
 	  n.node.key = key

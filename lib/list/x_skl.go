@@ -474,19 +474,9 @@ func sklFactory[K infra.OrderedKey, V any](opts *sklOptions[K, V]) (XSkipList[K,
 			rand:         opts.randLevelGen,
 			isKeyCmpDesc: opts.keyCmpDesc,
 		}
-		skl.head = newXComSklNode[K, V](sklMaxLevel, *new(K), *new(V))
-		// Initialization.
-		// The head must be initialized with array element size with sklMaxLevel.
-		for i := 0; i < sklMaxLevel; i++ {
-			skl.head.levels()[i].setForward(nil)
-		}
+		skl.head = genXComSklNode[K, V](*new(K), *new(V), sklMaxLevel)
 		skl.head.setBackward(nil)
 		skl.tail = nil
-		skl.pool = &sync.Pool{
-			New: func() any {
-				return make([]*xComSklNode[K, V], sklMaxLevel)
-			},
-		}
 		impl = skl
 	case XConcSkl:
 		skl := &xConcSkl[K, V]{

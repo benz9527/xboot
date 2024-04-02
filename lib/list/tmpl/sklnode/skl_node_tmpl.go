@@ -7,7 +7,91 @@ import (
 	"text/template"
 )
 
-const nodeTmpl = `// Auto generated code; Do NOT EDIT!
+func seq(n int) []int {
+	seq := make([]int, n)
+	for i := 1; i <= n; i++ {
+		seq[i-1] = i
+	}
+	return seq
+}
+
+// In vscode env, please run the debug mode to gen code.
+// Because the debug mode will create a binary under current
+// directory, it is easy to convert relative path to abs path.
+
+func main() {
+	sklMaxLevel := 32
+	generateXConcSklNodes(sklMaxLevel)
+	generateXComSklNodes(sklMaxLevel)
+}
+
+func generateXComSklNodes(maxLevel int) {
+	const nodeTmpl = `// Auto generated code; Do NOT EDIT!
+// Author benzheng2121@126.com
+
+package list
+
+import (
+	"github.com/benz9527/xboot/lib/infra"
+)
+
+func genXComSklNode[K infra.OrderedKey, V any](
+	key K,
+	val V,
+	lvl int32,
+) *xComSklNode[K, V] {
+	switch lvl {
+{{- range $i, $val := seq .SklMaxLevel }}
+	case {{ $val }}: 
+	  n := struct {
+		node    xComSklNode[K, V]
+		indices [{{ $val }}]*xComSklNode[K, V]
+		element xSklElement[K, V]
+	  }{
+		element: xSklElement[K, V]{
+			key: key,
+			val: val,
+		},
+	  }
+	  n.node.indices = n.indices[:]
+	  n.node.element = &n.element
+	  return &n.node
+{{- end }}
+	default:
+	}
+	panic("unable to generate ")
+}
+`
+	tmpl := template.Must(template.New("xComSkl").
+		Funcs(map[string]any{
+			"seq": seq,
+		}).
+		Parse(nodeTmpl),
+	)
+	path, err := filepath.Abs("../../x_com_skl_node_gen.go")
+	if err != nil {
+		panic(err)
+	}
+
+	f, err := os.Create(path)
+	if err != nil && !os.IsExist(err) {
+		panic(err)
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+
+	type tmplData struct {
+		SklMaxLevel int
+	}
+	data := tmplData{SklMaxLevel: maxLevel}
+	if err = tmpl.Execute(w, data); err != nil {
+		panic(err)
+	}
+	w.Flush()
+}
+
+func generateXConcSklNodes(maxLevel int) {
+	const nodeTmpl = `// Auto generated code; Do NOT EDIT!
 // Author benzheng2121@126.com
 
 package list
@@ -97,22 +181,6 @@ func genXConcSklRbtreeNode[K infra.OrderedKey, V any](
 	panic("unable to generate ")
 }
 `
-
-func seq(n int) []int {
-	seq := make([]int, n-1)
-	for i := 1; i < n; i++ {
-		seq[i-1] = i
-	}
-	return seq
-}
-
-// In vscode env, please run the debug mode to gen code.
-// Because the debug mode will create a binary under current
-// directory, it is easy to convert relative path to abs path.
-
-func main() {
-	var sklMaxLevel int = 32
-
 	tmpl := template.Must(template.New("xConcSkl").
 		Funcs(map[string]any{
 			"seq": seq,
@@ -134,7 +202,7 @@ func main() {
 	type tmplData struct {
 		SklMaxLevel int
 	}
-	data := tmplData{SklMaxLevel: sklMaxLevel}
+	data := tmplData{SklMaxLevel: maxLevel}
 	if err = tmpl.Execute(w, data); err != nil {
 		panic(err)
 	}
