@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -112,9 +111,7 @@ func seq(n int) []int {
 // directory, it is easy to convert relative path to abs path.
 
 func main() {
-	var sklMaxLevel int
-	flag.IntVar(&sklMaxLevel, "skl-max-level", 32, "set the skl max level")
-	flag.Parse()
+	var sklMaxLevel int = 32
 
 	tmpl := template.Must(template.New("xConcSkl").
 		Funcs(map[string]any{
