@@ -1103,30 +1103,16 @@ func newXConcSklNode[K infra.OrderedKey, V any](
 	mode xNodeMode,
 	vcmp SklValComparator[V],
 ) *xConcSklNode[K, V] {
-	node := &xConcSklNode[K, V]{
-		key:   key,
-		level: uint32(lvl),
-	}
-	node.indices = make([]*xConcSklNode[K, V], lvl)
-	node.flags = setBitsAs(node.flags, xNodeModeFlagBits, uint32(mode))
 	switch mode {
 	case unique:
-		node.root = &xNode[V]{
-			vptr: &val,
-		}
+		return genXConcSklUniqueNode[K, V](key, val, lvl)
 	case linkedList:
-		node.root = &xNode[V]{
-			parent: &xNode[V]{
-				vptr: &val,
-			},
-		}
+		return genXConcSklLinkedListNode[K, V](key, val, lvl)
 	case rbtree:
-		node.rbInsert(val, vcmp)
+		return genXConcSklRbtreeNode[K, V](key, val, vcmp, lvl)
 	default:
 		panic("[x-conc-skl] unknown x-node type")
 	}
-	node.count = 1
-	return node
 }
 
 func newXConcSklHead[K infra.OrderedKey, V any]() *xConcSklNode[K, V] {

@@ -88,7 +88,7 @@ func randomLevelV3(maxLevel int, currentElements int64) int32 {
 	// Avoid the value of randomly generated level deviates
 	// far from the number of elements within the skip-list.
 	// level should be greater than but approximate to log(currentElements)
-	for level > 1 && uint64(1)<<(level-1) > uint64(currentElements) {
+	for level > 3 && uint64(1)<<(level-3) > uint64(currentElements) {
 		level--
 	}
 	return int32(level)
