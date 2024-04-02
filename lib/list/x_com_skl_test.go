@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"hash/fnv"
+	randv2 "math/rand/v2"
 	"sort"
 	"strconv"
 	"sync"
@@ -71,26 +72,82 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 		id int
 	}
 	orders := []element{
-		{1, 9}, {1, 8}, {1, 7}, {1, 6}, {1, 5}, {1, 4}, {1, 3}, {1, 2}, {1, 1},
-		{2, 19}, {2, 18}, {2, 17}, {2, 16}, {2, 15}, {2, 14}, {2, 13}, {2, 12}, {2, 11},
-		{4, 29}, {4, 28}, {4, 27}, {4, 26}, {4, 25}, {4, 24}, {4, 23}, {4, 22}, {4, 21},
-		{8, 39}, {8, 38}, {8, 37}, {8, 36}, {8, 35}, {8, 34}, {8, 33}, {8, 32}, {8, 31},
-		{16, 49}, {16, 48}, {16, 47}, {16, 46}, {16, 45}, {16, 44}, {16, 43}, {16, 42}, {16, 41},
-		{32, 59}, {32, 58}, {32, 57}, {32, 56}, {32, 55}, {32, 54}, {32, 53}, {32, 52}, {32, 51},
-		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
-		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
+		{1, 9},
+		{1, 8},
+		{1, 7},
+		{1, 6},
+		{1, 5},
+		{1, 4},
+		{1, 3},
+		{1, 2},
+		{1, 1},
+		{2, 19},
+		{2, 18},
+		{2, 17},
+		{2, 16},
+		{2, 15},
+		{2, 14},
+		{2, 13},
+		{2, 12},
+		{2, 11},
+		{4, 29},
+		{4, 28},
+		{4, 27},
+		{4, 26},
+		{4, 25},
+		{4, 24},
+		{4, 23},
+		{4, 22},
+		{4, 21},
+		{8, 39},
+		{8, 38},
+		{8, 37},
+		{8, 36},
+		{8, 35},
+		{8, 34},
+		{8, 33},
+		{8, 32},
+		{8, 31},
+		{16, 49},
+		{16, 48},
+		{16, 47},
+		{16, 46},
+		{16, 45},
+		{16, 44},
+		{16, 43},
+		{16, 42},
+		{16, 41},
+		{32, 59},
+		{32, 58},
+		{32, 57},
+		{32, 56},
+		{32, 55},
+		{32, 54},
+		{32, 53},
+		{32, 52},
+		{32, 51},
+		{64, 69},
+		{64, 68},
+		{64, 67},
+		{64, 66},
+		{64, 65},
+		{64, 64},
+		{64, 63},
+		{64, 62},
+		{64, 61},
+		{128, 79},
+		{128, 78},
+		{128, 77},
+		{128, 76},
+		{128, 75},
+		{128, 74},
+		{128, 73},
+		{128, 72},
+		{128, 71},
 	}
 
 	skl, err := NewXSkl[int, int](
 		XComSkl,
-		func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i < j {
-				return -1
-			}
-			return 1
-		},
 		WithXComSklValComparator[int, int](
 			func(i, j int) int64 {
 				if i == j {
@@ -116,7 +173,7 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 	skl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		require.Equal(t, orders[i].w, item.Key())
 		require.Equal(t, orders[i].id, item.Val())
-		t.Logf("key: %d, levels: %d\n", item.Key(), item.NodeLevel())
+		t.Logf("key: %d, value: %v, levels: %d\n", item.Key(), item.Val(), item.NodeLevel())
 		return true
 	})
 	assert.Equal(t, int64(len(orders)), skl.Len())
@@ -159,13 +216,69 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 	}
 
 	orders = []element{
-		{1, 9}, {1, 8}, {1, 7}, {1, 6}, {1, 5}, {1, 4}, {1, 3}, {1, 2}, {1, 1},
-		{2, 19}, {2, 18}, {2, 17}, {2, 16}, {2, 15}, {2, 14}, {2, 13}, {2, 12}, {2, 11},
-		{8, 39}, {8, 38}, {8, 37}, {8, 36}, {8, 35}, {8, 34}, {8, 33}, {8, 32}, {8, 31},
-		{16, 49}, {16, 48}, {16, 47}, {16, 46}, {16, 45}, {16, 44}, {16, 43}, {16, 42}, {16, 41},
-		{32, 59}, {32, 58}, {32, 57}, {32, 56}, {32, 55}, {32, 54}, {32, 53}, {32, 52}, {32, 51},
-		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
-		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72}, {128, 71},
+		{1, 9},
+		{1, 8},
+		{1, 7},
+		{1, 6},
+		{1, 5},
+		{1, 4},
+		{1, 3},
+		{1, 2},
+		{1, 1},
+		{2, 19},
+		{2, 18},
+		{2, 17},
+		{2, 16},
+		{2, 15},
+		{2, 14},
+		{2, 13},
+		{2, 12},
+		{2, 11},
+		{8, 39},
+		{8, 38},
+		{8, 37},
+		{8, 36},
+		{8, 35},
+		{8, 34},
+		{8, 33},
+		{8, 32},
+		{8, 31},
+		{16, 49},
+		{16, 48},
+		{16, 47},
+		{16, 46},
+		{16, 45},
+		{16, 44},
+		{16, 43},
+		{16, 42},
+		{16, 41},
+		{32, 59},
+		{32, 58},
+		{32, 57},
+		{32, 56},
+		{32, 55},
+		{32, 54},
+		{32, 53},
+		{32, 52},
+		{32, 51},
+		{64, 69},
+		{64, 68},
+		{64, 67},
+		{64, 66},
+		{64, 65},
+		{64, 64},
+		{64, 63},
+		{64, 62},
+		{64, 61},
+		{128, 79},
+		{128, 78},
+		{128, 77},
+		{128, 76},
+		{128, 75},
+		{128, 74},
+		{128, 73},
+		{128, 72},
+		{128, 71},
 	}
 	skl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
@@ -206,13 +319,66 @@ func TestXComSkl_SimpleCRUD(t *testing.T) {
 	}
 
 	orders = []element{
-		{1, 9}, {1, 8}, {1, 7}, {1, 6}, {1, 5}, {1, 4}, {1, 3}, {1, 2}, {1, 1},
-		{2, 19}, {2, 18}, {2, 17}, {2, 16}, {2, 15}, {2, 14}, {2, 13}, {2, 12}, {2, 11},
-		{8, 39}, {8, 38}, {8, 37}, {8, 36}, {8, 34}, {8, 33}, {8, 32}, {8, 31},
-		{16, 49}, {16, 48}, {16, 46}, {16, 45}, {16, 44}, {16, 43}, {16, 42}, {16, 41},
-		{32, 59}, {32, 58}, {32, 57}, {32, 56}, {32, 55}, {32, 54}, {32, 53}, {32, 52}, {32, 51},
-		{64, 69}, {64, 68}, {64, 67}, {64, 66}, {64, 65}, {64, 64}, {64, 63}, {64, 62}, {64, 61},
-		{128, 79}, {128, 78}, {128, 77}, {128, 76}, {128, 75}, {128, 74}, {128, 73}, {128, 72},
+		{1, 9},
+		{1, 8},
+		{1, 7},
+		{1, 6},
+		{1, 5},
+		{1, 4},
+		{1, 3},
+		{1, 2},
+		{1, 1},
+		{2, 19},
+		{2, 18},
+		{2, 17},
+		{2, 16},
+		{2, 15},
+		{2, 14},
+		{2, 13},
+		{2, 12},
+		{2, 11},
+		{8, 39},
+		{8, 38},
+		{8, 37},
+		{8, 36},
+		{8, 34},
+		{8, 33},
+		{8, 32},
+		{8, 31},
+		{16, 49},
+		{16, 48},
+		{16, 46},
+		{16, 45},
+		{16, 44},
+		{16, 43},
+		{16, 42},
+		{16, 41},
+		{32, 59},
+		{32, 58},
+		{32, 57},
+		{32, 56},
+		{32, 55},
+		{32, 54},
+		{32, 53},
+		{32, 52},
+		{32, 51},
+		{64, 69},
+		{64, 68},
+		{64, 67},
+		{64, 66},
+		{64, 65},
+		{64, 64},
+		{64, 63},
+		{64, 62},
+		{64, 61},
+		{128, 79},
+		{128, 78},
+		{128, 77},
+		{128, 76},
+		{128, 75},
+		{128, 74},
+		{128, 73},
+		{128, 72},
 	}
 	skl.Foreach(func(i int64, item SklIterationItem[int, int]) bool {
 		assert.Equal(t, orders[i].w, item.Key())
@@ -281,14 +447,6 @@ func TestXComSkl_PopHead(t *testing.T) {
 
 	skl, err := NewSkl[int, *xSklObject](
 		XComSkl,
-		func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i < j {
-				return -1
-			}
-			return 1
-		},
 		WithSklRandLevelGen[int, *xSklObject](randomLevelV2),
 	)
 	require.NoError(t, err)
@@ -323,25 +481,31 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 		id string
 	}
 	orders := []element{
-		{1, "3"}, {1, "2"}, {1, "1"},
-		{2, "4"}, {2, "2"},
-		{3, "9"}, {3, "8"}, {3, "7"}, {3, "1"},
-		{4, "9"}, {4, "6"}, {4, "3"},
-		{5, "7"}, {5, "6"}, {5, "2"},
-		{6, "8"}, {6, "100"},
-		{7, "8"}, {7, "7"}, {7, "2"}, {7, "1"},
+		{1, "3"},
+		{1, "2"},
+		{1, "1"},
+		{2, "4"},
+		{2, "2"},
+		{3, "9"},
+		{3, "8"},
+		{3, "7"},
+		{3, "1"},
+		{4, "9"},
+		{4, "6"},
+		{4, "3"},
+		{5, "7"},
+		{5, "6"},
+		{5, "2"},
+		{6, "8"},
+		{6, "100"},
+		{7, "8"},
+		{7, "7"},
+		{7, "2"},
+		{7, "1"},
 	}
 
 	skl, err := NewXSkl[int, *xSklObject](
 		XComSkl,
-		func(i, j int) int64 {
-			if i == j {
-				return 0
-			} else if i < j {
-				return -1
-			}
-			return 1
-		},
 		WithXComSklValComparator[int, *xSklObject](
 			func(i, j *xSklObject) int64 {
 				_i, _j := i.Hash(), j.Hash()
@@ -377,7 +541,7 @@ func TestXComSkl_Duplicate_PopHead(t *testing.T) {
 
 func TestXComSklDuplicateDataRace(t *testing.T) {
 	opts := []SklOption[uint64, int64]{
-		WithSklRandLevelGen[uint64, int64](randomLevelV3),
+		WithSklRandLevelGen[uint64, int64](randomLevelV2),
 		WithXComSklEnableConc[uint64, int64](),
 		WithXComSklValComparator[uint64, int64](
 			func(i, j int64) int64 {
@@ -393,15 +557,6 @@ func TestXComSklDuplicateDataRace(t *testing.T) {
 	}
 	skl, err := NewXSkl[uint64, int64](
 		XComSkl,
-		func(i, j uint64) int64 {
-			// avoid calculation overflow
-			if i == j {
-				return 0
-			} else if i > j {
-				return 1
-			}
-			return -1
-		},
 		opts...,
 	)
 	require.NoError(t, err)
@@ -467,4 +622,50 @@ func TestXComSklDuplicateDataRace(t *testing.T) {
 	wg.Wait()
 	require.Equal(t, int64(0), skl.Len())
 	require.Equal(t, uint64(0), skl.IndexCount())
+}
+
+func BenchmarkXComSklUnique_Random(b *testing.B) {
+	testByBytes := []byte(`abc`)
+
+	b.StopTimer()
+	opts := make([]SklOption[int, []byte], 0, 2)
+	skl, err := NewSkl[int, []byte](
+		XComSkl,
+		opts...,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	rngArr := make([]int, 0, b.N)
+	for i := 0; i < b.N; i++ {
+		rngArr = append(rngArr, randv2.Int())
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		err := skl.Insert(rngArr[i], testByBytes)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkXComSklUnique_Serial(b *testing.B) {
+	testByBytes := []byte(`abc`)
+
+	b.StopTimer()
+	opts := make([]SklOption[int, []byte], 0, 2)
+	skl, err := NewSkl[int, []byte](
+		XComSkl,
+		opts...,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		skl.Insert(i, testByBytes)
+	}
 }

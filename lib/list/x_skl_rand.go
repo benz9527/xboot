@@ -53,15 +53,14 @@ func randomLevelV2(maxLevel int, currentElements int64) int32 {
 	} else {
 		total = uint64(1)<<maxLevel - 1
 	}
-	rest := randv2.Uint64() & total
 	// Bits right shift equal to manipulate a high-level bit
 	// Calculate the minimum bits of the random number
-	tmp := bits.Len64(rest) // Lookup table.
-	level := maxLevel - tmp + 1
+	// Lookup table.
+	level := maxLevel - bits.Len64(randv2.Uint64()&total) + 1
 	// Avoid the value of randomly generated level deviates
 	// far from the number of elements within the skip-list.
 	// Level should be greater than but approximate to log(currentElements)
-	for level > 1 && uint64(1)<<(level-1) > uint64(currentElements) {
+	for level > 3 && uint64(1)<<(level-3) > uint64(currentElements) {
 		level--
 	}
 	return int32(level)
@@ -89,7 +88,7 @@ func randomLevelV3(maxLevel int, currentElements int64) int32 {
 	// Avoid the value of randomly generated level deviates
 	// far from the number of elements within the skip-list.
 	// level should be greater than but approximate to log(currentElements)
-	for level > 1 && uint64(1)<<(level-1) > uint64(currentElements) {
+	for level > 3 && uint64(1)<<(level-3) > uint64(currentElements) {
 		level--
 	}
 	return int32(level)

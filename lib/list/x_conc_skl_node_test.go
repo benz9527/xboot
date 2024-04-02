@@ -514,7 +514,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeSequentialNumberRunCore(t *testing.T
 
 	node := &xConcSklNode[uint64, uint64]{}
 	if rbRmBySucc {
-		node.flags.set(nodeRbRmBorrowFlagBit)
+		node.flags = set(node.flags, nodeRbRmBorrowFlagBit)
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {
@@ -710,7 +710,7 @@ func xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(t *testing.T
 
 	node := &xConcSklNode[uint64, uint64]{}
 	if rbRmBySucc {
-		node.flags.set(nodeRbRmBorrowFlagBit)
+		set(node.flags, nodeRbRmBorrowFlagBit)
 	}
 
 	for i := uint64(0); i < insertTotal; i++ {

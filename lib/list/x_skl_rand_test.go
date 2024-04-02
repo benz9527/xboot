@@ -19,7 +19,7 @@ func randomLevelV1(maxLevel int, currentElements int32) int32 {
 	} else {
 		total = uint64(1)<<maxLevel - 1
 	}
-	// goland math random (math.Float64()) contains global mutex lock
+	// golang math random (math.Float64()) contains global mutex lock
 	// Ref
 	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/rand/rand.go
 	// https://cs.opensource.google/go/go/+/refs/tags/go1.21.5:src/math/bits/bits.go

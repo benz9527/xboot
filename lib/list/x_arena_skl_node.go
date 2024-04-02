@@ -32,8 +32,8 @@ func newXConcSklHeadElement[K infra.OrderedKey, V any]() *xArenaSklElement[K, V]
 	node := &xArenaSklNode[K, V]{
 		level: sklMaxLevel,
 	}
-	node.flags.set(nodeIsHeadFlagBit | nodeInsertedFlagBit)
-	node.flags.setBitsAs(xNodeModeFlagBits, uint32(unique))
+	node.flags = set(node.flags, nodeIsHeadFlagBit|nodeInsertedFlagBit)
+	node.flags = setBitsAs(node.flags, xNodeModeFlagBits, uint32(unique))
 	head := &xArenaSklElement[K, V]{
 		indices: make([]*xArenaSklNode[K, V], sklMaxLevel),
 	}
@@ -71,7 +71,7 @@ type xArenaSklNode[K infra.OrderedKey, V any] struct {
 	mu         uint64                  // size 8, 2 byte
 	count      int64                   // size 8, 1 byte
 	level      uint32                  // size 4
-	flags      flagBits                // size 4
+	flags      uint32                  // size 4
 }
 
 func (node *xArenaSklNode[K, V]) lock(version uint64) {
