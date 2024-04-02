@@ -35,6 +35,9 @@ func (node *xComSklNode[K, V]) setBackward(pred *xComSklNode[K, V]) {
 }
 
 func (node *xComSklNode[K, V]) levels() []*xComSklNode[K, V] {
+	if node == nil {
+		return nil
+	}
 	return node.indices
 }
 
