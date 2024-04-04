@@ -811,7 +811,7 @@ func (tree *rbTree[K, V]) Search(x RBNode[K, V], fn func(RBNode[K, V]) int64) RB
 }
 
 // Inorder traversal to implement the DFS.
-func (tree *rbTree[K, V]) DFS(action func(idx int64, color RBColor, key K, val V) bool) {
+func (tree *rbTree[K, V]) Foreach(action func(idx int64, color RBColor, key K, val V) bool) {
 	size := atomic.LoadInt64(&tree.count)
 	aux := tree.root
 	if size < 0 || aux == nil {
@@ -871,4 +871,31 @@ func (tree *rbTree[K, V]) Release() {
 			}
 		}
 	}
+}
+
+type RBTreeOpt[K infra.OrderedKey, V any] func(*rbTree[K, V])
+
+func WithRBTreeDesc[K infra.OrderedKey, V any]() RBTreeOpt[K, V] {
+	return func(tree *rbTree[K, V]) {
+		tree.isDesc = true
+	}
+}
+
+func WithRBTreeRemoveBorrowSucc[K infra.OrderedKey, V any]() RBTreeOpt[K, V] {
+	return func(tree *rbTree[K, V]) {
+		tree.isRmBorrowSucc = true
+	}
+}
+
+func NewRBTree[K infra.OrderedKey, V any](opts ...RBTreeOpt[K, V]) RBTree[K, V] {
+	tree := &rbTree[K, V]{
+		count:          0,
+		isDesc:         false,
+		isRmBorrowSucc: false,
+	}
+
+	for _, o := range opts {
+		o(tree)
+	}
+	return tree
 }

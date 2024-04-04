@@ -34,7 +34,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 	expected := []checkData{
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -46,7 +46,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 	expected = []checkData{
 		{Red, 47}, {Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -57,7 +57,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 	expected = []checkData{
 		{Red, 3}, {Black, 47}, {Red, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -72,7 +72,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 		{Black, 47},
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -88,7 +88,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 		{Black, 47},
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -107,7 +107,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 		{Black, 47},
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -123,7 +123,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 		{Black, 35},
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -137,7 +137,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 	expected = []checkData{
 		{Red, 3}, {Black, 35},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -151,7 +151,7 @@ func TestRbtreeLeftAndRightRotate_Pred(t *testing.T) {
 	expected = []checkData{
 		{Black, 35},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -188,7 +188,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		{Black, 47},
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -205,7 +205,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		{Black, 47},
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -221,7 +221,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 		{Black, 47},
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -235,7 +235,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	expected = []checkData{
 		{Black, 47}, {Red, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -249,7 +249,7 @@ func TestRbtree_RemoveMin(t *testing.T) {
 	expected = []checkData{
 		{Black, 52},
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, expected[idx].color, color)
 		require.Equal(t, expected[idx].key, key)
 		return true
@@ -278,7 +278,7 @@ func rbtreeRandomInsertAndRemoveSequentialNumberRunCore(t *testing.T, rbRmBySucc
 		require.NoError(t, RedViolationValidate(tree))
 		require.NoError(t, BlackViolationValidate(tree))
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, uint64(idx), key)
 		return true
 	})
@@ -288,7 +288,7 @@ func rbtreeRandomInsertAndRemoveSequentialNumberRunCore(t *testing.T, rbRmBySucc
 		require.NoError(t, RedViolationValidate(tree))
 		require.NoError(t, BlackViolationValidate(tree))
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, uint64(idx), key)
 		return true
 	})
@@ -311,7 +311,7 @@ func rbtreeRandomInsertAndRemoveSequentialNumberRunCore(t *testing.T, rbRmBySucc
 		require.NoError(t, RedViolationValidate(tree))
 		require.NoError(t, BlackViolationValidate(tree))
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, uint64(idx), key)
 		return true
 	})
@@ -354,7 +354,7 @@ func TestRBTreeRandomInsertAndRemove_SequentialNumber_Release(t *testing.T) {
 			require.NoError(t, BlackViolationValidate(tree))
 		}
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, uint64(idx), key)
 		return true
 	})
@@ -381,7 +381,7 @@ func TestRbtreeRandomInsertAndRemove_ReverseSequentialNumber(t *testing.T) {
 			require.NoError(t, BlackViolationValidate(tree))
 		}
 	}
-	tree.DFS(func(idx int64, color RBColor, key int64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key int64, val uint64) bool {
 		require.Equal(t, int64(insertTotal-1-idx), key)
 		return true
 	})
@@ -389,7 +389,7 @@ func TestRbtreeRandomInsertAndRemove_ReverseSequentialNumber(t *testing.T) {
 	for i := removeTotal + insertTotal - 1; i >= insertTotal; i-- {
 		tree.Insert(i, 1)
 	}
-	tree.DFS(func(idx int64, color RBColor, key int64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key int64, val uint64) bool {
 		require.Equal(t, int64(removeTotal+insertTotal-1-idx), key)
 		return true
 	})
@@ -410,7 +410,7 @@ func TestRbtreeRandomInsertAndRemove_ReverseSequentialNumber(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, i, x.Key())
 	}
-	tree.DFS(func(idx int64, color RBColor, key int64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key int64, val uint64) bool {
 		require.Equal(t, int64(insertTotal-1-idx), key)
 		return true
 	})
@@ -469,7 +469,7 @@ func rbtreeRandomInsertAndRemove_RandomMonoNumberRunCore(t *testing.T, total uin
 	sort.Slice(insertElements, func(i, j int) bool {
 		return insertElements[i] < insertElements[j]
 	})
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, insertElements[idx], key)
 		return true
 	})
@@ -493,7 +493,7 @@ func rbtreeRandomInsertAndRemove_RandomMonoNumberRunCore(t *testing.T, total uin
 			require.NoError(t, BlackViolationValidate(tree))
 		}
 	}
-	tree.DFS(func(idx int64, color RBColor, key uint64, val uint64) bool {
+	tree.Foreach(func(idx int64, color RBColor, key uint64, val uint64) bool {
 		require.Equal(t, insertElements[idx], key)
 		return true
 	})
@@ -551,10 +551,7 @@ func BenchmarkXConcSklUnique_Random(b *testing.B) {
 	testByBytes := []byte(`abc`)
 
 	b.StopTimer()
-	tree := &rbTree[int, []byte]{
-		isDesc:         false,
-		isRmBorrowSucc: false,
-	}
+	tree := NewRBTree[int, []byte]()
 
 	rngArr := make([]int, 0, b.N)
 	for i := 0; i < b.N; i++ {
@@ -574,10 +571,7 @@ func BenchmarkXConcSklUnique_Serial(b *testing.B) {
 	testByBytes := []byte(`abc`)
 
 	b.StopTimer()
-	tree := &rbTree[int, []byte]{
-		isDesc:         false,
-		isRmBorrowSucc: false,
-	}
+	tree := NewRBTree[int, []byte]()
 
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {

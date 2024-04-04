@@ -37,6 +37,6 @@ type RBTree[K infra.OrderedKey, V any] interface {
 	Insert(key K, val V, ifNotPresent ...bool) error
 	Remove(key K) (RBNode[K, V], error)
 	RemoveMin() (RBNode[K, V], error)
-	DFS(action func(idx int64, color RBColor, key K, val V) bool)
+	Foreach(action func(idx int64, color RBColor, key K, val V) bool)
 	Release()
 }
