@@ -295,10 +295,10 @@ func rbtreeRandomInsertAndRemoveSequentialNumberRunCore(t *testing.T, rbRmBySucc
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		if i == 92 {
-			x := tree.Search(tree.root, func(node *rbNode[uint64, uint64]) int64 {
-				if i == node.key {
+			x := tree.Search(tree.root, func(node RBNode[uint64, uint64]) int64 {
+				if i == node.Key() {
 					return 0
-				} else if i < node.key {
+				} else if i < node.Key() {
 					return -1
 				}
 				return 1
@@ -317,7 +317,7 @@ func rbtreeRandomInsertAndRemoveSequentialNumberRunCore(t *testing.T, rbRmBySucc
 	})
 }
 
-func TestRandomInsertAndRemoveRbtree_SequentialNumber(t *testing.T) {
+func TestRbtreeRandomInsertAndRemove_SequentialNumber(t *testing.T) {
 	type testcase struct {
 		name       string
 		rbRmBySucc bool
@@ -363,7 +363,7 @@ func TestRBTreeRandomInsertAndRemove_SequentialNumber_Release(t *testing.T) {
 	require.Nil(t, tree.Root())
 }
 
-func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
+func TestRbtreeRandomInsertAndRemove_ReverseSequentialNumber(t *testing.T) {
 	total := int64(10000)
 	insertTotal := int64(float64(total) * 0.8)
 	removeTotal := int64(float64(total) * 0.2)
@@ -396,10 +396,10 @@ func TestRandomInsertAndRemoveRbtree_ReverseSequentialNumber(t *testing.T) {
 
 	for i := insertTotal; i < removeTotal+insertTotal; i++ {
 		if i == 92 {
-			x := tree.Search(tree.root, func(x *rbNode[int64, uint64]) int64 {
-				if i == x.key {
+			x := tree.Search(tree.root, func(x RBNode[int64, uint64]) int64 {
+				if i == x.Key() {
 					return 0
-				} else if i < x.key {
+				} else if i < x.Key() {
 					return 1
 				}
 				return -1
@@ -499,7 +499,7 @@ func rbtreeRandomInsertAndRemove_RandomMonoNumberRunCore(t *testing.T, total uin
 	})
 }
 
-func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
+func TestRbtreeRandomInsertAndRemove_RandomMonotonicNumber(t *testing.T) {
 	type testcase struct {
 		name           string
 		rbRmBySucc     bool
@@ -544,5 +544,43 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		t.Run(tc.name, func(tt *testing.T) {
 			rbtreeRandomInsertAndRemove_RandomMonoNumberRunCore(tt, tc.total, tc.rbRmBySucc, tc.violationCheck)
 		})
+	}
+}
+
+func BenchmarkXConcSklUnique_Random(b *testing.B) {
+	testByBytes := []byte(`abc`)
+
+	b.StopTimer()
+	tree := &rbTree[int, []byte]{
+		isDesc:         false,
+		isRmBorrowSucc: false,
+	}
+
+	rngArr := make([]int, 0, b.N)
+	for i := 0; i < b.N; i++ {
+		rngArr = append(rngArr, randv2.Int())
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		err := tree.Insert(rngArr[i], testByBytes)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkXConcSklUnique_Serial(b *testing.B) {
+	testByBytes := []byte(`abc`)
+
+	b.StopTimer()
+	tree := &rbTree[int, []byte]{
+		isDesc:         false,
+		isRmBorrowSucc: false,
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		tree.Insert(i, testByBytes)
 	}
 }

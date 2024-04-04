@@ -606,8 +606,8 @@ func (tree *rbTree[K, V]) Remove(key K) (RBNode[K, V], error) {
 	if atomic.LoadInt64(&tree.count) <= 0 {
 		return nil, errors.New("[rbtree] empty element to remove")
 	}
-	z := tree.Search(tree.root, func(node *rbNode[K, V]) int64 {
-		return tree.keyCompare(key, node.key)
+	z := tree.Search(tree.root, func(node RBNode[K, V]) int64 {
+		return tree.keyCompare(key, node.Key())
 	})
 	if z == nil {
 		return nil, errors.New("[rbtree] key not found")
@@ -616,7 +616,7 @@ func (tree *rbTree[K, V]) Remove(key K) (RBNode[K, V], error) {
 		atomic.AddInt64(&tree.count, -1)
 	}()
 
-	return tree.removeNode(z)
+	return tree.removeNode(z.(*rbNode[K, V]))
 }
 
 func (tree *rbTree[K, V]) RemoveMin() (RBNode[K, V], error) {
@@ -792,7 +792,7 @@ func (tree *rbTree[K, V]) removeRebalance(x *rbNode[K, V]) {
 	}
 }
 
-func (tree *rbTree[K, V]) Search(x *rbNode[K, V], fn func(*rbNode[K, V]) int64) *rbNode[K, V] {
+func (tree *rbTree[K, V]) Search(x RBNode[K, V], fn func(RBNode[K, V]) int64) RBNode[K, V] {
 	if x == nil {
 		return nil
 	}
@@ -802,9 +802,9 @@ func (tree *rbTree[K, V]) Search(x *rbNode[K, V], fn func(*rbNode[K, V]) int64) 
 		if res == 0 {
 			return aux
 		} else if res > 0 {
-			aux = aux.right
+			aux = aux.Right()
 		} else {
-			aux = aux.left
+			aux = aux.Left()
 		}
 	}
 	return nil
