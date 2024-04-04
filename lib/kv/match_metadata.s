@@ -7,13 +7,34 @@
 // func MatchMetadata(md *[16]int8, hash int8) uint16
 // Requires: SSE2, SSSE3
 TEXT ·MatchMetadata(SB), NOSPLIT, $0-18
-	MOVQ     md+0(FP), AX
-	MOVBLSX  hash+8(FP), CX
-	MOVD     CX, X0
-	PXOR     X1, X1
-	PSHUFB   X1, X0
-	MOVOU    (AX), X1
-	PCMPEQB  X1, X0
+	// Move the pointer of md to register AX
+	MOVQ md+0(FP), AX
+
+	// Move the hash value (int8) from mem to register CX then extend the size to int32
+	MOVBLSX hash+8(FP), CX
+
+	// Copy hash value from register CX to XMM register X0
+	// XMM registers are used by SSE or AVX instructions
+	MOVD CX, X0
+
+	// Clear the XMM register X1
+	PXOR X1, X1
+
+	// Packed Shuffle Bytes instruction, let hash value in register X0 xor with X1 by byte to generate mask to X0
+	PSHUFB X1, X0
+
+	// Load the metadata from memory to register X2
+	MOVOU (AX), X1
+
+	// Packed Compare for Equal Byte instruction, compare X1 and X0 by byte then store into X0
+	// The same byte are 0xFF. Otherwise, they are 0x00
+	PCMPEQB X1, X0
+
+	// Packed Move with Mask Signed Byte, Extract X0 hi part and convert into int16 then store into AX
+	// The X0 lo part is unused usually
+	// Now the each bit of AX mapping to the each hash of metadata array whether equals to target
 	PMOVMSKB X0, AX
-	MOVW     AX, ret+16(FP)
+
+	// Copy the AX value to mem then return
+	MOVW AX, ret+16(FP)
 	RET

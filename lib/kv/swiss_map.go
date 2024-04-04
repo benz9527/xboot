@@ -10,11 +10,17 @@ import (
 
 // References:
 // https://github.com/CppCon/CppCon2017
-// https://www.youtube.com/watch?v=ncHmEUmJZf4&t=1449s
 // https://www.dolthub.com/blog/2023-03-28-swiss-map/
 // https://github.com/dolthub/swiss/blob/main/map.go
 // https://github.com/thepudds/swisstable/blob/main/map.go
 // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
+
+// Swiss Table
+// Hash slot mapped to the key-val pair slot.
+// Short hash from lo bits (1 byte) is an optimization to
+// accelerate the hash lookup.
+// SSE2 instruction the best performance for linear-probing is
+// 16! (https://www.youtube.com/watch?v=ncHmEUmJZf4&t=1449s)
 
 //go:generate go run ./simd/asm.go -out match_metadata.s -stubs match_metadata_amd64.go
 

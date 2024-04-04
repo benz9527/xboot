@@ -5,6 +5,17 @@ package kv
 
 import "math/bits"
 
+// SSE2:
+// Streaming SIMD Extensions 2 is one of the Intel SIMD (single instruction, multiple data)
+// processor supplementary instruction sets introduced by Intel with the initial version 
+// of the Pentium 4 in 2000.
+//
+// SSSE3:
+// Supplemental Streaming SIMD Extensions 3 (SSSE3).
+//
+// AVX:
+// Advanced Vector Extensions.
+
 const (
 	groupSize       = 16
 	maxAvgGroupLoad = 14
