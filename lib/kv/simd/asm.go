@@ -7,10 +7,11 @@ import (
 
 func main() {
 	ConstraintExpr("amd64")
+	ConstraintExpr("!nosimd")
 
-	TEXT("MatchMetadata", NOSPLIT, "func(md *[16]int8, hash int8) uint16")
-	Doc("MatchMetadata performs a 16-way linear probing of metadata by SSE instructions",
-		"metadata must be an aligned pointer")
+	TEXT("Fast16WayHashMatch", NOSPLIT, "func(md *[16]int8, hash int8) uint16")
+	Doc("Fast16WayHashMatch performs a 16-way linear probing of short hash (h2, metadata) list by SSE instructions",
+		"short hash list must be an aligned pointer")
 
 	Comment("Move the pointer of md to register AX")
 	mem := Mem{Base: Load(Param("md"), GP64())}

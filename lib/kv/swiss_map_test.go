@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"math/bits"
 	"math/rand"
 	randv2 "math/rand/v2"
 	"testing"
@@ -9,6 +10,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestTrailingZeros16(t *testing.T) {
+	bitset := uint16(0x0001)
+	for i := 0; i < 16; i++ {
+		tmp := bitset << i
+		require.Equal(t, i, bits.TrailingZeros16(tmp))
+	}
+}
+
+func TestNextIndexInSlot(t *testing.T) {
+	bs := bitset(0x03)
+	nextIndexInSlot(&bs)
+	require.Equal(t, uint16(2), uint16(bs))
+
+	bs = bitset(0x8F)
+	nextIndexInSlot(&bs)
+	require.Equal(t, uint16(0x8E), uint16(bs))
+
+	bs = bitset(0x40)
+	nextIndexInSlot(&bs)
+	require.Equal(t, uint16(0), uint16(bs))
+}
 
 func TestModN(t *testing.T) {
 	x := uint32(100)

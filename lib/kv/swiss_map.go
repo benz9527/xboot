@@ -3,6 +3,7 @@ package kv
 import (
 	"errors"
 	"math"
+	"math/bits"
 	randv2 "math/rand/v2"
 
 	"github.com/benz9527/xboot/lib/infra"
@@ -30,6 +31,17 @@ import (
 // accelerate the hash lookup.
 // SSE2 instruction the best performance for linear-probing is
 // 16! (https://www.youtube.com/watch?v=ncHmEUmJZf4&t=1449s)
+
+// SSE2:
+// Streaming SIMD Extensions 2 is one of the Intel SIMD (single instruction, multiple data)
+// processor supplementary instruction sets introduced by Intel with the initial version
+// of the Pentium 4 in 2000.
+//
+// SSSE3:
+// Supplemental Streaming SIMD Extensions 3 (SSSE3).
+//
+// AVX:
+// Advanced Vector Extensions.
 
 /*
  index |   0    |   1    |   2    |   3    |   4    | ... |   15   |
@@ -74,13 +86,15 @@ distance to the actual slot of the element to be inserted, then we
 swap both the elements and proceed.
 */
 
-//go:generate go run ./simd/asm.go -out match_metadata.s -stubs match_metadata_amd64.go
+//go:generate go run ./simd/asm.go -out fast_hash_match.s -stubs fast_hash_match_amd64.go
 
 const (
-	h1Mask  uint64 = 0xffff_ffff_ffff_ff80
-	h2Mask  uint64 = 0x0000_0000_0000_007f
-	empty   int8   = -128 // 0b1000_0000, 0x80; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L505
-	deleted int8   = -2   // 0b1111_1110, OxFE; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L506
+	groupSize              = 16 // In order to finding the results in 4 CPU instructions
+	maxAvgGroupLoad        = 14
+	h1Mask          uint64 = 0xffff_ffff_ffff_ff80
+	h2Mask          uint64 = 0x0000_0000_0000_007f
+	empty           int8   = -128 // 0b1000_0000, 0x80; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L505
+	deleted         int8   = -2   // 0b1111_1110, OxFE; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L506
 )
 
 // A 57 bits hash prefix.
@@ -96,6 +110,16 @@ type bitset uint16
 
 type swissMapMetadata [groupSize]int8
 
+func (md *swissMapMetadata) matchH2(hash h2) bitset {
+	b := Fast16WayHashMatch((*[groupSize]int8)(md), int8(hash))
+	return bitset(b)
+}
+
+func (md *swissMapMetadata) matchEmpty() bitset {
+	b := Fast16WayHashMatch((*[groupSize]int8)(md), empty)
+	return bitset(b)
+}
+
 // Array is cache friendly.
 type swissMapSlot[K infra.OrderedKey, V any] struct {
 	keys [groupSize]K
@@ -103,12 +127,12 @@ type swissMapSlot[K infra.OrderedKey, V any] struct {
 }
 
 type SwissMap[K infra.OrderedKey, V any] struct {
-	ctrlMetadatas []swissMapMetadata
-	slots         []swissMapSlot[K, V]
-	hasher        Hasher[K]
-	resident      uint32 // current alive elements
-	dead          uint32 // current tombstone elements
-	limit         uint32 // max resident elements
+	ctrlMetadataSet []swissMapMetadata
+	slots           []swissMapSlot[K, V]
+	hasher          Hasher[K]
+	resident        uint32 // current alive elements
+	dead            uint32 // current tombstone elements
+	limit           uint32 // max resident elements
 }
 
 func (m *SwissMap[K, V]) Put(key K, val V) error {
@@ -125,12 +149,10 @@ func (m *SwissMap[K, V]) Put(key K, val V) error {
 
 func (m *SwissMap[K, V]) put(key K, val V) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
-	// Check which group that the key will be placed.
 	i := findSlotIndex(h1, uint32(len(m.slots)))
 	for {
-		matchBitset := metadataMatchH2(&m.ctrlMetadatas[i], h2)
-		for /* found */ matchBitset != 0 {
-			if /* hash collision */ j := nextMatch(&matchBitset);
+		for result := m.ctrlMetadataSet[i].matchH2(h2); /* exists */ result != 0; {
+			if /* hash collision */ j := nextIndexInSlot(&result);
 			/* key equal, update */ key == m.slots[i].keys[j] {
 				m.slots[i].keys[j] = key
 				m.slots[i].vals[j] = val
@@ -138,16 +160,15 @@ func (m *SwissMap[K, V]) put(key K, val V) {
 			}
 		}
 
-		if /* not found */ matchBitset = metadataMatchEmpty(&m.ctrlMetadatas[i]); /* insert */ matchBitset != 0 {
-			n := nextMatch(&matchBitset)
+		if /* not found */ result := m.ctrlMetadataSet[i].matchEmpty(); /* insert */ result != 0 {
+			n := nextIndexInSlot(&result)
 			m.slots[i].keys[n] = key
 			m.slots[i].vals[n] = val
-			m.ctrlMetadatas[i][n] = int8(h2)
+			m.ctrlMetadataSet[i][n] = int8(h2)
 			m.resident++
 			return
 		}
-		i += 1                         // open-addressing (linear-probing) next slot
-		if i >= uint32(len(m.slots)) { // wrap-around
+		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= uint32(len(m.slots)) {
 			i = 0
 		}
 	}
@@ -157,41 +178,37 @@ func (m *SwissMap[K, V]) Get(key K) (val V, exists bool) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
 	i := findSlotIndex(h1, uint32(len(m.slots)))
 	for {
-		matchBitset := metadataMatchH2(&m.ctrlMetadatas[i], h2)
-		for matchBitset != 0 {
-			j := nextMatch(&matchBitset)
-			if key == m.slots[i].keys[j] {
+		for result := m.ctrlMetadataSet[i].matchH2(h2); /* exists */ result != 0; {
+			if /* hash collision */ j := nextIndexInSlot(&result); /* found */ key == m.slots[i].keys[j] {
 				return m.slots[i].vals[j], true
 			}
 		}
-		if metadataMatchEmpty(&m.ctrlMetadatas[i]) != 0 {
+		if /* not found */ m.ctrlMetadataSet[i].matchEmpty() != 0 {
 			return val, false
 		}
-		i += 1
-		if i >= uint32(len(m.slots)) { // wrap-around
+		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= uint32(len(m.slots)) {
 			i = 0
 		}
 	}
 }
 
 func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
-	oldControl, oldGroups := m.ctrlMetadatas, m.slots
-	i := randv2.Uint32N(uint32(len(oldGroups)))
+	oldCtrlMetadataSet, oldSlots := m.ctrlMetadataSet, m.slots
+	rngIdx := randv2.Uint32N(uint32(len(oldSlots)))
 	idx := uint64(0)
-	for _i := 0; _i < len(oldGroups); _i++ {
-		for j, ctrl := range oldControl[i] {
-			if ctrl == empty || ctrl == deleted {
+	for i := 0; i < len(oldSlots); i++ {
+		for j, md := range oldCtrlMetadataSet[rngIdx] {
+			if md == empty || md == deleted {
 				continue
 			}
-			k, v := oldGroups[i].keys[j], oldGroups[i].vals[j]
+			k, v := oldSlots[rngIdx].keys[j], oldSlots[rngIdx].vals[j]
 			if _continue := action(idx, k, v); !_continue {
 				return
 			}
 			idx++
 		}
-		i++
-		if i >= uint32(len(oldGroups)) { // wrap-around
-			i = 0
+		if /* open-addressing (linear-probing) */ rngIdx += 1; /* close loop */ rngIdx >= uint32(len(oldSlots)) {
+			rngIdx = 0
 		}
 	}
 }
@@ -200,17 +217,22 @@ func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
 	i := findSlotIndex(h1, uint32(len(m.slots)))
 	for {
-		matchBitset := metadataMatchH2(&m.ctrlMetadatas[i], h2)
-		for matchBitset != 0 {
-			j := nextMatch(&matchBitset)
-			if key == m.slots[i].keys[j] {
-				if metadataMatchEmpty(&m.ctrlMetadatas[i]) != 0 {
-					m.ctrlMetadatas[i][j] = empty
+		for result := m.ctrlMetadataSet[i].matchH2(h2); /* exists */ result != 0; {
+			if /* hash collision */ j := nextIndexInSlot(&result); /* found */ key == m.slots[i].keys[j] {
+				val = m.slots[i].vals[j]
+
+				if m.ctrlMetadataSet[i].matchEmpty() > 0 {
+					// SIMD 16-way hash match result is start from the trailing.
+					// The empty control byte in trailing will not cause premature
+					// termination of linear-probing.
+					// In order to terminate the deletion linear-probing quickly.
+					m.ctrlMetadataSet[i][j] = empty
 					m.resident--
 				} else {
-					m.ctrlMetadatas[i][j] = deleted
+					m.ctrlMetadataSet[i][j] = deleted
 					m.dead++
 				}
+
 				var (
 					k K
 					v V
@@ -220,21 +242,25 @@ func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 				return
 			}
 		}
-		// Not found
-		if metadataMatchEmpty(&m.ctrlMetadatas[i]) != 0 {
+		if /* not found */ m.ctrlMetadataSet[i].matchEmpty() != 0 {
+			// Found the most likely slot index at first.
+			// So if the key not in the slot, it should be
+			// store in next slot. If next slot contains
+			// empty control byte before h2 linear-probing,
+			// it means that key not exists.
 			return val, errors.New("[swiss-map] not found to delete")
 		}
-		i += 1
-		if i >= uint32(len(m.slots)) { // wrap-around
+
+		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= uint32(len(m.slots)) {
 			i = 0
 		}
 	}
 }
 
 func (m *SwissMap[K, V]) Clear() {
-	for i, ctrl := range m.ctrlMetadatas {
+	for i, ctrl := range m.ctrlMetadataSet {
 		for j := range ctrl {
-			m.ctrlMetadatas[i][j] = empty
+			m.ctrlMetadataSet[i][j] = empty
 		}
 	}
 	var (
@@ -271,11 +297,11 @@ func (m *SwissMap[K, V]) nextCap() (uint32, error) {
 }
 
 func (m *SwissMap[K, V]) rehash(newGroups uint32) {
-	oldGroups, oldControl := m.slots, m.ctrlMetadatas
+	oldGroups, oldControl := m.slots, m.ctrlMetadataSet
 	m.slots = make([]swissMapSlot[K, V], newGroups)
-	m.ctrlMetadatas = make([]swissMapMetadata, newGroups)
+	m.ctrlMetadataSet = make([]swissMapMetadata, newGroups)
 	for i := 0; i < len(m.slots); i++ {
-		m.ctrlMetadatas[i] = newEmptyMetadata()
+		m.ctrlMetadataSet[i] = newEmptyMetadata()
 	}
 
 	m.hasher = newSeedHasher[K](m.hasher)
@@ -301,15 +327,15 @@ func (m *SwissMap[K, V]) loadFactor() float64 {
 func NewSwissMap[K infra.OrderedKey, V any](capacity uint32) *SwissMap[K, V] {
 	groups := calcGroups(capacity)
 	m := &SwissMap[K, V]{
-		ctrlMetadatas: make([]swissMapMetadata, groups),
-		slots:         make([]swissMapSlot[K, V], groups),
-		hasher:        newHasher[K](),
-		resident:      0,
-		dead:          0,
-		limit:         groups * maxAvgGroupLoad,
+		ctrlMetadataSet: make([]swissMapMetadata, groups),
+		slots:           make([]swissMapSlot[K, V], groups),
+		hasher:          newHasher[K](),
+		resident:        0,
+		dead:            0,
+		limit:           groups * maxAvgGroupLoad,
 	}
-	for i := 0; i < len(m.ctrlMetadatas); i++ {
-		m.ctrlMetadatas[i] = newEmptyMetadata()
+	for i := 0; i < len(m.ctrlMetadataSet); i++ {
+		m.ctrlMetadataSet[i] = newEmptyMetadata()
 	}
 	return m
 }
@@ -334,6 +360,14 @@ func splitHash(hash uint64) (hi h1, lo h2) {
 	return h1((hash & h1Mask) >> 7), h2(hash & h2Mask)
 }
 
+// Check which slot that the key will be placed.
 func findSlotIndex(hi h1, groups uint32) uint32 {
 	return uint32(hi) & (groups - 1)
+}
+
+// Hash collision, find bit as index, start from the trailing then unset it.
+func nextIndexInSlot(bs *bitset) uint32 {
+	trail := uint32(bits.TrailingZeros16(uint16(*bs)))
+	*bs &= ^(1 << trail)
+	return trail
 }
