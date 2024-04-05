@@ -303,10 +303,9 @@ func (m *SwissMap[K, V]) rehash(newCapacity uint32) {
 	m.hasher = newSeedHasher[K](m.hasher)
 	m.limit = newCapacity * maxAvgSlotLoad
 	m.resident, m.dead = 0, 0
-	for i := range oldCtrlMetadataSet {
-		for j := range oldCtrlMetadataSet[i] {
-			ctrl := oldCtrlMetadataSet[i][j]
-			if ctrl == empty || ctrl == deleted {
+	for i := 0; i < len(oldCtrlMetadataSet); i++ {
+		for j := 0; j < slotSize; j++ {
+			if md := oldCtrlMetadataSet[i][j]; md == empty || md == deleted {
 				continue
 			}
 			m.put(oldSlots[i].keys[j], oldSlots[i].vals[j])
@@ -330,7 +329,7 @@ func NewSwissMap[K infra.OrderedKey, V any](capacity uint32) *SwissMap[K, V] {
 		dead:            0,
 		limit:           groupCap * maxAvgSlotLoad,
 	}
-	for i := 0; i < len(m.ctrlMetadataSet); i++ {
+	for i := uint32(0); i < groupCap; i++ {
 		m.ctrlMetadataSet[i] = newEmptyMetadata()
 	}
 	return m
@@ -346,7 +345,7 @@ func calcGroupCapacity(size uint32) uint32 {
 
 func newEmptyMetadata() swissMapMetadata {
 	var m swissMapMetadata
-	for i := 0; i < len(m); i++ {
+	for i := 0; i < slotSize; i++ {
 		m[i] = empty
 	}
 	return m
