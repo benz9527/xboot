@@ -11,6 +11,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func fast16WayHashMatchInNonAMD64(md *[16]int8, hash int8) uint16 {
+	res := uint16(0)
+	for i := 0; i < 16; i++ {
+		if md[i] == hash {
+			res |= 1 << uint(i)
+		}
+	}
+	return res
+}
+
+func TestFast16WayHashMatchInNonAMD64(t *testing.T) {
+	md := new(swissMapMetadata)
+	hash := int8(0x51)
+	for i := 0; i < 16; i++ {
+		md[i] = empty
+	}
+	md[2] = hash
+	md[9] = hash
+	require.Equal(t, uint16(0x0204), fast16WayHashMatchInNonAMD64((*[slotSize]int8)(md), hash))
+	require.Equal(t, uint16(0xFDFB), fast16WayHashMatchInNonAMD64((*[slotSize]int8)(md), empty))
+}
+
 func TestTrailingZeros16(t *testing.T) {
 	bitset := uint16(0x0001)
 	for i := 0; i < 16; i++ {
@@ -40,18 +62,18 @@ func TestModN(t *testing.T) {
 	require.NotEqual(t, uint32(n-1)&x, uint32(tmp>>32))
 }
 
-func genStrKeys(size, count int) (keys []string) {
-	src := rand.New(rand.NewSource(int64(size * count)))
+func genStrKeys(strLen, count int) (keys []string) {
+	src := rand.New(rand.NewSource(int64(strLen * count)))
 	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	l := len(letters)
-	r := make([]rune, size*count)
+	r := make([]rune, strLen*count)
 	for i := range r {
 		r[i] = letters[src.Intn(l)]
 	}
 	keys = make([]string, count)
 	for i := range keys {
-		keys[i] = string(r[:size])
-		r = r[size:]
+		keys[i] = string(r[:strLen])
+		r = r[strLen:]
 	}
 	return
 }
@@ -109,21 +131,23 @@ func testSwissMapPutRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 }
 
 func testSwissMapDeleteRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
-	m := NewSwissMap[K, int](uint32(len(keys)))
+	m := NewSwissMap[K, K](uint32(len(keys)))
 	assert.Equal(t, int64(0), m.Len())
-	for i, key := range keys {
-		m.Put(key, i)
+	for _, key := range keys {
+		m.Put(key, key)
 	}
 	assert.Equal(t, int64(len(keys)), m.Len())
 	for _, key := range keys {
-		m.Delete(key)
+		val, err := m.Delete(key)
+		require.NoError(t, err)
+		require.Equal(t, key, val)
 		_, ok := m.Get(key)
 		assert.False(t, ok)
 	}
 	assert.Equal(t, int64(0), m.Len())
 	// put keys back after deleting them
-	for i, key := range keys {
-		m.Put(key, i)
+	for _, key := range keys {
+		m.Put(key, key)
 	}
 	assert.Equal(t, int64(len(keys)), m.Len())
 }
@@ -310,5 +334,72 @@ func TestSwissMap(t *testing.T) {
 	})
 	t.Run("float64Keys-cap", func(tt *testing.T) {
 		testSwissMapCapacityRunCore(tt, genFloat64Keys)
+	})
+}
+
+func fuzzStringSwissMap(t *testing.T, strKeyLen, count int, initMapCap uint32) {
+	const limit = 1024 * 1024
+	if count > limit || initMapCap > limit {
+		t.Skip()
+	}
+	m := NewSwissMap[string, int](initMapCap)
+	if count == 0 {
+		return
+	}
+
+	keys := genStrKeys(strKeyLen, count)
+	standard := make(map[string]int, initMapCap)
+	for i, k := range keys {
+		m.Put(k, i)
+		standard[k] = i
+	}
+	assert.Equal(t, int64(len(standard)), m.Len())
+
+	for k, exp := range standard {
+		act, ok := m.Get(k)
+		assert.True(t, ok)
+		assert.Equal(t, exp, act)
+	}
+	for _, k := range keys {
+		_, ok := standard[k]
+		assert.True(t, ok)
+		_, exists := m.Get(k)
+		assert.True(t, exists)
+	}
+
+	deletes := keys[:count/2]
+	for _, k := range deletes {
+		delete(standard, k)
+		m.Delete(k)
+	}
+	assert.Equal(t, int64(len(standard)), m.Len())
+
+	for _, k := range deletes {
+		_, exists := m.Get(k)
+		assert.False(t, exists)
+	}
+	for k, exp := range standard {
+		act, ok := m.Get(k)
+		assert.True(t, ok)
+		assert.Equal(t, exp, act)
+	}
+}
+
+func FuzzStringSwissMap(f *testing.F) {
+	f.Add(1, 50, uint32(14))
+	f.Add(2, 1, uint32(1))
+	f.Add(2, 14, uint32(14))
+	f.Add(2, 15, uint32(14))
+	f.Add(2, 100, uint32(25))
+	f.Add(2, 1000, uint32(25))
+	f.Add(8, 1, uint32(0))
+	f.Add(8, 1, uint32(1))
+	f.Add(8, 14, uint32(14))
+	f.Add(8, 15, uint32(14))
+	f.Add(8, 100, uint32(25))
+	f.Add(8, 1000, uint32(25))
+	f.Add(16, 100_000, uint32(10_000))
+	f.Fuzz(func(t *testing.T, strKeyLen, count int, initMapCap uint32) {
+		fuzzStringSwissMap(t, strKeyLen, count, initMapCap)
 	})
 }

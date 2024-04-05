@@ -2,10 +2,11 @@ package kv
 
 import (
 	"errors"
-	"math"
 	"math/bits"
 	randv2 "math/rand/v2"
+	"sync/atomic"
 
+	ibits "github.com/benz9527/xboot/lib/bits"
 	"github.com/benz9527/xboot/lib/infra"
 )
 
@@ -20,7 +21,6 @@ import (
 // https://github.com/abseil/abseil-cpp/blob/master/absl/container/flat_hash_map.h
 // https://github.com/rust-lang/hashbrown
 // https://blog.waffles.space/2018/12/07/deep-dive-into-hashbrown/#fn:4
-// http://graphics.stanford.edu/~seander/bithacks.html##ValueInWord
 // https://methane.hatenablog.jp/entry/2022/02/22/Swisstable_Hash_%E3%81%AB%E4%BD%BF%E3%82%8F%E3%82%8C%E3%81%A6%E3%81%84%E3%82%8B%E3%83%93%E3%83%83%E3%83%88%E6%BC%94%E7%AE%97%E3%81%AE%E9%AD%94%E8%A1%93
 // https://www.youtube.com/watch?v=JZE3_0qvrMg
 // https://github.com/abseil/abseil-cpp/blob/master/absl/container/internal/raw_hash_set.h
@@ -97,6 +97,11 @@ const (
 	deleted        int8   = -2   // 0b1111_1110, OxFE; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L506
 )
 
+var (
+	// amd64 && !nosimd 256 * 1024 * 1024; !amd64 || nosimd 512 * 1024 * 1024
+	maxSlotCap = 1 << (32 - ibits.CeilPowOf2(slotSize))
+)
+
 // A 57 bits hash prefix.
 // The whole hash truncated to a unsigned 64-bit integer.
 // Used as an index into the groups array.
@@ -130,9 +135,10 @@ type SwissMap[K infra.OrderedKey, V any] struct {
 	ctrlMetadataSet []swissMapMetadata
 	slots           []swissMapSlot[K, V]
 	hasher          Hasher[K]
-	resident        uint32 // current alive elements
-	dead            uint32 // current tombstone elements
-	limit           uint32 // max resident elements
+	resident        uint64 // current alive elements
+	dead            uint64 // current tombstone elements
+	limit           uint64 // max resident elements
+	slotCap         uint32
 }
 
 func (m *SwissMap[K, V]) Put(key K, val V) error {
@@ -141,7 +147,9 @@ func (m *SwissMap[K, V]) Put(key K, val V) error {
 		if err != nil {
 			return err
 		}
-		m.rehash(n)
+		if err = m.rehash(n); err != nil {
+			return err
+		}
 	}
 	m.put(key, val)
 	return nil
@@ -149,7 +157,7 @@ func (m *SwissMap[K, V]) Put(key K, val V) error {
 
 func (m *SwissMap[K, V]) put(key K, val V) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
-	i := findSlotIndex(h1, uint32(len(m.slots)))
+	i := findSlotIndex(h1, atomic.LoadUint32(&m.slotCap))
 	for {
 		for result := m.ctrlMetadataSet[i].matchH2(h2); /* exists */ result != 0; {
 			if /* hash collision */ j := nextIndexInSlot(&result);
@@ -168,7 +176,7 @@ func (m *SwissMap[K, V]) put(key K, val V) {
 			m.resident++
 			return
 		}
-		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= uint32(len(m.slots)) {
+		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= atomic.LoadUint32(&m.slotCap) {
 			i = 0
 		}
 	}
@@ -176,7 +184,7 @@ func (m *SwissMap[K, V]) put(key K, val V) {
 
 func (m *SwissMap[K, V]) Get(key K) (val V, exists bool) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
-	i := findSlotIndex(h1, uint32(len(m.slots)))
+	i := findSlotIndex(h1, atomic.LoadUint32(&m.slotCap))
 	for {
 		for result := m.ctrlMetadataSet[i].matchH2(h2); /* exists */ result != 0; {
 			if /* hash collision */ j := nextIndexInSlot(&result); /* found */ key == m.slots[i].keys[j] {
@@ -186,17 +194,17 @@ func (m *SwissMap[K, V]) Get(key K) (val V, exists bool) {
 		if /* not found */ m.ctrlMetadataSet[i].matchEmpty() != 0 {
 			return val, false
 		}
-		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= uint32(len(m.slots)) {
+		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= atomic.LoadUint32(&m.slotCap) {
 			i = 0
 		}
 	}
 }
 
 func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
-	oldCtrlMetadataSet, oldSlots := m.ctrlMetadataSet, m.slots
-	rngIdx := randv2.Uint32N(uint32(len(oldSlots)))
+	oldCtrlMetadataSet, oldSlots, oldSlotCap := m.ctrlMetadataSet, m.slots, atomic.LoadUint32(&m.slotCap)
+	rngIdx := randv2.Uint32N(oldSlotCap)
 	idx := uint64(0)
-	for i := 0; i < len(oldSlots); i++ {
+	for i := uint32(0); i < oldSlotCap; i++ {
 		for j, md := range oldCtrlMetadataSet[rngIdx] {
 			if md == empty || md == deleted {
 				continue
@@ -207,7 +215,7 @@ func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
 			}
 			idx++
 		}
-		if /* open-addressing (linear-probing) */ rngIdx += 1; /* close loop */ rngIdx >= uint32(len(oldSlots)) {
+		if /* open-addressing (linear-probing) */ rngIdx += 1; /* close loop */ rngIdx >= oldSlotCap {
 			rngIdx = 0
 		}
 	}
@@ -215,7 +223,7 @@ func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
 
 func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
-	i := findSlotIndex(h1, uint32(len(m.slots)))
+	i := findSlotIndex(h1, atomic.LoadUint32(&m.slotCap))
 	for {
 		for result := m.ctrlMetadataSet[i].matchH2(h2); /* exists */ result != 0; {
 			if /* hash collision */ j := nextIndexInSlot(&result); /* found */ key == m.slots[i].keys[j] {
@@ -251,7 +259,7 @@ func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 			return val, errors.New("[swiss-map] not found to delete")
 		}
 
-		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= uint32(len(m.slots)) {
+		if /* open-addressing (linear-probing) */ i += 1; /* close loop */ i >= atomic.LoadUint32(&m.slotCap) {
 			i = 0
 		}
 	}
@@ -262,7 +270,7 @@ func (m *SwissMap[K, V]) Clear() {
 		k K
 		v V
 	)
-	for i := 0; i < len(m.ctrlMetadataSet); i++ {
+	for i := uint32(0); i < atomic.LoadUint32(&m.slotCap); i++ {
 		slot := &m.slots[i]
 		for j := 0; j < slotSize; j++ {
 			m.ctrlMetadataSet[i][j] = empty
@@ -283,27 +291,31 @@ func (m *SwissMap[K, V]) Cap() int64 {
 
 func (m *SwissMap[K, V]) nextCap() (uint32, error) {
 	if m.dead >= (m.resident >> 1) {
-		return uint32(len(m.slots)), nil
+		return atomic.LoadUint32(&m.slotCap), nil
 	}
-	newCap := uint32(len(m.slots)) * 2
-	if newCap > math.MaxUint32 {
-		return 0, errors.New("[swiss-map] overflow")
+	newCap := int64(atomic.LoadUint32(&m.slotCap)) * 2
+	if newCap > int64(maxSlotCap) {
+		return 0, errors.New("[swiss-map] slots overflow")
 	}
-	return newCap, nil
+	return uint32(newCap), nil
 }
 
-func (m *SwissMap[K, V]) rehash(newCapacity uint32) {
-	oldCtrlMetadataSet, oldSlots := m.ctrlMetadataSet, m.slots
+func (m *SwissMap[K, V]) rehash(newCapacity uint32) error {
+	oldCtrlMetadataSet, oldSlots, oldSlotCap := m.ctrlMetadataSet, m.slots, atomic.LoadUint32(&m.slotCap)
+	if !atomic.CompareAndSwapUint32(&m.slotCap, oldSlotCap, newCapacity) {
+		return errors.New("[swiss-map] concurrent rehash")
+	}
+
 	m.slots = make([]swissMapSlot[K, V], newCapacity)
 	m.ctrlMetadataSet = make([]swissMapMetadata, newCapacity)
-	for i := 0; i < len(m.slots); i++ {
+	for i := uint32(0); i < atomic.LoadUint32(&m.slotCap); i++ {
 		m.ctrlMetadataSet[i] = newEmptyMetadata()
 	}
 
 	m.hasher = newSeedHasher[K](m.hasher)
-	m.limit = newCapacity * maxAvgSlotLoad
+	m.limit = uint64(newCapacity) * maxAvgSlotLoad
 	m.resident, m.dead = 0, 0
-	for i := 0; i < len(oldCtrlMetadataSet); i++ {
+	for i := uint32(0); i < oldSlotCap; i++ {
 		for j := 0; j < slotSize; j++ {
 			if md := oldCtrlMetadataSet[i][j]; md == empty || md == deleted {
 				continue
@@ -311,31 +323,33 @@ func (m *SwissMap[K, V]) rehash(newCapacity uint32) {
 			m.put(oldSlots[i].keys[j], oldSlots[i].vals[j])
 		}
 	}
+	return nil
 }
 
 func (m *SwissMap[K, V]) loadFactor() float64 {
-	slots := float64(len(m.slots) * slotSize)
-	return float64(m.resident-m.dead) / slots
+	total := float64(atomic.LoadUint32(&m.slotCap) * slotSize)
+	return float64(m.resident-m.dead) / total
 }
 
 // @param size, how many elements will be stored in the map
 func NewSwissMap[K infra.OrderedKey, V any](capacity uint32) *SwissMap[K, V] {
-	groupCap := calcGroupCapacity(capacity)
+	slotCap := calcSlotCapacity(capacity)
 	m := &SwissMap[K, V]{
-		ctrlMetadataSet: make([]swissMapMetadata, groupCap),
-		slots:           make([]swissMapSlot[K, V], groupCap),
+		ctrlMetadataSet: make([]swissMapMetadata, slotCap),
+		slots:           make([]swissMapSlot[K, V], slotCap),
+		slotCap:         slotCap,
 		hasher:          newHasher[K](),
 		resident:        0,
 		dead:            0,
-		limit:           groupCap * maxAvgSlotLoad,
+		limit:           uint64(slotCap) * maxAvgSlotLoad,
 	}
-	for i := uint32(0); i < groupCap; i++ {
+	for i := uint32(0); i < slotCap; i++ {
 		m.ctrlMetadataSet[i] = newEmptyMetadata()
 	}
 	return m
 }
 
-func calcGroupCapacity(size uint32) uint32 {
+func calcSlotCapacity(size uint32) uint32 {
 	groupCap := (size + maxAvgSlotLoad - 1) / maxAvgSlotLoad
 	if groupCap == 0 {
 		groupCap = 1
