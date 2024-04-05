@@ -20,7 +20,7 @@ type _mapType struct {
 	_      uint64                                // key size, value size, bucket size, flags
 }
 
-type _mapiface struct {
+type _mapIface struct {
 	typ *_mapType
 	_   uint64 // go/src/runtime/map.go, hmap pointer, size 8, 1 byte
 }
@@ -49,7 +49,7 @@ func (h Hasher[K]) Hash(key K) uint64 {
 
 func getRuntimeHasher[K infra.OrderedKey]() (fn hashFn) {
 	i := (any)(make(map[K]struct{}))
-	iface := (*_mapiface)(unsafe.Pointer(&i))
+	iface := (*_mapIface)(unsafe.Pointer(&i))
 	fn = iface.typ.hasher
 	return
 }

@@ -4,6 +4,7 @@ import (
 	"math/bits"
 	"math/rand"
 	randv2 "math/rand/v2"
+	"strconv"
 	"testing"
 
 	"github.com/benz9527/xboot/lib/infra"
@@ -402,4 +403,53 @@ func FuzzStringSwissMap(f *testing.F) {
 	f.Fuzz(func(t *testing.T, strKeyLen, count int, initMapCap uint32) {
 		fuzzStringSwissMap(t, strKeyLen, count, initMapCap)
 	})
+}
+
+func TestMemFootprint(t *testing.T) {
+	var samples []float64
+	for n := 10; n <= 10_000; n += 10 {
+		b1 := testing.Benchmark(func(b *testing.B) {
+			// max load factor 7/8 => 14/16
+			m := NewSwissMap[int, int](uint32(n))
+			require.NotNil(b, m)
+		})
+		b2 := testing.Benchmark(func(b *testing.B) {
+			// max load factor 6.5/8
+			m := make(map[int]int, n)
+			require.NotNil(b, m)
+		})
+		x := float64(b1.MemBytes) / float64(b2.MemBytes)
+		samples = append(samples, x)
+	}
+	t.Logf("mean size ratio: %.3f", func() float64 {
+		var sum float64
+		for _, x := range samples {
+			sum += x
+		}
+		return sum / float64(len(samples))
+	}())
+}
+
+func BenchmarkStringSwissMaps(b *testing.B) {
+	const strKeyLen = 8
+	sizes := []int{16, 128, 1024, 8192, 131072}
+	for _, n := range sizes {
+		b.Run("n="+strconv.Itoa(n), func(bb *testing.B) {
+			keys := genStrKeys(strKeyLen, n)
+			n := uint32(len(keys))
+			mod := n - 1 // power of 2 fast modulus
+			require.Equal(bb, 1, bits.OnesCount32(n))
+			m := NewSwissMap[string, string](n)
+			for _, k := range keys {
+				m.Put(k, k)
+			}
+			bb.ResetTimer()
+			var ok bool
+			for i := 0; i < b.N; i++ {
+				_, ok = m.Get(keys[uint32(i)&mod])
+			}
+			assert.True(b, ok)
+			bb.ReportAllocs()
+		})
+	}
 }
