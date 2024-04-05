@@ -97,18 +97,18 @@ type bitset uint16
 type swissMapMetadata [groupSize]int8
 
 // Array is cache friendly.
-type swissMapGroup[K infra.OrderedKey, V any] struct {
+type swissMapSlot[K infra.OrderedKey, V any] struct {
 	keys [groupSize]K
 	vals [groupSize]V
 }
 
 type SwissMap[K infra.OrderedKey, V any] struct {
 	ctrlMetadatas []swissMapMetadata
-	groups       []swissMapGroup[K, V]
-	hasher       Hasher[K]
-	resident     uint32 // current alive elements
-	dead         uint32 // current tombstone elements
-	limit        uint32 // max resident elements
+	slots         []swissMapSlot[K, V]
+	hasher        Hasher[K]
+	resident      uint32 // current alive elements
+	dead          uint32 // current tombstone elements
+	limit         uint32 // max resident elements
 }
 
 func (m *SwissMap[K, V]) Put(key K, val V) error {
@@ -126,28 +126,28 @@ func (m *SwissMap[K, V]) Put(key K, val V) error {
 func (m *SwissMap[K, V]) put(key K, val V) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
 	// Check which group that the key will be placed.
-	i := linearProbing(h1, uint32(len(m.groups)))
+	i := findSlotIndex(h1, uint32(len(m.slots)))
 	for {
 		matchBitset := metadataMatchH2(&m.ctrlMetadatas[i], h2)
 		for /* found */ matchBitset != 0 {
 			if /* hash collision */ j := nextMatch(&matchBitset);
-			/* key equal, update */ key == m.groups[i].keys[j] {
-				m.groups[i].keys[j] = key
-				m.groups[i].vals[j] = val
+			/* key equal, update */ key == m.slots[i].keys[j] {
+				m.slots[i].keys[j] = key
+				m.slots[i].vals[j] = val
 				return
 			}
 		}
 
 		if /* not found */ matchBitset = metadataMatchEmpty(&m.ctrlMetadatas[i]); /* insert */ matchBitset != 0 {
 			n := nextMatch(&matchBitset)
-			m.groups[i].keys[n] = key
-			m.groups[i].vals[n] = val
+			m.slots[i].keys[n] = key
+			m.slots[i].vals[n] = val
 			m.ctrlMetadatas[i][n] = int8(h2)
 			m.resident++
 			return
 		}
-		i += 1                          // open-addressing (linear-probing) next slot
-		if i >= uint32(len(m.groups)) { // wrap-around
+		i += 1                         // open-addressing (linear-probing) next slot
+		if i >= uint32(len(m.slots)) { // wrap-around
 			i = 0
 		}
 	}
@@ -155,27 +155,27 @@ func (m *SwissMap[K, V]) put(key K, val V) {
 
 func (m *SwissMap[K, V]) Get(key K) (val V, exists bool) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
-	i := linearProbing(h1, uint32(len(m.groups)))
+	i := findSlotIndex(h1, uint32(len(m.slots)))
 	for {
 		matchBitset := metadataMatchH2(&m.ctrlMetadatas[i], h2)
 		for matchBitset != 0 {
 			j := nextMatch(&matchBitset)
-			if key == m.groups[i].keys[j] {
-				return m.groups[i].vals[j], true
+			if key == m.slots[i].keys[j] {
+				return m.slots[i].vals[j], true
 			}
 		}
 		if metadataMatchEmpty(&m.ctrlMetadatas[i]) != 0 {
 			return val, false
 		}
 		i += 1
-		if i >= uint32(len(m.groups)) { // wrap-around
+		if i >= uint32(len(m.slots)) { // wrap-around
 			i = 0
 		}
 	}
 }
 
 func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
-	oldControl, oldGroups := m.ctrlMetadatas, m.groups
+	oldControl, oldGroups := m.ctrlMetadatas, m.slots
 	i := randv2.Uint32N(uint32(len(oldGroups)))
 	idx := uint64(0)
 	for _i := 0; _i < len(oldGroups); _i++ {
@@ -198,12 +198,12 @@ func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
 
 func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
-	i := linearProbing(h1, uint32(len(m.groups)))
+	i := findSlotIndex(h1, uint32(len(m.slots)))
 	for {
 		matchBitset := metadataMatchH2(&m.ctrlMetadatas[i], h2)
 		for matchBitset != 0 {
 			j := nextMatch(&matchBitset)
-			if key == m.groups[i].keys[j] {
+			if key == m.slots[i].keys[j] {
 				if metadataMatchEmpty(&m.ctrlMetadatas[i]) != 0 {
 					m.ctrlMetadatas[i][j] = empty
 					m.resident--
@@ -215,8 +215,8 @@ func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 					k K
 					v V
 				)
-				m.groups[i].keys[j] = k
-				m.groups[i].vals[j] = v
+				m.slots[i].keys[j] = k
+				m.slots[i].vals[j] = v
 				return
 			}
 		}
@@ -225,7 +225,7 @@ func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 			return val, errors.New("[swiss-map] not found to delete")
 		}
 		i += 1
-		if i >= uint32(len(m.groups)) { // wrap-around
+		if i >= uint32(len(m.slots)) { // wrap-around
 			i = 0
 		}
 	}
@@ -241,8 +241,8 @@ func (m *SwissMap[K, V]) Clear() {
 		k K
 		v V
 	)
-	for i := range m.groups {
-		group := &m.groups[i]
+	for i := range m.slots {
+		group := &m.slots[i]
 		for j := range group.keys {
 			group.keys[j] = k
 			group.vals[j] = v
@@ -261,9 +261,9 @@ func (m *SwissMap[K, V]) Cap() int64 {
 
 func (m *SwissMap[K, V]) nextCap() (uint32, error) {
 	if m.dead >= (m.resident >> 1) {
-		return uint32(len(m.groups)), nil
+		return uint32(len(m.slots)), nil
 	}
-	newCap := uint32(len(m.groups)) * 2
+	newCap := uint32(len(m.slots)) * 2
 	if newCap > math.MaxUint32 {
 		return 0, errors.New("[swiss-map] overflow")
 	}
@@ -271,10 +271,10 @@ func (m *SwissMap[K, V]) nextCap() (uint32, error) {
 }
 
 func (m *SwissMap[K, V]) rehash(newGroups uint32) {
-	oldGroups, oldControl := m.groups, m.ctrlMetadatas
-	m.groups = make([]swissMapGroup[K, V], newGroups)
+	oldGroups, oldControl := m.slots, m.ctrlMetadatas
+	m.slots = make([]swissMapSlot[K, V], newGroups)
 	m.ctrlMetadatas = make([]swissMapMetadata, newGroups)
-	for i := 0; i < len(m.groups); i++ {
+	for i := 0; i < len(m.slots); i++ {
 		m.ctrlMetadatas[i] = newEmptyMetadata()
 	}
 
@@ -293,7 +293,7 @@ func (m *SwissMap[K, V]) rehash(newGroups uint32) {
 }
 
 func (m *SwissMap[K, V]) loadFactor() float64 {
-	slots := float64(len(m.groups) * groupSize)
+	slots := float64(len(m.slots) * groupSize)
 	return float64(m.resident-m.dead) / slots
 }
 
@@ -302,11 +302,11 @@ func NewSwissMap[K infra.OrderedKey, V any](capacity uint32) *SwissMap[K, V] {
 	groups := calcGroups(capacity)
 	m := &SwissMap[K, V]{
 		ctrlMetadatas: make([]swissMapMetadata, groups),
-		groups:       make([]swissMapGroup[K, V], groups),
-		hasher:       newHasher[K](),
-		resident:     0,
-		dead:         0,
-		limit:        groups * maxAvgGroupLoad,
+		slots:         make([]swissMapSlot[K, V], groups),
+		hasher:        newHasher[K](),
+		resident:      0,
+		dead:          0,
+		limit:         groups * maxAvgGroupLoad,
 	}
 	for i := 0; i < len(m.ctrlMetadatas); i++ {
 		m.ctrlMetadatas[i] = newEmptyMetadata()
@@ -334,6 +334,6 @@ func splitHash(hash uint64) (hi h1, lo h2) {
 	return h1((hash & h1Mask) >> 7), h2(hash & h2Mask)
 }
 
-func linearProbing(hi h1, groups uint32) uint32 {
+func findSlotIndex(hi h1, groups uint32) uint32 {
 	return uint32(hi) & (groups - 1)
 }

@@ -126,7 +126,7 @@ func testSwissMapClearRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 	assert.Equal(t, 0, calls)
 
 	var k K
-	for _, g := range m.groups {
+	for _, g := range m.slots {
 		for i := range g.keys {
 			assert.Equal(t, k, g.keys[i])
 			assert.Equal(t, 0, g.vals[i])
