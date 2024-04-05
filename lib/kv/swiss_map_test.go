@@ -210,15 +210,15 @@ func testSwissMapRehashRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 
 func testSwissMapCapacityRunCore[K infra.OrderedKey](t *testing.T, gen func(n int) []K) {
 	caps := []uint32{
-		1 * maxAvgGroupLoad,
-		2 * maxAvgGroupLoad,
-		3 * maxAvgGroupLoad,
-		4 * maxAvgGroupLoad,
-		5 * maxAvgGroupLoad,
-		10 * maxAvgGroupLoad,
-		25 * maxAvgGroupLoad,
-		50 * maxAvgGroupLoad,
-		100 * maxAvgGroupLoad,
+		1 * maxAvgSlotLoad,
+		2 * maxAvgSlotLoad,
+		3 * maxAvgSlotLoad,
+		4 * maxAvgSlotLoad,
+		5 * maxAvgSlotLoad,
+		10 * maxAvgSlotLoad,
+		25 * maxAvgSlotLoad,
+		50 * maxAvgSlotLoad,
+		100 * maxAvgSlotLoad,
 	}
 	for _, c := range caps {
 		m := NewSwissMap[K, K](c)

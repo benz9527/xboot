@@ -89,12 +89,12 @@ swap both the elements and proceed.
 //go:generate go run ./simd/asm.go -out fast_hash_match.s -stubs fast_hash_match_amd64.go
 
 const (
-	groupSize              = 16 // In order to finding the results in 4 CPU instructions
-	maxAvgGroupLoad        = 14
-	h1Mask          uint64 = 0xffff_ffff_ffff_ff80
-	h2Mask          uint64 = 0x0000_0000_0000_007f
-	empty           int8   = -128 // 0b1000_0000, 0x80; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L505
-	deleted         int8   = -2   // 0b1111_1110, OxFE; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L506
+	slotSize              = 16 // In order to finding the results in 4 CPU instructions
+	maxAvgSlotLoad        = 14
+	h1Mask         uint64 = 0xffff_ffff_ffff_ff80
+	h2Mask         uint64 = 0x0000_0000_0000_007f
+	empty          int8   = -128 // 0b1000_0000, 0x80; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L505
+	deleted        int8   = -2   // 0b1111_1110, OxFE; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L506
 )
 
 // A 57 bits hash prefix.
@@ -108,22 +108,22 @@ type h2 int8
 
 type bitset uint16
 
-type swissMapMetadata [groupSize]int8
+type swissMapMetadata [slotSize]int8
 
 func (md *swissMapMetadata) matchH2(hash h2) bitset {
-	b := Fast16WayHashMatch((*[groupSize]int8)(md), int8(hash))
+	b := Fast16WayHashMatch((*[slotSize]int8)(md), int8(hash))
 	return bitset(b)
 }
 
 func (md *swissMapMetadata) matchEmpty() bitset {
-	b := Fast16WayHashMatch((*[groupSize]int8)(md), empty)
+	b := Fast16WayHashMatch((*[slotSize]int8)(md), empty)
 	return bitset(b)
 }
 
 // Array is cache friendly.
 type swissMapSlot[K infra.OrderedKey, V any] struct {
-	keys [groupSize]K
-	vals [groupSize]V
+	keys [slotSize]K
+	vals [slotSize]V
 }
 
 type SwissMap[K infra.OrderedKey, V any] struct {
@@ -258,20 +258,16 @@ func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 }
 
 func (m *SwissMap[K, V]) Clear() {
-	for i, ctrl := range m.ctrlMetadataSet {
-		for j := range ctrl {
-			m.ctrlMetadataSet[i][j] = empty
-		}
-	}
 	var (
 		k K
 		v V
 	)
-	for i := range m.slots {
-		group := &m.slots[i]
-		for j := range group.keys {
-			group.keys[j] = k
-			group.vals[j] = v
+	for i := 0; i < len(m.ctrlMetadataSet); i++ {
+		slot := &m.slots[i]
+		for j := 0; j < slotSize; j++ {
+			m.ctrlMetadataSet[i][j] = empty
+			slot.keys[j] = k
+			slot.vals[j] = v
 		}
 	}
 	m.resident, m.dead = 0, 0
@@ -296,43 +292,43 @@ func (m *SwissMap[K, V]) nextCap() (uint32, error) {
 	return newCap, nil
 }
 
-func (m *SwissMap[K, V]) rehash(newGroups uint32) {
-	oldGroups, oldControl := m.slots, m.ctrlMetadataSet
-	m.slots = make([]swissMapSlot[K, V], newGroups)
-	m.ctrlMetadataSet = make([]swissMapMetadata, newGroups)
+func (m *SwissMap[K, V]) rehash(newCapacity uint32) {
+	oldCtrlMetadataSet, oldSlots := m.ctrlMetadataSet, m.slots
+	m.slots = make([]swissMapSlot[K, V], newCapacity)
+	m.ctrlMetadataSet = make([]swissMapMetadata, newCapacity)
 	for i := 0; i < len(m.slots); i++ {
 		m.ctrlMetadataSet[i] = newEmptyMetadata()
 	}
 
 	m.hasher = newSeedHasher[K](m.hasher)
-	m.limit = newGroups * maxAvgGroupLoad
+	m.limit = newCapacity * maxAvgSlotLoad
 	m.resident, m.dead = 0, 0
-	for i := range oldControl {
-		for j := range oldControl[i] {
-			ctrl := oldControl[i][j]
+	for i := range oldCtrlMetadataSet {
+		for j := range oldCtrlMetadataSet[i] {
+			ctrl := oldCtrlMetadataSet[i][j]
 			if ctrl == empty || ctrl == deleted {
 				continue
 			}
-			m.put(oldGroups[i].keys[j], oldGroups[i].vals[j])
+			m.put(oldSlots[i].keys[j], oldSlots[i].vals[j])
 		}
 	}
 }
 
 func (m *SwissMap[K, V]) loadFactor() float64 {
-	slots := float64(len(m.slots) * groupSize)
+	slots := float64(len(m.slots) * slotSize)
 	return float64(m.resident-m.dead) / slots
 }
 
 // @param size, how many elements will be stored in the map
 func NewSwissMap[K infra.OrderedKey, V any](capacity uint32) *SwissMap[K, V] {
-	groups := calcGroups(capacity)
+	groupCap := calcGroupCapacity(capacity)
 	m := &SwissMap[K, V]{
-		ctrlMetadataSet: make([]swissMapMetadata, groups),
-		slots:           make([]swissMapSlot[K, V], groups),
+		ctrlMetadataSet: make([]swissMapMetadata, groupCap),
+		slots:           make([]swissMapSlot[K, V], groupCap),
 		hasher:          newHasher[K](),
 		resident:        0,
 		dead:            0,
-		limit:           groups * maxAvgGroupLoad,
+		limit:           groupCap * maxAvgSlotLoad,
 	}
 	for i := 0; i < len(m.ctrlMetadataSet); i++ {
 		m.ctrlMetadataSet[i] = newEmptyMetadata()
@@ -340,12 +336,12 @@ func NewSwissMap[K infra.OrderedKey, V any](capacity uint32) *SwissMap[K, V] {
 	return m
 }
 
-func calcGroups(size uint32) uint32 {
-	groups := (size + maxAvgGroupLoad - 1) / maxAvgGroupLoad
-	if groups == 0 {
-		groups = 1
+func calcGroupCapacity(size uint32) uint32 {
+	groupCap := (size + maxAvgSlotLoad - 1) / maxAvgSlotLoad
+	if groupCap == 0 {
+		groupCap = 1
 	}
-	return groups
+	return groupCap
 }
 
 func newEmptyMetadata() swissMapMetadata {
