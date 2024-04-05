@@ -3,6 +3,7 @@ module github.com/benz9527/xboot
 go 1.22.1
 
 require (
+	github.com/mmcloughlin/avo v0.6.0
 	github.com/panjf2000/ants/v2 v2.9.1
 	github.com/samber/lo v1.39.0
 	github.com/shirou/gopsutil/v3 v3.24.3
@@ -26,7 +27,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240226150601-1dcf7310316a // indirect
-	github.com/mmcloughlin/avo v0.6.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/client_golang v1.19.0 // indirect
