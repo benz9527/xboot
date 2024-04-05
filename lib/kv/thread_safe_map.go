@@ -9,34 +9,33 @@ import (
 
 type threadSafeMap[K comparable, V any] struct {
 	lock           sync.RWMutex
-	items          map[K]V
+	m              *SwissMap[K, V]
 	isClosableItem bool
 }
 
-func (t *threadSafeMap[K, V]) AddOrUpdate(key K, obj V) {
+func (t *threadSafeMap[K, V]) AddOrUpdate(key K, obj V) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	t.items[key] = obj
+	return t.m.Put(key, obj)
 }
 
-func (t *threadSafeMap[K, V]) Replace(items map[K]V) {
+func (t *threadSafeMap[K, V]) Replace(items map[K]V) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	t.items = items
+	t.m.Clear()
+	return t.m.MigrateFrom(items)
 }
 
-func (t *threadSafeMap[K, V]) Delete(key K) {
+func (t *threadSafeMap[K, V]) Delete(key K) (V, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	if _, exists := t.items[key]; exists {
-		delete(t.items, key)
-	}
+	return t.m.Delete(key)
 }
 
 func (t *threadSafeMap[K, V]) Get(key K) (item V, exists bool) {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
-	item, exists = t.items[key]
+	item, exists = t.m.Get(key)
 	return
 }
 
@@ -55,15 +54,16 @@ func (t *threadSafeMap[K, V]) ListKeys(filters ...SafeStoreKeyFilterFunc[K]) []K
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 
-	keys := make([]K, 0, len(t.items))
-	for key := range t.items {
+	keys := make([]K, 0, t.m.Len())
+	t.m.Foreach(func(i uint64, key K, val V) bool {
 		for _, filter := range realFilters {
 			if filter(key) {
 				keys = append(keys, key)
 				break
 			}
 		}
-	}
+		return true
+	})
 	return keys
 }
 
@@ -84,15 +84,15 @@ func (t *threadSafeMap[K, V]) ListValues(keys ...K) (items []V) {
 
 	t.lock.RLock()
 	defer t.lock.RUnlock()
-	values := make([]V, 0, len(t.items))
-	for key, item := range t.items {
-		i := item
+	values := make([]V, 0, t.m.Len())
+	t.m.Foreach(func(i uint64, key K, val V) bool {
 		if len(realKeys) > 0 && contains(realKeys, key) {
-			values = append(values, i)
+			values = append(values, val)
 		} else if len(realKeys) == 0 {
-			values = append(values, i)
+			values = append(values, val)
 		}
-	}
+		return true
+	})
 	return values
 }
 
@@ -101,13 +101,13 @@ func (t *threadSafeMap[K, V]) Purge() error {
 	defer t.lock.Unlock()
 
 	if t.isClosableItem {
-		for _, item := range t.items {
-			if reflect.ValueOf(item).IsNil() {
-				continue
+		t.m.Foreach(func(i uint64, key K, val V) bool {
+			if reflect.ValueOf(val).IsNil() {
+				return true
 			}
-			typ := reflect.TypeOf(item)
+			typ := reflect.TypeOf(val)
 			if typ.Implements(reflect.TypeOf((*io.Closer)(nil)).Elem()) {
-				vals := reflect.ValueOf(item).MethodByName("Close").Call([]reflect.Value{})
+				vals := reflect.ValueOf(val).MethodByName("Close").Call([]reflect.Value{})
 				if len(vals) > 0 && !vals[0].IsNil() {
 					intf := vals[0].Elem().Interface()
 					switch intf.(type) {
@@ -117,10 +117,10 @@ func (t *threadSafeMap[K, V]) Purge() error {
 					}
 				}
 			}
-		}
+			return true
+		})
 	}
-
-	t.items = nil
+	t.m = nil
 	return nil
 }
 
@@ -138,5 +138,5 @@ func NewThreadSafeMap[K comparable, V any]() ThreadSafeStorer[K, V] {
 		}
 	}
 
-	return &threadSafeMap[K, V]{items: make(map[K]V, 32), isClosableItem: isCloserItem}
+	return &threadSafeMap[K, V]{m: NewSwissMap[K, V](1024), isClosableItem: isCloserItem}
 }
