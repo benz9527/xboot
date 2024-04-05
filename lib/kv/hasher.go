@@ -6,8 +6,6 @@ package kv
 import (
 	randv2 "math/rand/v2"
 	"unsafe"
-
-	"github.com/benz9527/xboot/lib/infra"
 )
 
 type hashFn func(unsafe.Pointer, uintptr) uintptr
@@ -36,7 +34,7 @@ func newHashSeed() uintptr {
 	return uintptr(randv2.Int())
 }
 
-type Hasher[K infra.OrderedKey] struct {
+type Hasher[K comparable] struct {
 	hash hashFn
 	seed uintptr
 }
@@ -47,21 +45,21 @@ func (h Hasher[K]) Hash(key K) uint64 {
 	return uint64(h.hash(p, h.seed))
 }
 
-func getRuntimeHasher[K infra.OrderedKey]() (fn hashFn) {
+func getRuntimeHasher[K comparable]() (fn hashFn) {
 	i := (any)(make(map[K]struct{}))
 	iface := (*_mapIface)(unsafe.Pointer(&i))
 	fn = iface.typ.hasher
 	return
 }
 
-func newHasher[K infra.OrderedKey]() Hasher[K] {
+func newHasher[K comparable]() Hasher[K] {
 	return Hasher[K]{
 		hash: getRuntimeHasher[K](),
 		seed: newHashSeed(),
 	}
 }
 
-func newSeedHasher[K infra.OrderedKey](hasher Hasher[K]) Hasher[K] {
+func newSeedHasher[K comparable](hasher Hasher[K]) Hasher[K] {
 	return Hasher[K]{
 		hash: hasher.hash,
 		seed: newHashSeed(),

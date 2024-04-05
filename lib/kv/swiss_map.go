@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 
 	ibits "github.com/benz9527/xboot/lib/bits"
-	"github.com/benz9527/xboot/lib/infra"
 )
 
 // References:
@@ -126,12 +125,12 @@ func (md *swissMapMetadata) matchEmpty() bitset {
 }
 
 // Array is cache friendly.
-type swissMapSlot[K infra.OrderedKey, V any] struct {
+type swissMapSlot[K comparable, V any] struct {
 	keys [slotSize]K
 	vals [slotSize]V
 }
 
-type SwissMap[K infra.OrderedKey, V any] struct {
+type SwissMap[K comparable, V any] struct {
 	ctrlMetadataSet []swissMapMetadata
 	slots           []swissMapSlot[K, V]
 	hasher          Hasher[K]
@@ -341,7 +340,7 @@ func (m *SwissMap[K, V]) loadFactor() float64 {
 }
 
 // @param size, how many elements will be stored in the map
-func NewSwissMap[K infra.OrderedKey, V any](capacity uint32) *SwissMap[K, V] {
+func NewSwissMap[K comparable, V any](capacity uint32) *SwissMap[K, V] {
 	slotCap := calcSlotCapacity(capacity)
 	m := &SwissMap[K, V]{
 		ctrlMetadataSet: make([]swissMapMetadata, slotCap),
