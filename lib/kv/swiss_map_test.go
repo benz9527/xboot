@@ -220,6 +220,23 @@ func testSwissMapForeachRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 	}
 }
 
+func testSwissMapMigrateFromRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
+	m := NewSwissMap[K, int](uint32(len(keys)))
+	_m := make(map[K]int, len(keys))
+	for i, key := range keys {
+		_m[key] = i
+	}
+
+	err := m.MigrateFrom(_m)
+	require.NoError(t, err)
+	m.Foreach(func(i uint64, k K, v int) bool {
+		val, ok := _m[k]
+		require.True(t, ok)
+		require.Equal(t, val, v)
+		return true
+	})
+}
+
 func testSwissMapRehashRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 	n := uint32(len(keys))
 	m := NewSwissMap[K, int](n / 10)
@@ -260,20 +277,23 @@ func testSwissMapCapacityRunCore[K infra.OrderedKey](t *testing.T, gen func(n in
 func testSwissMapRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 	// sanity check
 	require.Equal(t, len(keys), len(uniqueKeys(keys)), keys)
-	t.Run("put-get", func(t *testing.T) {
-		testSwissMapPutRunCore(t, keys)
+	t.Run("put-get", func(tt *testing.T) {
+		testSwissMapPutRunCore(tt, keys)
 	})
-	t.Run("put-delete-get-put", func(t *testing.T) {
-		testSwissMapDeleteRunCore(t, keys)
+	t.Run("put-delete-get-put", func(tt *testing.T) {
+		testSwissMapDeleteRunCore(tt, keys)
 	})
-	t.Run("clear-foreach", func(t *testing.T) {
-		testSwissMapClearRunCore(t, keys)
+	t.Run("clear-foreach", func(tt *testing.T) {
+		testSwissMapClearRunCore(tt, keys)
 	})
-	t.Run("put-foreach", func(t *testing.T) {
-		testSwissMapForeachRunCore(t, keys)
+	t.Run("put-foreach", func(tt *testing.T) {
+		testSwissMapForeachRunCore(tt, keys)
 	})
-	t.Run("rehash", func(t *testing.T) {
-		testSwissMapRehashRunCore(t, keys)
+	t.Run("rehash", func(tt *testing.T) {
+		testSwissMapRehashRunCore(tt, keys)
+	})
+	t.Run("migrate from go native map", func(tt *testing.T) {
+		testSwissMapMigrateFromRunCore(tt, keys)
 	})
 }
 

@@ -281,6 +281,15 @@ func (m *SwissMap[K, V]) Clear() {
 	m.resident, m.dead = 0, 0
 }
 
+func (m *SwissMap[K, V]) MigrateFrom(_m map[K]V) error {
+	for k, v := range _m {
+		if err := m.Put(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *SwissMap[K, V]) Len() int64 {
 	return int64(m.resident - m.dead)
 }
