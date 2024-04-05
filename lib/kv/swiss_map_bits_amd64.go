@@ -17,17 +17,17 @@ import "math/bits"
 // Advanced Vector Extensions.
 
 const (
-	groupSize       = 16
+	groupSize       = 16 // In order to finding the results in 4 CPU instructions
 	maxAvgGroupLoad = 14
 )
 
 func metadataMatchH2(md *swissMapMetadata, h2 h2) bitset {
-	b := MatchMetadata((*[16]int8)(md), int8(h2))
+	b := MatchMetadata((*[groupSize]int8)(md), int8(h2))
 	return bitset(b)
 }
 
 func metadataMatchEmpty(md *swissMapMetadata) bitset {
-	b := MatchMetadata((*[16]int8)(md), empty)
+	b := MatchMetadata((*[groupSize]int8)(md), empty)
 	return bitset(b)
 }
 
