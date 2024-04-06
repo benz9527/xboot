@@ -3,7 +3,7 @@ package id
 import (
 	"fmt"
 	"strconv"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,19 +29,20 @@ import (
 // It is convergent algorithm!
 
 const (
-	xSnowflakeStartEpoch      = int64(1712336461000) // 2024-04-06 01:01:01 UTC+8
-	xSnowflakeDIDBits         = uint(5)              // DataCenter ID
-	xSnowflakeMIDBits         = uint(5)              // Machine ID
-	xSnowflakeTsDiffBits      = uint(41)
-	xSnowflakeSequenceBits    = uint(12) // max 4096
-	xSnowflakeTsDiffShiftLeft = xSnowflakeSequenceBits
-	xSnowflakeMIDShiftLeft    = xSnowflakeTsDiffShiftLeft + xSnowflakeTsDiffBits
-	xSnowflakeDIDShiftLeft    = xSnowflakeMIDShiftLeft + xSnowflakeMIDBits
-	xSnowflakeSequenceMax     = int64(-1 ^ (-1 << xSnowflakeSequenceBits))
-	xSnowflakeMIDMax          = int64(-1 ^ (-1 << xSnowflakeMIDBits))
-	xSnowflakeDIDMax          = xSnowflakeMIDMax
-	xSnowflakeTsDiffMax       = int64(-1 ^ (-1 << xSnowflakeTsDiffBits))
-	xSnowflakeWorkerIDMax     = int64(-1 ^ (-1 << (xSnowflakeMIDBits + xSnowflakeDIDBits)))
+	xSnowflakeStartEpoch        = int64(1712336461000) // 2024-04-06 01:01:01 UTC+8
+	xSnowflakeDIDBits           = uint(5)              // DataCenter ID
+	xSnowflakeMIDBits           = uint(5)              // Machine ID
+	xSnowflakeTsDiffBits        = uint(41)
+	xSnowflakeSequenceBits      = uint(12) // max 4096
+	xSnowflakeTsDiffShiftLeft   = xSnowflakeSequenceBits
+	xSnowflakeMIDShiftLeft      = xSnowflakeTsDiffShiftLeft + xSnowflakeTsDiffBits
+	xSnowflakeDIDShiftLeft      = xSnowflakeMIDShiftLeft + xSnowflakeMIDBits
+	xSnowflakeSequenceMax       = int64(-1 ^ (-1 << xSnowflakeSequenceBits))
+	xSnowflakeMIDMax            = int64(-1 ^ (-1 << xSnowflakeMIDBits))
+	xSnowflakeDIDMax            = xSnowflakeMIDMax
+	xSnowflakeTsDiffMax         = int64(-1 ^ (-1 << xSnowflakeTsDiffBits))
+	xSnowflakeWorkerIDMax       = int64(-1 ^ (-1 << (xSnowflakeMIDBits + xSnowflakeDIDBits)))
+	xSnowflakeTsAndSequenceMask = int64(-1^(-1<<(xSnowflakeTsDiffBits+xSnowflakeSequenceBits))) >> 1
 )
 
 var (
@@ -58,34 +59,24 @@ func xSnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (UUIDGen,
 		return nil, fmt.Errorf("machineID: %d (max: %d), %w", machineID, xSnowflakeMIDMax, errSFInvalidMachineID)
 	}
 
-	var lock = sync.Mutex{}
-	lastTs, sequence := int64(0), int64(0)
+	tsAndSequence := now().UnixNano() / 1e6
+	tsAndSequence <<= xSnowflakeTsDiffShiftLeft
+	waitIfNecessary := func() {
+		curTsAndSeq := atomic.LoadInt64(&tsAndSequence)
+		cur := curTsAndSeq >> xSnowflakeTsDiffShiftLeft
+		latest := now().UnixNano() / 1e6
+		if latest <= cur { // clock skew
+			time.Sleep(5 * time.Millisecond) // clock forward maybe blocked!!!
+		}
+	}
+
 	id := new(uuidDelegator)
 	id.number = func() uint64 {
-		lock.Lock()
-		defer lock.Unlock()
-
-		now := now().UnixNano() / 1e6
-		if now != lastTs {
-			sequence = int64(0)
-		} else {
-			sequence = (sequence + 1) & xSnowflakeSequenceMax
-			if sequence == 0 {
-				for now <= lastTs {
-					now = time.Now().UnixNano() / 1e6
-				}
-			}
-		}
-
-		diff := now - xSnowflakeStartEpoch
-		if diff > xSnowflakeTsDiffMax {
-			return 0
-		}
-		lastTs = now
-		id := (diff << xSnowflakeTsDiffShiftLeft) |
+		waitIfNecessary()
+		tsAndSeq := atomic.AddInt64(&tsAndSequence, 1) & xSnowflakeTsAndSequenceMask
+		id := tsAndSeq |
 			(dataCenterID << xSnowflakeDIDShiftLeft) |
-			(machineID << xSnowflakeMIDShiftLeft) |
-			sequence
+			(machineID << xSnowflakeMIDShiftLeft)
 		return uint64(id)
 	}
 	id.str = func() string {
