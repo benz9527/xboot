@@ -8,17 +8,18 @@ import (
 )
 
 // SnowFlake 64 bits
-// 0-00000000 00000000 00000000 00000000 00000000 0-00000000 00-00000000 0000
+// 0-00000000_00000000_00000000_00000000_00000000_0-00000_00000-00000000_0000
 // 1 bit, as symbol, it always set as 0
 // 41 bits, the diff val between current ts and start ts
+// The timestamp in high bits will be affected by clock skew (clock rollback).
 // 5 bits, as datacenter id
 // 5 bits, as machine id
 // 12 bits, as internal sequence number, max value is 4096 (2 ^ 12)
 
 const (
-	classicSnowflakeStartTs         = int64(946659661000) // 2001-01-01 01:01:01 UTC+8
+	classicSnowflakeStartEpoch      = int64(946659661000) // 2001-01-01 01:01:01 UTC+8
 	classicSnowflakeTsDiffBits      = uint(41)
-	classicSnowflakeDIDBits         = uint(5) // Datacenter ID
+	classicSnowflakeDIDBits         = uint(5) // DataCenter ID
 	classicSnowflakeMIDBits         = uint(5) // Machine ID
 	classicSnowflakeSequenceBits    = uint(12)
 	classicSnowflakeMIDShiftLeft    = classicSnowflakeSequenceBits
@@ -31,17 +32,20 @@ const (
 )
 
 var (
-	errSFInvalidDatacenterID = fmt.Errorf("datacenter id invalid")
+	errSFInvalidDataCenterID = fmt.Errorf("data-center id invalid")
 	errSFInvalidMachineID    = fmt.Errorf("machine id invalid")
 )
 
-func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (Gen, error) {
-	if datacenterID < 0 || datacenterID > classicSnowflakeDIDMax {
-		return nil, errSFInvalidDatacenterID
+// The now function is easily to be affected by clock skew. Then
+// the global and unique id is unstable.
+// Deprecated: Please use the SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (UUIDGen, error)
+func StandardSnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (Gen, error) {
+	if dataCenterID < 0 || dataCenterID > classicSnowflakeDIDMax {
+		return nil, fmt.Errorf("dataCenterID: %d (max: %d), %w", dataCenterID, classicSnowflakeDIDMax, errSFInvalidDataCenterID)
 	}
 
 	if machineID < 0 || machineID > classicSnowflakeMIDMax {
-		return nil, errSFInvalidMachineID
+		return nil, fmt.Errorf("machineID: %d (max: %d), %w", machineID, classicSnowflakeMIDMax, errSFInvalidMachineID)
 	}
 
 	var lock = sync.Mutex{}
@@ -62,22 +66,22 @@ func StandardSnowFlakeID(datacenterID, machineID int64, now func() time.Time) (G
 			}
 		}
 
-		diff := now - classicSnowflakeStartTs
+		diff := now - classicSnowflakeStartEpoch
 		if diff > classicSnowflakeTsDiffMax {
 			return 0
 		}
 		lastTs = now
 		id := (diff << classicSnowflakeTsDiffShiftLeft) |
-			(datacenterID << classicSnowflakeDIDShiftLeft) |
+			(dataCenterID << classicSnowflakeDIDShiftLeft) |
 			(machineID << classicSnowflakeMIDShiftLeft) |
 			sequence
 		return uint64(id)
 	}, nil
 }
 
-func SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (UUIDGen, error) {
-	if datacenterID < 0 || datacenterID > classicSnowflakeDIDMax {
-		return nil, errSFInvalidDatacenterID
+func SnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (UUIDGen, error) {
+	if dataCenterID < 0 || dataCenterID > classicSnowflakeDIDMax {
+		return nil, errSFInvalidDataCenterID
 	}
 
 	if machineID < 0 || machineID > classicSnowflakeMIDMax {
@@ -103,13 +107,13 @@ func SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (UUIDGen, 
 			}
 		}
 
-		diff := now - classicSnowflakeStartTs
+		diff := now - classicSnowflakeStartEpoch
 		if diff > classicSnowflakeTsDiffMax {
 			return 0
 		}
 		lastTs = now
 		id := (diff << classicSnowflakeTsDiffShiftLeft) |
-			(datacenterID << classicSnowflakeDIDShiftLeft) |
+			(dataCenterID << classicSnowflakeDIDShiftLeft) |
 			(machineID << classicSnowflakeMIDShiftLeft) |
 			sequence
 		return uint64(id)
