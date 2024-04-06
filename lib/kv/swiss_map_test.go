@@ -112,7 +112,7 @@ func uniqueKeys[K infra.OrderedKey](keys []K) []K {
 }
 
 func testSwissMapPutRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
-	m := NewSwissMap[K, int](uint32(len(keys)))
+	m := newSwissMap[K, int](uint32(len(keys)))
 	assert.Equal(t, int64(0), m.Len())
 	for i, key := range keys {
 		m.Put(key, i)
@@ -132,7 +132,7 @@ func testSwissMapPutRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 }
 
 func testSwissMapDeleteRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
-	m := NewSwissMap[K, K](uint32(len(keys)))
+	m := newSwissMap[K, K](uint32(len(keys)))
 	assert.Equal(t, int64(0), m.Len())
 	for _, key := range keys {
 		m.Put(key, key)
@@ -154,7 +154,7 @@ func testSwissMapDeleteRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 }
 
 func testSwissMapClearRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
-	m := NewSwissMap[K, int](0)
+	m := newSwissMap[K, int](0)
 	assert.Equal(t, int64(0), m.Len())
 	for i, key := range keys {
 		m.Put(key, i)
@@ -183,7 +183,7 @@ func testSwissMapClearRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 }
 
 func testSwissMapForeachRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
-	m := NewSwissMap[K, int](uint32(len(keys)))
+	m := newSwissMap[K, int](uint32(len(keys)))
 	for i, key := range keys {
 		m.Put(key, i)
 	}
@@ -221,7 +221,7 @@ func testSwissMapForeachRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 }
 
 func testSwissMapMigrateFromRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
-	m := NewSwissMap[K, int](uint32(len(keys)))
+	m := newSwissMap[K, int](uint32(len(keys)))
 	_m := make(map[K]int, len(keys))
 	for i, key := range keys {
 		_m[key] = i
@@ -239,7 +239,7 @@ func testSwissMapMigrateFromRunCore[K infra.OrderedKey](t *testing.T, keys []K) 
 
 func testSwissMapRehashRunCore[K infra.OrderedKey](t *testing.T, keys []K) {
 	n := uint32(len(keys))
-	m := NewSwissMap[K, int](n / 10)
+	m := newSwissMap[K, int](n / 10)
 	for i, key := range keys {
 		m.Put(key, i)
 	}
@@ -263,7 +263,7 @@ func testSwissMapCapacityRunCore[K infra.OrderedKey](t *testing.T, gen func(n in
 		100 * maxAvgSlotLoad,
 	}
 	for _, c := range caps {
-		m := NewSwissMap[K, K](c)
+		m := newSwissMap[K, K](c)
 		assert.Equal(t, int64(c), m.Cap())
 		keys := gen(rand.Intn(int(c)))
 		for _, k := range keys {
@@ -363,7 +363,7 @@ func fuzzStringSwissMap(t *testing.T, strKeyLen, count int, initMapCap uint32) {
 	if count > limit || initMapCap > limit {
 		t.Skip()
 	}
-	m := NewSwissMap[string, int](initMapCap)
+	m := newSwissMap[string, int](initMapCap)
 	if count == 0 {
 		return
 	}
@@ -430,7 +430,7 @@ func TestMemFootprint(t *testing.T) {
 	for n := 10; n <= 10_000; n += 10 {
 		b1 := testing.Benchmark(func(b *testing.B) {
 			// max load factor 7/8 => 14/16
-			m := NewSwissMap[int, int](uint32(n))
+			m := newSwissMap[int, int](uint32(n))
 			require.NotNil(b, m)
 		})
 		b2 := testing.Benchmark(func(b *testing.B) {
@@ -459,7 +459,7 @@ func BenchmarkStringSwissMaps(b *testing.B) {
 			n := uint32(len(keys))
 			mod := n - 1 // power of 2 fast modulus
 			require.Equal(bb, 1, bits.OnesCount32(n))
-			m := NewSwissMap[string, string](n)
+			m := newSwissMap[string, string](n)
 			for _, k := range keys {
 				m.Put(k, k)
 			}

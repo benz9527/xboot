@@ -6,6 +6,8 @@ import (
 	randv2 "math/rand/v2"
 	"sync/atomic"
 
+	"go.uber.org/multierr"
+
 	ibits "github.com/benz9527/xboot/lib/bits"
 )
 
@@ -99,6 +101,10 @@ const (
 var (
 	// amd64 && !nosimd 256 * 1024 * 1024; !amd64 || nosimd 512 * 1024 * 1024
 	maxSlotCap = 1 << (32 - ibits.CeilPowOf2(slotSize))
+
+	// Errors
+	errSwissMapConcurrentRehash = errors.New("[swiss-map] concurrent rehash")
+	errSwissMapNextSlotsCapOvf  = errors.New("[swiss-map] slots overflow")
 )
 
 // A 57 bits hash prefix.
@@ -130,7 +136,7 @@ type swissMapSlot[K comparable, V any] struct {
 	vals [slotSize]V
 }
 
-type SwissMap[K comparable, V any] struct {
+type swissMap[K comparable, V any] struct {
 	ctrlMetadataSet []swissMapMetadata
 	slots           []swissMapSlot[K, V]
 	hasher          Hasher[K]
@@ -140,7 +146,7 @@ type SwissMap[K comparable, V any] struct {
 	slotCap         uint32
 }
 
-func (m *SwissMap[K, V]) Put(key K, val V) error {
+func (m *swissMap[K, V]) Put(key K, val V) error {
 	if m.resident >= m.limit {
 		n, err := m.nextCap()
 		if err != nil {
@@ -154,7 +160,7 @@ func (m *SwissMap[K, V]) Put(key K, val V) error {
 	return nil
 }
 
-func (m *SwissMap[K, V]) put(key K, val V) {
+func (m *swissMap[K, V]) put(key K, val V) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
 	i := findSlotIndex(h1, atomic.LoadUint32(&m.slotCap))
 	for {
@@ -181,7 +187,7 @@ func (m *SwissMap[K, V]) put(key K, val V) {
 	}
 }
 
-func (m *SwissMap[K, V]) Get(key K) (val V, exists bool) {
+func (m *swissMap[K, V]) Get(key K) (val V, exists bool) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
 	i := findSlotIndex(h1, atomic.LoadUint32(&m.slotCap))
 	for {
@@ -199,17 +205,18 @@ func (m *SwissMap[K, V]) Get(key K) (val V, exists bool) {
 	}
 }
 
-func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
+func (m *swissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
 	oldCtrlMetadataSet, oldSlots, oldSlotCap := m.ctrlMetadataSet, m.slots, atomic.LoadUint32(&m.slotCap)
-	rngIdx := randv2.Uint32N(oldSlotCap)
+	rngIdx := randv2.Uint32N(oldSlotCap) // random number generation
 	idx := uint64(0)
+	var _continue bool
 	for i := uint32(0); i < oldSlotCap; i++ {
 		for j, md := range oldCtrlMetadataSet[rngIdx] {
 			if md == empty || md == deleted {
 				continue
 			}
 			k, v := oldSlots[rngIdx].keys[j], oldSlots[rngIdx].vals[j]
-			if _continue := action(idx, k, v); !_continue {
+			if _continue = action(idx, k, v); !_continue {
 				return
 			}
 			idx++
@@ -220,7 +227,7 @@ func (m *SwissMap[K, V]) Foreach(action func(i uint64, key K, val V) bool) {
 	}
 }
 
-func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
+func (m *swissMap[K, V]) Delete(key K) (val V, err error) {
 	h1, h2 := splitHash(m.hasher.Hash(key))
 	i := findSlotIndex(h1, atomic.LoadUint32(&m.slotCap))
 	for {
@@ -264,7 +271,7 @@ func (m *SwissMap[K, V]) Delete(key K) (val V, err error) {
 	}
 }
 
-func (m *SwissMap[K, V]) Clear() {
+func (m *swissMap[K, V]) Clear() {
 	var (
 		k K
 		v V
@@ -280,38 +287,39 @@ func (m *SwissMap[K, V]) Clear() {
 	m.resident, m.dead = 0, 0
 }
 
-func (m *SwissMap[K, V]) MigrateFrom(_m map[K]V) error {
+func (m *swissMap[K, V]) MigrateFrom(_m map[K]V) error {
+	var merr error
 	for k, v := range _m {
 		if err := m.Put(k, v); err != nil {
-			return err
+			merr = multierr.Append(merr, err)
 		}
 	}
-	return nil
+	return merr
 }
 
-func (m *SwissMap[K, V]) Len() int64 {
+func (m *swissMap[K, V]) Len() int64 {
 	return int64(m.resident - m.dead)
 }
 
-func (m *SwissMap[K, V]) Cap() int64 {
+func (m *swissMap[K, V]) Cap() int64 {
 	return int64(m.limit - m.resident)
 }
 
-func (m *SwissMap[K, V]) nextCap() (uint32, error) {
+func (m *swissMap[K, V]) nextCap() (uint32, error) {
 	if m.dead >= (m.resident >> 1) {
 		return atomic.LoadUint32(&m.slotCap), nil
 	}
 	newCap := int64(atomic.LoadUint32(&m.slotCap)) * 2
 	if newCap > int64(maxSlotCap) {
-		return 0, errors.New("[swiss-map] slots overflow")
+		return 0, errSwissMapNextSlotsCapOvf
 	}
 	return uint32(newCap), nil
 }
 
-func (m *SwissMap[K, V]) rehash(newCapacity uint32) error {
+func (m *swissMap[K, V]) rehash(newCapacity uint32) error {
 	oldCtrlMetadataSet, oldSlots, oldSlotCap := m.ctrlMetadataSet, m.slots, atomic.LoadUint32(&m.slotCap)
 	if !atomic.CompareAndSwapUint32(&m.slotCap, oldSlotCap, newCapacity) {
-		return errors.New("[swiss-map] concurrent rehash")
+		return errSwissMapConcurrentRehash
 	}
 
 	m.slots = make([]swissMapSlot[K, V], newCapacity)
@@ -334,15 +342,15 @@ func (m *SwissMap[K, V]) rehash(newCapacity uint32) error {
 	return nil
 }
 
-func (m *SwissMap[K, V]) loadFactor() float64 {
+func (m *swissMap[K, V]) loadFactor() float64 {
 	total := float64(atomic.LoadUint32(&m.slotCap) * slotSize)
 	return float64(m.resident-m.dead) / total
 }
 
 // @param size, how many elements will be stored in the map
-func NewSwissMap[K comparable, V any](capacity uint32) *SwissMap[K, V] {
+func newSwissMap[K comparable, V any](capacity uint32) *swissMap[K, V] {
 	slotCap := calcSlotCapacity(capacity)
-	m := &SwissMap[K, V]{
+	m := &swissMap[K, V]{
 		ctrlMetadataSet: make([]swissMapMetadata, slotCap),
 		slots:           make([]swissMapSlot[K, V], slotCap),
 		slotCap:         slotCap,
@@ -355,6 +363,10 @@ func NewSwissMap[K comparable, V any](capacity uint32) *SwissMap[K, V] {
 		m.ctrlMetadataSet[i] = newEmptyMetadata()
 	}
 	return m
+}
+
+func NewSwissMap[K comparable, V any](capacity uint32) Map[K, V] {
+	return NewSwissMap[K, V](capacity)
 }
 
 func calcSlotCapacity(size uint32) uint32 {

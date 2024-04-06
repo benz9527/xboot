@@ -2,14 +2,15 @@ package kv
 
 import (
 	"io"
-	"log/slog"
 	"reflect"
 	"sync"
+
+	"go.uber.org/multierr"
 )
 
 type threadSafeMap[K comparable, V any] struct {
 	lock           sync.RWMutex
-	m              *SwissMap[K, V]
+	m              *swissMap[K, V]
 	isClosableItem bool
 }
 
@@ -100,6 +101,7 @@ func (t *threadSafeMap[K, V]) Purge() error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
+	var merr error
 	if t.isClosableItem {
 		t.m.Foreach(func(i uint64, key K, val V) bool {
 			if reflect.ValueOf(val).IsNil() {
@@ -112,8 +114,9 @@ func (t *threadSafeMap[K, V]) Purge() error {
 					intf := vals[0].Elem().Interface()
 					switch intf.(type) {
 					case error:
-						err := intf.(error)
-						slog.Error("Purge info", "error", err)
+						if err := intf.(error); err != nil {
+							merr = multierr.Append(merr, err) // FIXME: memory leak?
+						}
 					}
 				}
 			}
@@ -121,7 +124,7 @@ func (t *threadSafeMap[K, V]) Purge() error {
 		})
 	}
 	t.m = nil
-	return nil
+	return merr
 }
 
 func NewThreadSafeMap[K comparable, V any]() ThreadSafeStorer[K, V] {
@@ -138,5 +141,5 @@ func NewThreadSafeMap[K comparable, V any]() ThreadSafeStorer[K, V] {
 		}
 	}
 
-	return &threadSafeMap[K, V]{m: NewSwissMap[K, V](1024), isClosableItem: isCloserItem}
+	return &threadSafeMap[K, V]{m: newSwissMap[K, V](1024), isClosableItem: isCloserItem}
 }
