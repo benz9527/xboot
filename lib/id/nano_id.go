@@ -36,9 +36,10 @@ func rngUint32() uint32 {
 }
 
 func shuffle(arr []byte) {
-	count := uint32(len(arr) >> 2)
+	size := len(arr)
+	count := uint32(size >> 1)
 	for i := uint32(0); i < count; i++ {
-		j := rngUint32() % (i + 1)
+		j := rngUint32() % uint32(size)
 		arr[i], arr[j] = arr[j], arr[i]
 	}
 }

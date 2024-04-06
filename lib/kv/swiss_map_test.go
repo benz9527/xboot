@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/benz9527/xboot/lib/id"
 	"github.com/benz9527/xboot/lib/infra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,17 +65,10 @@ func TestModN(t *testing.T) {
 }
 
 func genStrKeys(strLen, count int) (keys []string) {
-	src := rand.New(rand.NewSource(int64(strLen * count)))
-	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	l := len(letters)
-	r := make([]rune, strLen*count)
-	for i := range r {
-		r[i] = letters[src.Intn(l)]
-	}
+	nanoID, _ := id.ClassicNanoID(strLen)
 	keys = make([]string, count)
 	for i := range keys {
-		keys[i] = string(r[:strLen])
-		r = r[strLen:]
+		keys[i] = nanoID()
 	}
 	return
 }
