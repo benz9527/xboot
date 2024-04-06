@@ -19,3 +19,5 @@ type uuidDelegator struct {
 
 func (id *uuidDelegator) Number() uint64 { return id.number() }
 func (id *uuidDelegator) Str() string    { return id.str() }
+
+type NanoIDGen func() string
