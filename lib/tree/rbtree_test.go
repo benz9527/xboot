@@ -547,7 +547,7 @@ func TestRbtreeRandomInsertAndRemove_RandomMonotonicNumber(t *testing.T) {
 	}
 }
 
-func BenchmarkXConcSklUnique_Random(b *testing.B) {
+func BenchmarkRBTree_Random(b *testing.B) {
 	testByBytes := []byte(`abc`)
 
 	b.StopTimer()
@@ -567,7 +567,7 @@ func BenchmarkXConcSklUnique_Random(b *testing.B) {
 	}
 }
 
-func BenchmarkXConcSklUnique_Serial(b *testing.B) {
+func BenchmarkRBTree_Serial(b *testing.B) {
 	testByBytes := []byte(`abc`)
 
 	b.StopTimer()

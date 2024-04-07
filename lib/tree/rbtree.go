@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"cmp"
 	"errors"
 	"sync/atomic"
 
@@ -197,19 +198,18 @@ type rbTree[K infra.OrderedKey, V any] struct {
 }
 
 func (tree *rbTree[K, V]) keyCompare(k1, k2 K) int64 {
-	if k1 == k2 {
-		return 0
-	} else if k1 < k2 {
+	if res := cmp.Compare[K](k1, k2); res < 0 {
 		if !tree.isDesc {
 			return -1
 		}
-		return 1
-	} else {
+		return +1
+	} else if res > 0 {
 		if !tree.isDesc {
-			return 1
+			return +1
 		}
 		return -1
 	}
+	return 0
 }
 
 func (tree *rbTree[K, V]) Len() int64 {

@@ -99,7 +99,7 @@ func TestXConcSkl_DataRace(t *testing.T) {
 	require.Equal(t, uint64(0), skl.IndexCount())
 }
 
-func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
+func TestXConcSkl_LinkedList_SerialProcessing(t *testing.T) {
 	skl := &xConcSkl[uint64, *xSklObject]{
 		head:    newXConcSklHead[uint64, *xSklObject](),
 		levels:  1,
@@ -188,6 +188,161 @@ func TestXConcSkl_Duplicate_SerialProcessing(t *testing.T) {
 
 	foundResult = skl.rmTraverse(0, false, aux)
 	assert.Equal(t, int32(-1), foundResult)
+
+	removed, err := skl.RemoveAll(3)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), removed[0].Key())
+	require.Equal(t, "2", removed[0].Val().id)
+	require.Equal(t, uint64(3), removed[1].Key())
+	require.Equal(t, "200", removed[1].Val().id)
+	require.Equal(t, uint64(3), removed[2].Key())
+	require.Equal(t, "100", removed[2].Val().id)
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSklObject]) bool {
+		if item.Key() == uint64(3) {
+			t.FailNow()
+			return false
+		}
+		return true
+	})
+
+	removed, err = skl.RemoveIfMatch(2, func(that *xSklObject) bool {
+		return that.id == "8"
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(removed))
+	require.Equal(t, uint64(2), removed[0].Key())
+	require.Equal(t, "8", removed[0].Val().id)
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSklObject]) bool {
+		if item.Key() == uint64(2) && item.Val().id == "8" {
+			t.FailNow()
+			return false
+		}
+		return true
+	})
+
+	loaded, err := skl.LoadAll(1)
+	require.NoError(t, err)
+	require.Equal(t, 3, len(loaded))
+	require.Equal(t, uint64(1), loaded[0].Key())
+	require.Equal(t, "9", loaded[0].Val().id)
+	require.Equal(t, uint64(1), loaded[1].Key())
+	require.Equal(t, "2", loaded[1].Val().id)
+	require.Equal(t, uint64(1), loaded[2].Key())
+	require.Equal(t, "200", loaded[2].Val().id)
+
+	loaded, err = skl.LoadIfMatch(2, func(that *xSklObject) bool {
+		return that.id == "9"
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(loaded))
+	require.Equal(t, uint64(2), loaded[0].Key())
+	require.Equal(t, "9", loaded[0].Val().id)
+}
+
+func TestXConcSkl_Rbtree_SerialProcessing(t *testing.T) {
+	skl := &xConcSkl[uint64, *xSklObject]{
+		head:    newXConcSklHead[uint64, *xSklObject](),
+		levels:  1,
+		nodeLen: 0,
+		vcmp: func(i, j *xSklObject) int64 {
+			// avoid calculation overflow
+			_i, _j := i.Hash(), j.Hash()
+			if _i == _j {
+				return 0
+			} else if _i > _j {
+				return 1
+			}
+			return -1
+		},
+		rand:  randomLevelV3,
+		flags: 0,
+	}
+	idGen, _ := id.MonotonicNonZeroID()
+	skl.optVer = idGen
+	skl.flags = setBitsAs(skl.flags, xConcSklXNodeModeFlagBits, uint32(rbtree))
+
+	ele, err := skl.PopHead()
+	require.Nil(t, ele)
+	require.True(t, errors.Is(err, ErrXSklIsEmpty))
+
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 5)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 8)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 7)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 1)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 4)})
+	skl.Insert(4, &xSklObject{id: fmt.Sprintf("%d", 6)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 5)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 8)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 7)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 1)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 4)})
+	skl.Insert(2, &xSklObject{id: fmt.Sprintf("%d", 6)})
+	skl.Insert(3, &xSklObject{id: fmt.Sprintf("%d", 100)})
+	skl.Insert(3, &xSklObject{id: fmt.Sprintf("%d", 200)})
+	skl.Insert(3, &xSklObject{id: fmt.Sprintf("%d", 2)})
+	skl.Insert(1, &xSklObject{id: fmt.Sprintf("%d", 9)})
+	skl.Insert(1, &xSklObject{id: fmt.Sprintf("%d", 200)})
+	skl.Insert(1, &xSklObject{id: fmt.Sprintf("%d", 2)})
+
+	t.Logf("nodeLen: %d, indexCount: %d\n", skl.Len(), skl.IndexCount())
+
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSklObject]) bool {
+		t.Logf("idx: %d, key: %v, value: %v, levels: %d, count: %d\n", idx, item.Key(), item.Val(), item.NodeLevel(), item.NodeItemCount())
+		return true
+	})
+
+	removed, err := skl.RemoveAll(3)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), removed[0].Key())
+	require.Equal(t, "2", removed[0].Val().id)
+	require.Equal(t, uint64(3), removed[1].Key())
+	require.Equal(t, "200", removed[1].Val().id)
+	require.Equal(t, uint64(3), removed[2].Key())
+	require.Equal(t, "100", removed[2].Val().id)
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSklObject]) bool {
+		if item.Key() == uint64(3) {
+			t.FailNow()
+			return false
+		}
+		return true
+	})
+
+	removed, err = skl.RemoveIfMatch(2, func(that *xSklObject) bool {
+		return that.id == "8"
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(removed))
+	require.Equal(t, uint64(2), removed[0].Key())
+	require.Equal(t, "8", removed[0].Val().id)
+	skl.Foreach(func(idx int64, item SklIterationItem[uint64, *xSklObject]) bool {
+		if item.Key() == uint64(2) && item.Val().id == "8" {
+			t.FailNow()
+			return false
+		}
+		return true
+	})
+
+	loaded, err := skl.LoadAll(1)
+	require.NoError(t, err)
+	require.Equal(t, 3, len(loaded))
+	require.Equal(t, uint64(1), loaded[0].Key())
+	require.Equal(t, "9", loaded[0].Val().id)
+	require.Equal(t, uint64(1), loaded[1].Key())
+	require.Equal(t, "2", loaded[1].Val().id)
+	require.Equal(t, uint64(1), loaded[2].Key())
+	require.Equal(t, "200", loaded[2].Val().id)
+
+	loaded, err = skl.LoadIfMatch(2, func(that *xSklObject) bool {
+		return that.id == "9"
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(loaded))
+	require.Equal(t, uint64(2), loaded[0].Key())
+	require.Equal(t, "9", loaded[0].Val().id)
 }
 
 func xConcSklDuplicateDataRaceRunCore(t *testing.T, mode xNodeMode, rmBySucc bool) {

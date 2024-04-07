@@ -1,5 +1,7 @@
 package infra
 
+import "cmp"
+
 type Signed interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64
 }
@@ -37,7 +39,7 @@ type Complex interface {
 // OrderedKey
 // byte => ~uint8
 type OrderedKey interface {
-	Integer | Float | ~string
+	cmp.Ordered
 }
 
 // OrderedKeyComparator

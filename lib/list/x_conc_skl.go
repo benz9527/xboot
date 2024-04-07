@@ -1,6 +1,7 @@
 package list
 
 import (
+	"cmp"
 	"sync/atomic"
 	"unsafe"
 
@@ -48,10 +49,11 @@ func (skl *xConcSkl[K, V]) traverse(
 	for /* vertical */ forward, l := skl.atomicLoadHead(), lvl-1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
 		for /* horizontal */ nIdx != nil {
-			if /* horizontal next */ (!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key) {
+			res := cmp.Compare[K](key, nIdx.key)
+			if /* horizontal next */ (!isDesc && res > 0) || (isDesc && res < 0) {
 				forward = nIdx
 				nIdx = forward.atomicLoadNextNode(l)
-			} else if /* found */ key == nIdx.key {
+			} else if /* found */ res == 0 {
 				aux[l] = forward          /* pred */
 				aux[sklMaxLevel+l] = nIdx /* succ */
 				return nIdx
@@ -79,9 +81,14 @@ func (skl *xConcSkl[K, V]) rmTraverse(
 	forward := skl.atomicLoadHead()
 	for /* vertical */ l := skl.Levels() - 1; l >= 0; l-- {
 		nIdx := forward.atomicLoadNextNode(l)
-		for /* horizontal */ nIdx != nil && ((!isDesc && key > nIdx.key) || (isDesc && key < nIdx.key)) {
-			forward = nIdx
-			nIdx = forward.atomicLoadNextNode(l)
+		for /* horizontal */ nIdx != nil {
+			res := cmp.Compare[K](key, nIdx.key)
+			if (!isDesc && res > 0) || (isDesc && res < 0) {
+				forward = nIdx
+				nIdx = forward.atomicLoadNextNode(l)
+			} else {
+				break
+			}
 		}
 
 		aux[l] = forward
@@ -624,7 +631,7 @@ func (skl *xConcSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklE
 				case unique:
 					panic("[x-conc-skl] unique mode skip-list not implements the load if match method")
 				case linkedList:
-					for x := nIdx.atomicLoadRoot().parent.linkedListNext(); x != nil; x = x.linkedListNext() {
+					for x := nIdx.atomicLoadRoot().parent; x != nil; x = x.linkedListNext() {
 						v := *x.vptr
 						if matcher(v) {
 							elements = append(elements, &xSklElement[K, V]{
@@ -682,7 +689,7 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 				case unique:
 					panic("[x-conc-skl] unique mode skip-list not implements the load all method")
 				case linkedList:
-					for x := nIdx.atomicLoadRoot().parent.linkedListNext(); x != nil; x = x.linkedListNext() {
+					for x := nIdx.atomicLoadRoot().parent; x != nil; x = x.linkedListNext() {
 						elements = append(elements, &xSklElement[K, V]{
 							key: key,
 							val: *x.vptr,
