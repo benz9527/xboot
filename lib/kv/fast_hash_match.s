@@ -23,7 +23,8 @@ TEXT ·Fast16WayHashMatch(SB), NOSPLIT, $0-18
 	// Packed Shuffle Bytes instruction, let hash value in register X0 xor with X1 by byte to generate mask to X0
 	PSHUFB X1, X0
 
-	// Load the metadata from memory to register X2
+	// Load the metadata from memory to register X1
+	// (AX) means de-reference of address value in AX
 	MOVOU (AX), X1
 
 	// Packed Compare for Equal Byte instruction, compare X1 and X0 by byte then store into X0
