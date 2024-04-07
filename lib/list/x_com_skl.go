@@ -1,6 +1,7 @@
 package list
 
 import (
+	"cmp"
 	"sync/atomic"
 
 	"github.com/benz9527/xboot/lib/infra"
@@ -29,14 +30,13 @@ type xComSkl[K infra.OrderedKey, V any] struct {
 // @return value 1: the pred node
 // @return value 2: the query traverse path (nodes)
 func (skl *xComSkl[K, V]) findPredecessor0(key K, aux []*xComSklNode[K, V]) (*xComSklNode[K, V], []*xComSklNode[K, V]) {
-	var (
-		forward *xComSklNode[K, V]
-	)
+	var forward *xComSklNode[K, V]
 	forward = skl.head
 	for /* vertical */ i := skl.Levels() - 1; i >= 0; i-- {
 		for /* horizontal */ forward.levels()[i] != nil {
 			cur := forward.levels()[i]
-			if /* greater, forward next */ cur != nil && (!skl.isKeyCmpDesc && key > cur.Element().Key()) || (skl.isKeyCmpDesc && key < cur.Element().Key()) {
+			res := cmp.Compare[K](key, cur.Element().Key())
+			if /* greater, forward next */ cur != nil && (!skl.isKeyCmpDesc && res > 0) || (skl.isKeyCmpDesc && res < 0) {
 				// Linear probing (forward next) at level 0 most likely.
 				forward = cur
 			} else /* lower or equal, downward to next level */ {
@@ -111,9 +111,10 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			cur := pred.levels()[i]
 			res := func() int64 {
 				curKey := cur.Element().Key()
-				if (!skl.isKeyCmpDesc && key > curKey) || (skl.isKeyCmpDesc && key < curKey) {
-					return 1
-				} else if key == curKey {
+				_res := cmp.Compare[K](key, curKey)
+				if (!skl.isKeyCmpDesc && _res > 0) || (skl.isKeyCmpDesc && _res < 0) {
+					return +1
+				} else if _res == 0 {
 					return 0
 				}
 				return -1
@@ -190,9 +191,7 @@ func (skl *xComSkl[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 		return nil, ErrXSklIsEmpty
 	}
 
-	var (
-		aux = make([]*xComSklNode[K, V], sklMaxLevel)
-	)
+	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, aux := skl.findPredecessor0(key, aux[:])
 	if pred == nil {
 		return nil, ErrXSklNotFound
@@ -265,9 +264,7 @@ func (skl *xComSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklEl
 		return nil, ErrXSklIsEmpty
 	}
 
-	var (
-		aux = make([]*xComSklNode[K, V], sklMaxLevel)
-	)
+	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, _ := skl.findPredecessor0(key, aux)
 	if pred == nil {
 		return nil, ErrXSklNotFound
@@ -304,9 +301,7 @@ func (skl *xComSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Skl
 		return nil, ErrXSklIsEmpty
 	}
 
-	var (
-		aux = make([]*xComSklNode[K, V], sklMaxLevel)
-	)
+	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, aux := skl.findPredecessor0(key, aux)
 	if pred == nil {
 		return nil, ErrXSklNotFound
@@ -336,9 +331,7 @@ func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 		return nil, ErrXSklIsEmpty
 	}
 
-	var (
-		aux = make([]*xComSklNode[K, V], sklMaxLevel)
-	)
+	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, aux := skl.findPredecessor0(key, aux)
 	if pred == nil {
 		return nil, ErrXSklNotFound
