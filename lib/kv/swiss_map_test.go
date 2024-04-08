@@ -65,7 +65,10 @@ func TestModN(t *testing.T) {
 }
 
 func genStrKeys(strLen, count int) (keys []string) {
-	nanoID, _ := id.ClassicNanoID(strLen)
+	nanoID, err := id.ClassicNanoID(strLen)
+	if err != nil {
+		panic(err)
+	}
 	keys = make([]string, count)
 	for i := range keys {
 		keys[i] = nanoID()

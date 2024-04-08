@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 )
 
@@ -49,8 +50,8 @@ func init() {
 }
 
 func ClassicNanoID(length int) (NanoIDGen, error) {
-	if length < 2 || length > 255 {
-		return nil, errors.New("invalid nano-id length")
+	if length < 1 || length > 255 {
+		return nil, errors.New("invalid nano-id length: " + strconv.Itoa(length))
 	}
 
 	preAllocSize := length * length * 8
