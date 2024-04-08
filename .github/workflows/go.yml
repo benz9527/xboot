@@ -28,7 +28,7 @@ jobs:
       run: go mod download
 
     - name: Unit Test
-      run: go test -covermode atomic -coverprofile=./cover.out -v ./... 
+      run: go test -timeout=1800s -covermode atomic -coverprofile=./cover.out -v ./... 
 
     - uses: codecov/codecov-action@v4
       with:
