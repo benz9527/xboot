@@ -221,7 +221,7 @@ const (
 
 // TODO Lock-free linked list
 type doublyLinkedList[T comparable] struct {
-	root nodeElement[T]
+	root *NodeElement[T]
 	len  atomic.Int64
 }
 
@@ -229,30 +229,34 @@ func NewLinkedList[T comparable]() LinkedList[T] {
 	return new(doublyLinkedList[T]).init()
 }
 
-func (l *doublyLinkedList[T]) getRoot() NodeElement[T] {
-	return &l.root
+func (l *doublyLinkedList[T]) getRoot() *NodeElement[T] {
+	return l.root
 }
 
-func (l *doublyLinkedList[T]) getRootHead() NodeElement[T] {
+func (l *doublyLinkedList[T]) getRootHead() *NodeElement[T] {
 	return l.root.next
 }
 
-func (l *doublyLinkedList[T]) setRootHead(targetE NodeElement[T]) {
+func (l *doublyLinkedList[T]) setRootHead(targetE *NodeElement[T]) {
 	l.root.next = targetE
+	targetE.prev = l.root
 }
 
-func (l *doublyLinkedList[T]) getRootTail() NodeElement[T] {
+func (l *doublyLinkedList[T]) getRootTail() *NodeElement[T] {
 	return l.root.prev
 }
 
-func (l *doublyLinkedList[T]) setRootTail(targetE NodeElement[T]) {
+func (l *doublyLinkedList[T]) setRootTail(targetE *NodeElement[T]) {
 	l.root.prev = targetE
+	targetE.next = l.root
 }
 
 func (l *doublyLinkedList[T]) init() *doublyLinkedList[T] {
-	l.root.list = l
-	l.setRootHead(&l.root)
-	l.setRootTail(&l.root)
+	l.root = &NodeElement[T]{
+		listRef: l,
+	}
+	l.setRootHead(l.root)
+	l.setRootTail(l.root)
 	l.len.Store(0)
 	return l
 }
@@ -261,52 +265,49 @@ func (l *doublyLinkedList[T]) Len() int64 {
 	return l.len.Load()
 }
 
-func (l *doublyLinkedList[T]) checkElement(targetE NodeElement[T]) (*nodeElement[T], nodeElementInListStatus) {
-	if targetE == nil {
-		return nil, notInList
-	}
-	at, ok := targetE.(*nodeElement[T])
-	if !ok || at.list != l {
-		return nil, notInList
-	}
+func (l *doublyLinkedList[T]) checkElement(targetE *NodeElement[T]) (*NodeElement[T], nodeElementInListStatus) {
 	if l.len.Load() == 0 {
-		return l.getRoot().(*nodeElement[T]), emtpyList
+		return l.getRoot(), emtpyList
+	}
+
+	if targetE == nil || targetE.listRef != l || targetE.prev == nil || targetE.next == nil {
+		return nil, notInList
 	}
 
 	// mem address compare
 	switch {
-	case at.GetPrev() == nil && at.GetNext() == nil:
+	case targetE.Prev() == l.getRoot() && targetE.Next() == l.getRoot():
 		// targetE is the first one and the last one
 		if l.getRootHead() != targetE || l.getRootTail() != targetE {
 			return nil, notInList
 		}
-		return at, theOnlyOne
-	case at.GetPrev() == nil && at.GetNext() != nil:
+		return targetE, theOnlyOne
+	case targetE.Prev() == l.getRoot() && targetE.Next() != l.getRoot():
 		// targetE is the first one but not the last one
-		if at.GetNext().GetPrev() != targetE {
+		if targetE.Next().Prev() != targetE {
 			return nil, notInList
 		}
 		// Ignore l.setRootTail (tail)
-		return at, theFirstButNotTheLast
-	case at.GetPrev() != nil && at.GetNext() == nil:
+		return targetE, theFirstButNotTheLast
+	case targetE.Prev() != l.getRoot() && targetE.Next() == l.getRoot():
 		// targetE is the last one but not the first one
-		if at.GetPrev().GetNext() != targetE {
+		if targetE.Prev().Next() != targetE {
 			return nil, notInList
 		}
 		// Ignore l.setRootHead (head)
-		return at, theLastButNotTheFirst
-	case at.GetPrev() != nil && at.GetNext() != nil:
+		return targetE, theLastButNotTheFirst
+	case targetE.Prev() != l.getRoot() && targetE.Next() != l.getRoot():
 		// targetE is neither the first one nor the last one
-		if at.GetPrev().GetNext() != targetE && at.GetNext().GetPrev() != targetE {
+		if targetE.Prev().Next() != targetE && targetE.Next().Prev() != targetE {
 			return nil, notInList
 		}
-		return at, inMiddle
+		return targetE, inMiddle
 	}
 	return nil, notInList
 }
 
-func (l *doublyLinkedList[T]) append(e *nodeElement[T]) NodeElement[T] {
-	e.list = l
+func (l *doublyLinkedList[T]) append(e *NodeElement[T]) *NodeElement[T] {
+	e.listRef = l
 	e.next, e.prev = nil, nil
 
 	if l.len.Load() == 0 {
@@ -317,7 +318,7 @@ func (l *doublyLinkedList[T]) append(e *nodeElement[T]) NodeElement[T] {
 		return e
 	}
 
-	lastOne := l.getRootTail().(*nodeElement[T])
+	lastOne := l.getRootTail()
 	lastOne.next = e
 	e.prev, e.next = lastOne, nil
 	l.setRootTail(e)
@@ -326,7 +327,7 @@ func (l *doublyLinkedList[T]) append(e *nodeElement[T]) NodeElement[T] {
 	return e
 }
 
-func (l *doublyLinkedList[T]) Append(elements ...NodeElement[T]) []NodeElement[T] {
+func (l *doublyLinkedList[T]) Append(elements ...*NodeElement[T]) []*NodeElement[T] {
 	if l.getRootTail() == nil {
 		return nil
 	}
@@ -334,8 +335,8 @@ func (l *doublyLinkedList[T]) Append(elements ...NodeElement[T]) []NodeElement[T
 		if elements[i] == nil {
 			continue
 		}
-		e, ok := elements[i].(*nodeElement[T])
-		if !ok || e.list != l {
+		e := elements[i]
+		if e.listRef != l {
 			continue
 		}
 		elements[i] = l.append(e)
@@ -343,7 +344,7 @@ func (l *doublyLinkedList[T]) Append(elements ...NodeElement[T]) []NodeElement[T
 	return elements
 }
 
-func (l *doublyLinkedList[T]) AppendValue(values ...T) []NodeElement[T] {
+func (l *doublyLinkedList[T]) AppendValue(values ...T) []*NodeElement[T] {
 	// FIXME How to decrease the memory allocation for each operation?
 	//  sync.Pool reused the released objects?
 	if len(values) <= 0 {
@@ -352,14 +353,14 @@ func (l *doublyLinkedList[T]) AppendValue(values ...T) []NodeElement[T] {
 		return l.Append(newNodeElement(values[0], l))
 	}
 
-	newElements := make([]NodeElement[T], 0, len(values))
+	newElements := make([]*NodeElement[T], 0, len(values))
 	for _, v := range values {
 		newElements = append(newElements, newNodeElement(v, l))
 	}
 	return l.Append(newElements...)
 }
 
-func (l *doublyLinkedList[T]) insertAfter(newE, at *nodeElement[T]) *nodeElement[T] {
+func (l *doublyLinkedList[T]) insertAfter(newE, at *NodeElement[T]) *NodeElement[T] {
 	if at == l.getRoot() {
 		newE.prev = nil
 	} else {
@@ -371,17 +372,17 @@ func (l *doublyLinkedList[T]) insertAfter(newE, at *nodeElement[T]) *nodeElement
 		l.setRootHead(newE)
 		l.setRootTail(newE)
 	} else {
-		newE.next = at.GetNext()
+		newE.next = at.Next()
 		at.next = newE
-		if newE.GetNext() != nil {
-			newE.GetNext().(*nodeElement[T]).prev = newE
+		if newE.Next() != nil {
+			newE.Next().prev = newE
 		}
 	}
 	l.len.Add(1)
 	return newE
 }
 
-func (l *doublyLinkedList[T]) InsertAfter(v T, dstE NodeElement[T]) NodeElement[T] {
+func (l *doublyLinkedList[T]) InsertAfter(v T, dstE *NodeElement[T]) *NodeElement[T] {
 	at, status := l.checkElement(dstE)
 	if status == notInList {
 		return nil
@@ -398,7 +399,7 @@ func (l *doublyLinkedList[T]) InsertAfter(v T, dstE NodeElement[T]) NodeElement[
 	return newE
 }
 
-func (l *doublyLinkedList[T]) insertBefore(newE, at *nodeElement[T]) *nodeElement[T] {
+func (l *doublyLinkedList[T]) insertBefore(newE, at *NodeElement[T]) *NodeElement[T] {
 	if at == l.getRoot() {
 		newE.next = nil
 	} else {
@@ -411,15 +412,15 @@ func (l *doublyLinkedList[T]) insertBefore(newE, at *nodeElement[T]) *nodeElemen
 	} else {
 		newE.prev = at.prev
 		at.prev = newE
-		if newE.GetPrev() != nil {
-			newE.GetPrev().(*nodeElement[T]).next = newE
+		if newE.Prev() != nil {
+			newE.Prev().next = newE
 		}
 	}
 	l.len.Add(1)
 	return newE
 }
 
-func (l *doublyLinkedList[T]) InsertBefore(v T, dstE NodeElement[T]) NodeElement[T] {
+func (l *doublyLinkedList[T]) InsertBefore(v T, dstE *NodeElement[T]) *NodeElement[T] {
 	at, status := l.checkElement(dstE)
 	if status == notInList {
 		return nil
@@ -435,9 +436,9 @@ func (l *doublyLinkedList[T]) InsertBefore(v T, dstE NodeElement[T]) NodeElement
 	return newE
 }
 
-func (l *doublyLinkedList[T]) Remove(targetE NodeElement[T]) NodeElement[T] {
+func (l *doublyLinkedList[T]) Remove(targetE *NodeElement[T]) *NodeElement[T] {
 	var (
-		at     *nodeElement[T]
+		at     *NodeElement[T]
 		status nodeElementInListStatus
 	)
 
@@ -448,20 +449,20 @@ func (l *doublyLinkedList[T]) Remove(targetE NodeElement[T]) NodeElement[T] {
 		l.setRootHead(l.getRoot())
 		l.setRootTail(l.getRoot())
 	case theFirstButNotTheLast:
-		l.setRootHead(at.GetNext())
-		at.GetNext().(*nodeElement[T]).prev = nil
+		l.setRootHead(at.Next())
+		at.Next().prev = nil
 	case theLastButNotTheFirst:
-		l.setRootTail(at.GetPrev())
-		at.GetPrev().(*nodeElement[T]).next = nil
+		l.setRootTail(at.Prev())
+		at.Prev().next = nil
 	case inMiddle:
-		at.GetPrev().(*nodeElement[T]).next = at.next
-		at.GetNext().(*nodeElement[T]).prev = at.prev
+		at.Prev().next = at.next
+		at.Next().prev = at.prev
 	default:
 		return nil
 	}
 
 	// avoid memory leaks
-	at.list = nil
+	at.listRef = nil
 	at.next = nil
 	at.prev = nil
 
@@ -469,7 +470,7 @@ func (l *doublyLinkedList[T]) Remove(targetE NodeElement[T]) NodeElement[T] {
 	return at
 }
 
-func (l *doublyLinkedList[T]) ForEach(fn func(idx int64, e NodeElement[T])) {
+func (l *doublyLinkedList[T]) Foreach(fn func(idx int64, e *NodeElement[T])) {
 	if l == nil {
 		return
 	}
@@ -479,18 +480,18 @@ func (l *doublyLinkedList[T]) ForEach(fn func(idx int64, e NodeElement[T])) {
 	}
 
 	var (
-		iterator       = l.getRoot().GetNext()
+		iterator       = l.getRoot().Next()
 		idx      int64 = 0
 	)
-	for iterator != nil {
+	for iterator != l.getRoot() {
 		// Avoid remove in an iteration, result in memory leak
-		next := iterator.GetNext()
+		next := iterator.Next()
 		fn(idx, iterator)
 		iterator, idx = next, idx+1
 	}
 }
 
-func (l *doublyLinkedList[T]) ReverseForEach(fn func(idx int64, e NodeElement[T])) {
+func (l *doublyLinkedList[T]) ReverseForeach(fn func(idx int64, e *NodeElement[T])) {
 	if l == nil {
 		return
 	}
@@ -500,78 +501,78 @@ func (l *doublyLinkedList[T]) ReverseForEach(fn func(idx int64, e NodeElement[T]
 	}
 
 	var (
-		iterator       = l.getRoot().GetPrev()
+		iterator       = l.getRoot().Prev()
 		idx      int64 = 0
 	)
-	for iterator != nil {
+	for iterator != l.getRoot() {
 		// Avoid remove in an iteration, result in memory leak
-		prev := iterator.GetPrev()
+		prev := iterator.Prev()
 		fn(idx, iterator)
 		iterator, idx = prev, idx+1
 	}
 }
 
-func (l *doublyLinkedList[T]) FindFirst(targetV T, compareFn ...func(e NodeElement[T]) bool) (NodeElement[T], bool) {
+func (l *doublyLinkedList[T]) FindFirst(targetV T, compareFn ...func(e *NodeElement[T]) bool) (*NodeElement[T], bool) {
 	if l == nil || l.len.Load() == 0 {
 		return nil, false
 	}
 
 	if len(compareFn) <= 0 {
-		compareFn = []func(e NodeElement[T]) bool{
-			func(e NodeElement[T]) bool {
-				return e.GetValue() == targetV
+		compareFn = []func(e *NodeElement[T]) bool{
+			func(e *NodeElement[T]) bool {
+				return e.Value == targetV
 			},
 		}
 	}
 
 	var iterator = l.getRoot()
 	for iterator.HasNext() {
-		if compareFn[0](iterator.GetNext()) {
-			return iterator.GetNext(), true
+		if compareFn[0](iterator.Next()) {
+			return iterator.Next(), true
 		}
-		iterator = iterator.GetNext()
+		iterator = iterator.Next()
 	}
 	return nil, false
 }
 
-func (l *doublyLinkedList[T]) Front() NodeElement[T] {
+func (l *doublyLinkedList[T]) Front() *NodeElement[T] {
+	if l == nil || l.root == nil {
+		return nil
+	}
+	return l.root.Next()
+}
+
+func (l *doublyLinkedList[T]) Back() *NodeElement[T] {
 	if l == nil {
 		return nil
 	}
-	return l.root.GetNext()
+	return l.root.Prev()
 }
 
-func (l *doublyLinkedList[T]) Back() NodeElement[T] {
-	if l == nil {
-		return nil
-	}
-	return l.root.GetPrev()
-}
-
-func (l *doublyLinkedList[T]) PushFront(v T) NodeElement[T] {
+func (l *doublyLinkedList[T]) PushFront(v T) *NodeElement[T] {
 	if l == nil {
 		return nil
 	}
 	return l.InsertBefore(v, l.getRootHead())
 }
 
-func (l *doublyLinkedList[T]) PushBack(v T) NodeElement[T] {
+func (l *doublyLinkedList[T]) PushBack(v T) *NodeElement[T] {
 	if l == nil {
 		return nil
 	}
 	return l.InsertAfter(v, l.getRootTail())
 }
 
-func (l *doublyLinkedList[T]) move(src, dst *nodeElement[T]) bool {
+func (l *doublyLinkedList[T]) move(src, dst *NodeElement[T]) bool {
 	if src == dst {
 		return false
 	}
 	// Ordinarily, it is move src next to dst
 	if src.HasPrev() { // src is not the first node
-		src.GetPrev().(*nodeElement[T]).next = src.next
+		src.Prev().next = src.next
 	}
 	if src.HasNext() { // src is not the last node
-		src.GetNext().(*nodeElement[T]).prev = src.prev
+		src.Next().prev = src.prev
 	}
 
 	if dst == l.getRoot() { // dst is the first node
@@ -579,16 +580,16 @@ func (l *doublyLinkedList[T]) move(src, dst *nodeElement[T]) bool {
 	} else {
 		src.prev = dst
 	}
-	src.next = dst.GetNext()
+	src.next = dst.Next()
 	if src.HasNext() { // src updated but not the last node
-		src.GetNext().(*nodeElement[T]).prev = src
+		src.Next().prev = src
 	}
 
 	dst.next = src
 	return true
 }
 
-func (l *doublyLinkedList[T]) MoveToFront(targetE NodeElement[T]) {
+func (l *doublyLinkedList[T]) MoveToFront(targetE *NodeElement[T]) {
 	if l == nil {
 		return
 	}
@@ -596,21 +597,20 @@ func (l *doublyLinkedList[T]) MoveToFront(targetE NodeElement[T]) {
 	src, status := l.checkElement(targetE)
 	switch status {
 	case theLastButNotTheFirst:
-		defer func(prev NodeElement[T]) {
+		defer func(prev *NodeElement[T]) {
 			if moved {
 				l.setRootHead(src)
 				l.setRootTail(prev)
 			}
-		}(src.GetPrev()) // register the element immediately
+		}(src.Prev()) // register the element immediately
 	case notInList, theOnlyOne, theFirstButNotTheLast:
 		return
 	default:
-
 	}
-	moved = l.move(src, &l.root)
+	moved = l.move(src, l.root)
 }
 
-func (l *doublyLinkedList[T]) MoveToBack(targetE NodeElement[T]) {
+func (l *doublyLinkedList[T]) MoveToBack(targetE *NodeElement[T]) {
 	if l == nil {
 		return
 	}
@@ -618,56 +618,66 @@ func (l *doublyLinkedList[T]) MoveToBack(targetE NodeElement[T]) {
 	src, status := l.checkElement(targetE)
 	switch status {
 	case theFirstButNotTheLast:
-		defer func(next NodeElement[T]) {
+		defer func(next *NodeElement[T]) {
 			if moved {
 				l.setRootHead(next)
 				l.setRootTail(src)
 			}
-		}(src.GetNext()) // register the element immediately
+		}(src.Next()) // register the element immediately
 	case notInList, theLastButNotTheFirst, theOnlyOne:
 		return
 	default:
 
 	}
-	moved = l.move(src, l.getRootTail().(*nodeElement[T]))
+	moved = l.move(src, l.getRootTail())
 }
 
-func (l *doublyLinkedList[T]) MoveBefore(srcE, dstE NodeElement[T]) {
+// MoveBefore.
+// Ordinarily, it is move srcE just prev to dstE.
+func (l *doublyLinkedList[T]) MoveBefore(srcE, dstE *NodeElement[T]) {
 	if l == nil {
 		return
 	}
 	var (
 		moved                = false
-		dst, src             *nodeElement[T]
+		dst, src             *NodeElement[T]
 		dstStatus, srcStatus nodeElementInListStatus
 	)
 	switch dst, dstStatus = l.checkElement(dstE); dstStatus {
-	case notInList, theOnlyOne:
+	case notInList, emtpyList, theOnlyOne:
 		return
 	default:
 
 	}
+
 	switch src, srcStatus = l.checkElement(srcE); srcStatus {
-	case notInList, theOnlyOne:
+	case notInList, emtpyList, theOnlyOne:
 		return
 	case theFirstButNotTheLast:
-		defer func(next NodeElement[T]) {
+		if dstStatus == srcStatus {
+			return
+		}
+
+		defer func(next *NodeElement[T]) {
 			// src from the head to the middle
 			if moved && dstStatus == theLastButNotTheFirst || dstStatus == inMiddle {
 				l.setRootHead(next)
 			}
-		}(src.GetNext()) // register the element immediately
+		}(src.Next()) // register the element immediately
 	case theLastButNotTheFirst:
-		defer func(prev NodeElement[T]) {
+		if dstStatus == srcStatus {
+			return
+		}
+
+		defer func(prev *NodeElement[T]) {
 			// src from the tail to the head
-			if moved && dstStatus == theFirstButNotTheLast {
+			if dstStatus == theFirstButNotTheLast {
 				l.setRootHead(src)
 				l.setRootTail(prev)
-			}
-			if moved && dstStatus == inMiddle {
+			} else if moved && dstStatus == inMiddle {
 				l.setRootTail(prev)
 			}
-		}(src.GetPrev()) // register the element immediately
+		}(src.Prev()) // register the element immediately
 	case inMiddle:
 		defer func() {
 			// src as the new first node
@@ -676,35 +686,37 @@ func (l *doublyLinkedList[T]) MoveBefore(srcE, dstE NodeElement[T]) {
 			}
 		}()
 	default:
+	}
 
-	}
-	if dst.GetPrev() == nil {
-		return
-	}
-	dstPrev := dst.GetPrev().(*nodeElement[T])
+	dstPrev := dst.Prev()
 	moved = l.move(src, dstPrev)
 }
 
-func (l *doublyLinkedList[T]) MoveAfter(srcE, dstE NodeElement[T]) {
+func (l *doublyLinkedList[T]) MoveAfter(srcE, dstE *NodeElement[T]) {
 	if l == nil {
 		return
 	}
 	var (
 		moved                = false
-		dst, src             *nodeElement[T]
+		dst, src             *NodeElement[T]
 		dstStatus, srcStatus nodeElementInListStatus
 	)
 	switch dst, dstStatus = l.checkElement(dstE); dstStatus {
-	case notInList, theOnlyOne:
+	case notInList, emtpyList, theOnlyOne:
 		return
 	default:
 
 	}
+
 	switch src, srcStatus = l.checkElement(srcE); srcStatus {
-	case notInList, theOnlyOne:
+	case notInList, emtpyList, theOnlyOne:
 		return
 	case theFirstButNotTheLast:
-		defer func(next NodeElement[T]) {
+		if dstStatus == srcStatus {
+			return
+		}
+
+		defer func(next *NodeElement[T]) {
 			// src from the head to the tail
 			if moved && dstStatus == theLastButNotTheFirst {
 				l.setRootHead(next)
@@ -714,14 +726,18 @@ func (l *doublyLinkedList[T]) MoveAfter(srcE, dstE NodeElement[T]) {
 			if moved && dstStatus == inMiddle {
 				l.setRootHead(next)
 			}
-		}(src.GetNext()) // register the element immediately
+		}(src.Next()) // register the element immediately
 	case theLastButNotTheFirst:
-		defer func(prev NodeElement[T]) {
+		if dstStatus == srcStatus {
+			return
+		}
+
+		defer func(prev *NodeElement[T]) {
 			// src from the tail to the middle
 			if moved && dstStatus == theFirstButNotTheLast || dstStatus == inMiddle {
 				l.setRootTail(prev)
 			}
-		}(src.GetPrev())
+		}(src.Prev())
 	case inMiddle:
 		defer func() {
 			if moved && dstStatus == theLastButNotTheFirst {
@@ -745,12 +761,12 @@ func (l *doublyLinkedList[T]) PushFrontList(src LinkedList[T]) {
 	}
 
 	for i, e := src.Len(), src.Back(); i > 0; i-- {
-		prev := e.GetPrev()
+		prev := e.Prev()
 		// Clean the node element reference, not a required operation
-		e.(*nodeElement[T]).list = l
-		e.(*nodeElement[T]).prev = nil
-		e.(*nodeElement[T]).next = nil
-		l.insertAfter(e.(*nodeElement[T]), &l.root)
+		e.listRef = l
+		e.prev = nil
+		e.next = nil
+		l.insertAfter(e, l.root)
 		e = prev
 	}
 }
@@ -764,11 +780,11 @@ func (l *doublyLinkedList[T]) PushBackList(src LinkedList[T]) {
 		return
 	}
 	for i, e := src.Len(), src.Front(); i > 0; i-- {
-		next := e.GetNext()
+		next := e.Next()
 		// Clean the node element reference, not a required operation
-		e.(*nodeElement[T]).list = l
-		e.(*nodeElement[T]).prev = nil
-		e.(*nodeElement[T]).next = nil
+		e.listRef = l
+		e.prev = nil
+		e.next = nil
 		l.Append(e)
 		e = next
 	}

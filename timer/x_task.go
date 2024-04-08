@@ -9,7 +9,7 @@ import (
 )
 
 type elementTasker interface {
-	getAndReleaseElementRef() list.NodeElement[Task]
+	getAndReleaseElementRef() *list.NodeElement[Task]
 }
 
 type jobMetadata struct {
@@ -50,7 +50,7 @@ var (
 	_ elementTasker = (*task)(nil)
 )
 
-func (t *task) getAndReleaseElementRef() list.NodeElement[Task] {
+func (t *task) getAndReleaseElementRef() *list.NodeElement[Task] {
 	ref := t.getElementRef()
 	t.setElementRef(nil)
 	return ref
@@ -103,12 +103,12 @@ func (t *task) setSlotMetadata(slotMetadata TimingWheelSlotMetadata) {
 	t.slotMetadata = slotMetadata
 }
 
-func (t *task) getElementRef() list.NodeElement[Task] {
-	return *(*list.NodeElement[Task])(atomic.LoadPointer(&t.elementRef))
+func (t *task) getElementRef() *list.NodeElement[Task] {
+	return (*list.NodeElement[Task])(atomic.LoadPointer(&t.elementRef))
 }
 
-func (t *task) setElementRef(elementRef list.NodeElement[Task]) {
-	atomic.StorePointer(&t.elementRef, unsafe.Pointer(&elementRef))
+func (t *task) setElementRef(elementRef *list.NodeElement[Task]) {
+	atomic.StorePointer(&t.elementRef, unsafe.Pointer(elementRef))
 }
 
 func (t *task) GetJobType() JobType {
@@ -137,7 +137,7 @@ type xTask struct {
 	ctx context.Context
 }
 
-func (t *xTask) getAndReleaseElementRef() list.NodeElement[Task] {
+func (t *xTask) getAndReleaseElementRef() *list.NodeElement[Task] {
 	return t.task.getAndReleaseElementRef()
 }
 
@@ -164,7 +164,7 @@ func (t *xScheduledTask) GetRestLoopCount() int64 {
 	return t.scheduler.GetRestLoopCount()
 }
 
-func (t *xScheduledTask) getAndReleaseElementRef() list.NodeElement[Task] {
+func (t *xScheduledTask) getAndReleaseElementRef() *list.NodeElement[Task] {
 	return t.task.getAndReleaseElementRef()
 }
 

@@ -1,59 +1,47 @@
 package list
 
-var (
-	_ NodeElement[struct{}] = (*nodeElement[struct{}])(nil) // Type check assertion
-)
-
-type nodeElement[T comparable] struct {
-	prev, next NodeElement[T]
-	list       BasicLinkedList[T]
-	value      T // The type of value may be a small size type.
+type NodeElement[T comparable] struct {
+	prev, next *NodeElement[T]
+	listRef    *doublyLinkedList[T]
+	Value      T // The type of value may be a small size type.
 	// It should be placed at the end of the struct to avoid taking too much padding.
 }
 
-func NewNodeElement[T comparable](v T) NodeElement[T] {
+func NewNodeElement[T comparable](v T) *NodeElement[T] {
 	return newNodeElement[T](v, nil)
 }
 
-func newNodeElement[T comparable](v T, list BasicLinkedList[T]) *nodeElement[T] {
-	return &nodeElement[T]{
-		value: v,
-		list:  list,
+func newNodeElement[T comparable](v T, list *doublyLinkedList[T]) *NodeElement[T] {
+	return &NodeElement[T]{
+		Value:   v,
+		listRef: list,
 	}
 }
 
-func (e *nodeElement[T]) HasNext() bool {
-	return e.next != nil
-}
-
-func (e *nodeElement[T]) HasPrev() bool {
-	return e.prev != nil
-}
-
-func (e *nodeElement[T]) GetNext() NodeElement[T] {
-	if e.next == nil {
-		return nil
+func (e *NodeElement[T]) HasNext() bool {
+	if e == nil {
+		return false
 	}
-	if _, ok := e.next.(*nodeElement[T]); !ok {
+	return e.next != nil && e.next != e.listRef.getRoot()
+}
+
+func (e *NodeElement[T]) HasPrev() bool {
+	if e == nil {
+		return false
+	}
+	return e.prev != nil && e.prev != e.listRef.getRoot()
+}
+
+func (e *NodeElement[T]) Next() *NodeElement[T] {
+	if e == nil {
 		return nil
 	}
 	return e.next
 }
 
-func (e *nodeElement[T]) GetPrev() NodeElement[T] {
-	if e.prev == nil {
-		return nil
-	}
-	if _, ok := e.prev.(*nodeElement[T]); !ok {
+func (e *NodeElement[T]) Prev() *NodeElement[T] {
+	if e == nil {
 		return nil
 	}
 	return e.prev
-}
-
-func (e *nodeElement[T]) GetValue() T {
-	return e.value
-}
-
-func (e *nodeElement[T]) SetValue(v T) {
-	e.value = v
 }
