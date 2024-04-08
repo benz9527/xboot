@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestThreadSafeMap_ListKeys(t *testing.T) {
+func TestThreadSafeMap_SimpleCRUD(t *testing.T) {
 	keys := genStrKeys(8, 10000)
 	vals := make([]int, 0, len(keys))
 	m := make(map[string]int, len(keys))
