@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMonotonicNonZeroID(t *testing.T) {
 	gen, err := MonotonicNonZeroID()
 	assert.Nil(t, err)
 	for i := 0; i < 1000; i++ {
-		t.Logf("%d, %s\n", gen.Number(), gen.Str())
+		require.Less(t, gen.Number(), gen.Number())
 	}
 }

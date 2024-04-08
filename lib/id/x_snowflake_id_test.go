@@ -35,7 +35,7 @@ func TestXSnowFlakeID_ByMAC(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, gen)
 	for i := 0; i < 1000; i++ {
-		t.Logf("%d, %s\n", gen.Number(), gen.Str())
+		require.Less(t, gen.Number(), gen.Number())
 	}
 }
 
@@ -57,7 +57,7 @@ func TestXSnowFlakeID_ByMAC_DataRace(t *testing.T) {
 	require.NotNil(t, gen)
 	for i := 0; i < 1000; i++ {
 		go func() {
-			t.Logf("%d, %s\n", gen.Number(), gen.Str())
+			require.Less(t, gen.Number(), gen.Number())
 		}()
 	}
 }

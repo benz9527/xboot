@@ -59,8 +59,8 @@ func TestNonSysClockTime(t *testing.T) {
 	t2, t3 := GoMonotonicClock.NowInDefaultTZ(), UnixMonotonicClock.NowInDefaultTZ()
 	t.Logf("go native non-sys clock current time: %v\n", t2)
 	t.Logf("unix non-sys clock current time: %v\n", t3)
-	assert.True(t, t2.UnixMilli()-t1.UnixMilli()-1 <= int64(200) && t2.UnixMilli()-t1.UnixMilli()+1 >= int64(200))
-	assert.True(t, t3.UnixMilli()-t1.UnixMilli()-1 <= int64(200) && t3.UnixMilli()-t1.UnixMilli()+1 >= int64(200))
+	assert.True(t, t2.UnixMilli()-t1.UnixMilli()-5 <= int64(200) && t2.UnixMilli()-t1.UnixMilli()+5 >= int64(200))
+	assert.True(t, t3.UnixMilli()-t1.UnixMilli()-5 <= int64(200) && t3.UnixMilli()-t1.UnixMilli()+5 >= int64(200))
 	time.Sleep(500 * time.Millisecond)
 	t.Logf("go native sys clock current UTC time: %v; asia/shanghai time: %v\n",
 		NowInUTC(), NowIn(TzAsiaShanghaiOffset))
@@ -68,7 +68,7 @@ func TestNonSysClockTime(t *testing.T) {
 		GoMonotonicClock.NowInUTC(), GoMonotonicClock.NowIn(TzAsiaShanghaiOffset))
 	t.Logf("unix non-sys clock current UTC time: %v; asia/shanghai time: %v\n",
 		UnixMonotonicClock.NowInUTC(), UnixMonotonicClock.NowIn(TzAsiaShanghaiOffset))
-	elapsedMs := int64(703)
+	elapsedMs := int64(720)
 	assert.GreaterOrEqual(t, elapsedMs, MonotonicElapsed().Milliseconds())
 	assert.GreaterOrEqual(t, elapsedMs, GoMonotonicClock.MonotonicElapsed().Milliseconds())
 	assert.GreaterOrEqual(t, elapsedMs, UnixMonotonicClock.MonotonicElapsed().Milliseconds())

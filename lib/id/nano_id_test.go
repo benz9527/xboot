@@ -10,7 +10,7 @@ func TestNanoID(t *testing.T) {
 	nanoID, err := ClassicNanoID(8)
 	require.NoError(t, err)
 	for i := 0; i < 1000; i++ {
-		t.Log(nanoID())
+		require.Equal(t, 8, len(nanoID()))
 	}
 }
 

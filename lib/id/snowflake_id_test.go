@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/benz9527/xboot/lib/hrtime"
 )
@@ -41,6 +42,6 @@ func TestSnowFlakeID(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	for i := 0; i < 1000; i++ {
-		t.Logf("%d, %s\n", gen.Number(), gen.Str())
+		require.Less(t, gen.Number(), gen.Number())
 	}
 }
