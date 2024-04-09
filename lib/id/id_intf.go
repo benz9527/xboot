@@ -13,7 +13,7 @@ var (
 )
 
 type uuidDelegator struct {
-	number func() uint64
+	number Gen
 	str    func() string
 }
 

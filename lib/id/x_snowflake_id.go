@@ -42,7 +42,7 @@ const (
 	xSnowflakeDIDMax            = xSnowflakeMIDMax
 	xSnowflakeTsDiffMax         = int64(-1 ^ (-1 << xSnowflakeTsDiffBits))
 	xSnowflakeWorkerIDMax       = int64(-1 ^ (-1 << (xSnowflakeMIDBits + xSnowflakeDIDBits)))
-	xSnowflakeTsAndSequenceMask = int64(-1^(-1<<(xSnowflakeTsDiffBits+xSnowflakeSequenceBits))) >> 1
+	xSnowflakeTsAndSequenceMask = int64(-1 ^ (-1 << (xSnowflakeTsDiffBits + xSnowflakeSequenceBits)))
 )
 
 var (
@@ -96,5 +96,5 @@ func XSnowFlakeIDByWorkerID(workerID int64, now func() time.Time) (UUIDGen, erro
 	idMask := int64(0x1f)
 	mID := workerID & idMask
 	dID := (workerID >> 5) & idMask
-	return xSnowFlakeID(dID, mID, now)
+	return XSnowFlakeID(dID, mID, now)
 }

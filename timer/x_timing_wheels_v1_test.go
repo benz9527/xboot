@@ -11,9 +11,11 @@ import (
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/metric"
 
+	"github.com/benz9527/xboot/lib/id"
 	"github.com/benz9527/xboot/observability"
 )
 
@@ -22,10 +24,12 @@ func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
 
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()
+	idGen, err := id.StandardSnowFlakeID(0, 0, func() time.Time { return time.Now().UTC() })
+	require.NoError(t, err)
 	tw := NewXTimingWheels(
 		ctx,
 		WithTimingWheelTimeSource(SdkDefaultTime),
-		WithTimingWheelsSnowflakeID(0, 0),
+		WithTimingWheelsIDGen(idGen),
 		withTimingWheelsDebugStatsInit(2),
 		WithTimingWheelsStats(),
 	)
