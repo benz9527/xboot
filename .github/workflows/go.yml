@@ -30,7 +30,7 @@ jobs:
     - name: Unit Test
       run: |
         export DISABLE_TEST_DEBUG_LOG=true
-        go test -timeout=1800s -covermode atomic -coverprofile=./cover.out -v ./...
+        go test -timeout=1800s -covermode atomic -coverprofile=./cover.out ./...
 
     - uses: codecov/codecov-action@v4
       with:
@@ -60,4 +60,25 @@ jobs:
     - name: Unit Test
       run: |
         export DISABLE_TEST_DEBUG_LOG=true
-        go test -timeout=1800s -race -v -run ^Test.*DataRace.*$ ./... 
+        go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./... 
+
+  benchTest:
+    name: Benchmark Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go env
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22.2'
+      id: xboot
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Unit Test
+      run: |
+        export DISABLE_TEST_DEBUG_LOG=true
+        go test -benchmem -bench ^Benchmark.*$ github.com/benz9527/xboot/lib/list ./...
