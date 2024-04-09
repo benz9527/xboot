@@ -463,6 +463,7 @@ func (l *doublyLinkedList[T]) Remove(targetE *NodeElement[T]) *NodeElement[T] {
 	return at
 }
 
+// Foreach, allows remove linked list elements while iterating.
 func (l *doublyLinkedList[T]) Foreach(fn func(idx int64, e *NodeElement[T])) {
 	if l == nil || l.root == nil || fn == nil || l.len.Load() == 0 ||
 		l.getRoot() == l.getRootHead() && l.getRoot() == l.getRootTail() {
@@ -470,17 +471,19 @@ func (l *doublyLinkedList[T]) Foreach(fn func(idx int64, e *NodeElement[T])) {
 	}
 
 	var (
-		iterator       = l.getRoot()
+		iterator       = l.getRoot().Next()
 		idx      int64 = 0
 	)
-	for iterator.HasNext() {
-		// Avoid remove in an iteration, result in memory leak
-		iterator = iterator.Next()
+	// Avoid remove in an iteration, result in memory leak
+	for iterator != l.getRoot() {
+		n := iterator.Next()
 		fn(idx, iterator)
+		iterator = n
 		idx++
 	}
 }
 
+// ReverseForeach, allows remove linked list elements while iterating.
 func (l *doublyLinkedList[T]) ReverseForeach(fn func(idx int64, e *NodeElement[T])) {
 	if l == nil || l.root == nil || fn == nil || l.len.Load() == 0 ||
 		l.getRoot() == l.getRootHead() && l.getRoot() == l.getRootTail() {
@@ -488,13 +491,14 @@ func (l *doublyLinkedList[T]) ReverseForeach(fn func(idx int64, e *NodeElement[T
 	}
 
 	var (
-		iterator       = l.getRoot()
+		iterator       = l.getRoot().Prev()
 		idx      int64 = 0
 	)
-	for iterator.HasPrev() {
-		// Avoid remove in an iteration, result in memory leak
-		iterator = iterator.Prev()
+	// Avoid remove in an iteration, result in memory leak
+	for iterator != l.getRoot() {
+		p := iterator.Prev()
 		fn(idx, iterator)
+		iterator = p
 		idx++
 	}
 }
