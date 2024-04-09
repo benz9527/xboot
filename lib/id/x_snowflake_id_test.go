@@ -8,6 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestXSnowflakeID_53BitsMask(t *testing.T) {
+	require.Equal(t, int64(0b111), -1^(int64(-1)<<3))
+	require.Equal(t, int64(0x1F_FFFF_FFFF_FFFF), xSnowflakeTsAndSequenceMask)
+}
+
 func TestGetMACAsWorkerID(t *testing.T) {
 	interfaces, err := net.Interfaces()
 	if err != nil {

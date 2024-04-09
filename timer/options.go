@@ -101,13 +101,11 @@ func (opt *xTimingWheelsOption) getIDGenerator() id.Gen {
 		panic("value unchecked")
 	}
 	if opt.idGenerator == nil {
-		gen, err := id.StandardSnowFlakeID(0, 0, func() time.Time {
-			return opt.getClock().NowInDefaultTZ()
-		})
+		gen, err := id.MonotonicNonZeroID()
 		if err != nil {
 			panic(err)
 		}
-		opt.idGenerator = gen
+		opt.idGenerator = gen.Number
 	}
 	return opt.idGenerator
 }
@@ -181,18 +179,9 @@ func WithTimingWheelsName(name string) TimingWheelsOption {
 	}
 }
 
-func WithTimingWheelsSnowflakeID(datacenterID, machineID int64) TimingWheelsOption {
+func WithTimingWheelsIDGen(gen id.Gen) TimingWheelsOption {
 	return func(opt *xTimingWheelsOption) {
-		idGenerator, err := id.StandardSnowFlakeID(datacenterID, machineID, func() time.Time {
-			if opt.clock == nil {
-				panic("timing-wheels' clock must be not nil")
-			}
-			return opt.clock.NowInDefaultTZ()
-		})
-		if err != nil {
-			panic(err)
-		}
-		opt.idGenerator = idGenerator
+		opt.idGenerator = gen
 	}
 }
 

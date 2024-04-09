@@ -69,7 +69,7 @@ func testXSinglePipelineDisruptorUint64(
 			defer rwg.Done()
 			counter.Add(1)
 			if bitmapCheck {
-				bm.SetBit(event, true)
+				bm.SetBit(event)
 			}
 			return nil
 		},
@@ -79,7 +79,7 @@ func testXSinglePipelineDisruptorUint64(
 	}
 	for i := 0; i < gTotal; i++ {
 		for j := 0; j < tasks; j++ {
-			checkBM.SetBit(uint64(i*tasks+j), true)
+			checkBM.SetBit(uint64(i*tasks+j))
 		}
 	}
 	beginTs := time.Now()
@@ -194,7 +194,7 @@ func testXDisruptorString(t *testing.T, gTotal, tasks int, capacity uint64, bs B
 						_, _ = reportFile.WriteString(fmt.Sprintf("error parse uint64 failed, err: %v\n", err))
 					}
 				}
-				bm.SetBit(e, true)
+				bm.SetBit(e)
 			}
 			if event == "" {
 				t.Logf("error event is empty, counter: %d", counter.Load())
@@ -207,7 +207,7 @@ func testXDisruptorString(t *testing.T, gTotal, tasks int, capacity uint64, bs B
 	}
 	for i := 0; i < gTotal; i++ {
 		for j := 0; j < tasks; j++ {
-			checkBM.SetBit(uint64(i*tasks+j), true)
+			checkBM.SetBit(uint64(i*tasks+j))
 		}
 	}
 	beginTs := time.Now()

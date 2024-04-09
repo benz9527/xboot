@@ -3,7 +3,8 @@ package bits
 import "bytes"
 
 type Bitmap interface {
-	SetBit(offset uint64, one bool) bool
+	SetBit(offset uint64) bool
+	UnsetBit(offset uint64) bool
 	GetBit(offset uint64) bool
 	GetBits() []byte
 	EqualTo(bm Bitmap) bool
@@ -32,16 +33,21 @@ func NewX32Bitmap(size uint64) Bitmap {
 	}
 }
 
-func (bm *x32Bitmap) SetBit(offset uint64, one bool) bool {
+func (bm *x32Bitmap) SetBit(offset uint64) bool {
 	idx, pos := offset>>3, offset&0x07
 	if bm.size < offset {
 		return false
 	}
-	if !one {
-		bm.bits[idx] &= ^(1 << pos) // &^=
-	} else {
-		bm.bits[idx] |= 1 << pos
+	bm.bits[idx] |= 1 << pos
+	return true
+}
+
+func (bm *x32Bitmap) UnsetBit(offset uint64) bool {
+	idx, pos := offset>>3, offset&0x07
+	if bm.size < offset {
+		return false
 	}
+	bm.bits[idx] &= ^(1 << pos) // &^=
 	return true
 }
 
