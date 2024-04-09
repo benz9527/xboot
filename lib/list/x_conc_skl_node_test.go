@@ -808,4 +808,11 @@ func TestXConcSklNodeGen(t *testing.T) {
 	require.Panics(t, func() {
 		genXConcSklUniqueNode[string, int]("123", 1, 0)
 	})
+
+	for lvl := int32(1); lvl <= sklMaxLevel; lvl++ {
+		genXConcSklLinkedListNode[string, int]("123", 1, lvl)
+	}
+	require.Panics(t, func() {
+		genXConcSklLinkedListNode[string, int]("123", 1, 0)
+	})
 }

@@ -84,4 +84,8 @@ jobs:
     - name: Unit Test
       run: |
         export DISABLE_TEST_DEBUG_LOG=true
-        go test -benchmem -bench ^Benchmark.*$ ./...
+        go test -benchmem -bench ^Benchmark.*$ ./lib/list
+        go test -benchmem -bench ^Benchmark.*$ ./lib/kv
+        go test -benchmem -bench ^Benchmark.*$ ./lib/queue
+        go test -benchmem -bench ^Benchmark.*$ ./lib/tree
+        go test -benchmem -bench ^Benchmark.*$ ./timer
