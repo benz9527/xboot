@@ -284,7 +284,7 @@ func testXDisruptorString(t *testing.T, gTotal, tasks int, capacity uint64, bs B
 	}
 }
 
-func TestXDisruptor(t *testing.T) {
+func TestXDisruptor_DataRace(t *testing.T) {
 	testcases := []struct {
 		name   string
 		gTotal int
@@ -307,7 +307,7 @@ func TestXDisruptor(t *testing.T) {
 	}
 }
 
-func TestXDisruptorWithBitmapCheck(t *testing.T) {
+func TestXDisruptorWithBitmapCheck_DataRace(t *testing.T) {
 	testcases := []struct {
 		name   string
 		gTotal int
@@ -333,7 +333,7 @@ func TestXDisruptorWithBitmapCheck(t *testing.T) {
 	}
 }
 
-func TestXDisruptorWithBitmapCheckAndReport(t *testing.T) {
+func TestXDisruptorWithBitmapCheckAndReport_DataRace(t *testing.T) {
 	errorCounter := &atomic.Uint64{}
 	reportFile, err := os.OpenFile(filepath.Join(os.TempDir(), "pubsub-report-"+time.Now().Format("2006-01-02_15_04_05")+".txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	defer func() {
@@ -379,7 +379,7 @@ func TestXDisruptorWithBitmapCheckAndReport(t *testing.T) {
 	}
 }
 
-func TestXDisruptorWithBitmapCheckAndReport_str(t *testing.T) {
+func TestXDisruptorWithBitmapCheckAndReport_Str_DataRace(t *testing.T) {
 	errorCounter := &atomic.Uint64{}
 	reportFile, err := os.OpenFile(filepath.Join(os.TempDir(), "pubsub-report-str-"+time.Now().Format("2006-01-02_15_04_05")+".txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	defer func() {
@@ -426,6 +426,7 @@ func TestXDisruptorWithBitmapCheckAndReport_str(t *testing.T) {
 }
 
 func testNoCacheChannel(t *testing.T, chSize, gTotal, tasks int) {
+	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
 	counter := &atomic.Int64{}
 	wg := &sync.WaitGroup{}
 	wg.Add(gTotal)
@@ -451,12 +452,14 @@ func testNoCacheChannel(t *testing.T, chSize, gTotal, tasks int) {
 	}
 	wg.Wait()
 	diff := time.Now().Sub(beginTs)
-	t.Logf("total: %d, tasks: %d, cost: %v, tps: %v/s", gTotal, tasks, diff, float64(gTotal*tasks)/diff.Seconds())
+	if !debugLogDisabled {
+		t.Logf("total: %d, tasks: %d, cost: %v, tps: %v/s", gTotal, tasks, diff, float64(gTotal*tasks)/diff.Seconds())
+	}
 	time.Sleep(time.Second)
 	assert.Equal(t, int64(gTotal*tasks), counter.Load())
 }
 
-func TestNoCacheChannel(t *testing.T) {
+func TestNoCacheChannel_DataRace(t *testing.T) {
 	testcases := []struct {
 		name   string
 		gTotal int
@@ -476,7 +479,7 @@ func TestNoCacheChannel(t *testing.T) {
 	}
 }
 
-func TestCacheChannel(t *testing.T) {
+func TestCacheChannel_DataRace(t *testing.T) {
 	testcases := []struct {
 		name   string
 		gTotal int

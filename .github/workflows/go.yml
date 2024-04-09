@@ -11,7 +11,7 @@ on:
 
 jobs:
 
-  test:
+  convTest:
     name: Test with Coverage
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +28,9 @@ jobs:
       run: go mod download
 
     - name: Unit Test
-      run: go test -timeout=1800s -covermode atomic -coverprofile=./cover.out -v ./... 
+      run: |
+        export DISABLE_TEST_DEBUG_LOG=true
+        go test -timeout=1800s -covermode atomic -coverprofile=./cover.out -v ./...
 
     - uses: codecov/codecov-action@v4
       with:
@@ -38,3 +40,24 @@ jobs:
         verbose: false
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  raceTest:
+    name: Test with race detector
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go env
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22.2'
+      id: xboot
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Unit Test
+      run: |
+        export DISABLE_TEST_DEBUG_LOG=true
+        go test -timeout=1800s -race -v -run ^Test.*DataRace.*$ ./... 

@@ -3,6 +3,7 @@ package timer
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -250,6 +251,7 @@ func TestXTimingWheelsV2_ScheduleFunc_5MsInfinite(t *testing.T) {
 }
 
 func TestXTimingWheelsV2_AfterFunc_Slots(t *testing.T) {
+	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 500*time.Millisecond, errors.New("timeout"))
 	defer cancel()
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
@@ -293,7 +295,9 @@ func TestXTimingWheelsV2_AfterFunc_Slots(t *testing.T) {
 	sort.Strings(jobIDs)
 	for _, jobID := range jobIDs {
 		v, _ := tw.(*xTimingWheelsV2).tasksMap.Get(JobID(jobID))
-		t.Logf("job ID: %s, slot level: %d, ID %d, %d\n", jobID, v.GetSlot().GetLevel(), v.GetSlot().GetSlotID(), v.GetExpiredMs())
+		if !debugLogDisabled {
+			t.Logf("job ID: %s, slot level: %d, ID %d, %d\n", jobID, v.GetSlot().GetLevel(), v.GetSlot().GetSlotID(), v.GetExpiredMs())
+		}
 	}
 	<-ctx.Done()
 }

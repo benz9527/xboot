@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,6 +23,7 @@ func TestXRingBufferCursor(t *testing.T) {
 }
 
 func TestXRingBufferCursorConcurrency(t *testing.T) {
+	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
 	// lower than single goroutine test
 	cursor := NewXRingBufferCursor()
 	t.Logf("cursor size=%v", unsafe.Sizeof(*cursor.(*rbCursor)))
@@ -33,7 +35,9 @@ func TestXRingBufferCursorConcurrency(t *testing.T) {
 			for j := 0; j < 10000; j++ {
 				x := cursor.Next()
 				if x%10000000 == 0 {
-					t.Logf("gid=%d, x=%d", idx, x)
+					if !debugLogDisabled {
+						t.Logf("gid=%d, x=%d", idx, x)
+					}
 				}
 			}
 			wg.Done()
@@ -45,6 +49,7 @@ func TestXRingBufferCursorConcurrency(t *testing.T) {
 }
 
 func TestXRingBufferCursorNoPaddingConcurrency(t *testing.T) {
+	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
 	// Better than padding version
 	var cursor uint64 // same address, meaningless for data race
 	beginIs := time.Now()
@@ -55,7 +60,9 @@ func TestXRingBufferCursorNoPaddingConcurrency(t *testing.T) {
 			for j := 0; j < 10000; j++ {
 				x := atomic.AddUint64(&cursor, 1)
 				if x%10000000 == 0 {
-					t.Logf("gid=%d, x=%d", idx, x)
+					if !debugLogDisabled {
+						t.Logf("gid=%d, x=%d", idx, x)
+					}
 				}
 			}
 			wg.Done()
