@@ -800,3 +800,12 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 		})
 	}
 }
+
+func TestXConcSklNodeGen(t *testing.T) {
+	for lvl := int32(1); lvl <= sklMaxLevel; lvl++ {
+		genXConcSklUniqueNode[string, int]("123", 1, lvl)
+	}
+	require.Panics(t, func() {
+		genXConcSklUniqueNode[string, int]("123", 1, 0)
+	})
+}

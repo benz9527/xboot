@@ -669,3 +669,12 @@ func BenchmarkXComSklUnique_Serial(b *testing.B) {
 		skl.Insert(i, testByBytes)
 	}
 }
+
+func TestXComSklNodeGen(t *testing.T) {
+	for lvl := int32(1); lvl <= sklMaxLevel; lvl++ {
+		genXComSklNode[string, int]("123", 1, lvl)
+	}
+	require.Panics(t, func() {
+		genXComSklNode[string, int]("123", 1, 0)
+	})
+}
