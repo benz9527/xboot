@@ -222,6 +222,11 @@ func WithTimingWheelsEventBufferSize(size int) TimingWheelsOption {
 
 func withTimingWheelsDebugStatsInit(interval int64) TimingWheelsOption {
 	return func(opt *xTimingWheelsOption) {
+		_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
+		if debugLogDisabled {
+			return
+		}
+
 		exp, err := stdoutmetric.New(
 			stdoutmetric.WithWriter(os.Stdout),
 		)
