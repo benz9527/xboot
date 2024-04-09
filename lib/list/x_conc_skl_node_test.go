@@ -1,6 +1,7 @@
 package list
 
 import (
+	"cmp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -799,4 +800,30 @@ func TestRandomInsertAndRemoveRbtree_RandomMonotonicNumber(t *testing.T) {
 			xConcSklNodeRandomInsertAndRemoveRbtreeRandomMonoNumberRunCore(tt, tc.total, tc.rbRmBySucc, tc.violationCheck)
 		})
 	}
+}
+
+func TestXConcSklNodeGen(t *testing.T) {
+	for lvl := int32(1); lvl <= sklMaxLevel; lvl++ {
+		genXConcSklUniqueNode[string, int]("123", 1, lvl)
+	}
+	require.Panics(t, func() {
+		genXConcSklUniqueNode[string, int]("123", 1, 0)
+	})
+
+	for lvl := int32(1); lvl <= sklMaxLevel; lvl++ {
+		genXConcSklLinkedListNode[string, int]("123", 1, lvl)
+	}
+	require.Panics(t, func() {
+		genXConcSklLinkedListNode[string, int]("123", 1, 0)
+	})
+
+	vcmp := func(i, j int) int64 {
+		return int64(cmp.Compare[int](i, j))
+	}
+	for lvl := int32(1); lvl <= sklMaxLevel; lvl++ {
+		genXConcSklRbtreeNode[string, int]("123", 1, vcmp, lvl)
+	}
+	require.Panics(t, func() {
+		genXConcSklRbtreeNode[string, int]("123", 1, vcmp, 0)
+	})
 }

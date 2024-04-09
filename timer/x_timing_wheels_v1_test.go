@@ -3,6 +3,7 @@ package timer
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,8 @@ import (
 )
 
 func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
+	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
+
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 2100*time.Millisecond, errors.New("timeout"))
 	defer cancel()
 	tw := NewXTimingWheels(
@@ -59,7 +62,9 @@ func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
 	for i := 0; i < len(delays); i++ {
 		_, err := tw.AfterFunc(delays[i], func(ctx context.Context, md JobMetadata) {
 			actualExecCounter.Add(1)
-			t.Logf("exec diff: %v; delay: %v\n", time.Now().UTC().UnixMilli()-startTs, delays[i])
+			if !debugLogDisabled {
+				t.Logf("exec diff: %v; delay: %v\n", time.Now().UTC().UnixMilli()-startTs, delays[i])
+			}
 		})
 		assert.NoError(t, err)
 	}
@@ -69,9 +74,12 @@ func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
 }
 
 func TestXTimingWheels_SimpleAfterFunc(t *testing.T) {
+	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
 	loops := 1
 	for i := 0; i < loops; i++ {
-		t.Logf("loop %d\n", i)
+		if !debugLogDisabled {
+			t.Logf("loop %d\n", i)
+		}
 		testSimpleAfterFuncSdkDefaultTime(t)
 	}
 }
@@ -285,6 +293,7 @@ func TestXTimingWheels_ScheduleFunc_5MsInfinite(t *testing.T) {
 }
 
 func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
+	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 500*time.Millisecond, errors.New("timeout"))
 	defer cancel()
 	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
@@ -329,26 +338,9 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 	sort.Strings(jobIDs)
 	for _, jobID := range jobIDs {
 		v, _ := tw.(*xTimingWheels).tasksMap.Get(JobID(jobID))
-		t.Logf("job ID: %s, slot level: %d, ID %d, %d\n", jobID, v.GetSlot().GetLevel(), v.GetSlot().GetSlotID(), v.GetExpiredMs())
+		if !debugLogDisabled {
+			t.Logf("job ID: %s, slot level: %d, ID %d, %d\n", jobID, v.GetSlot().GetLevel(), v.GetSlot().GetSlotID(), v.GetExpiredMs())
+		}
 	}
 	<-ctx.Done()
-}
-
-func BenchmarkNewTimingWheels_AfterFunc(b *testing.B) {
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
-	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
-	tw := NewXTimingWheels(
-		ctx,
-		WithTimingWheelsTickMs(1*time.Millisecond),
-		WithTimingWheelsSlotSize(20),
-	)
-	defer tw.Shutdown()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := tw.AfterFunc(time.Duration(i+1)*time.Millisecond, func(ctx context.Context, md JobMetadata) {
-		})
-		assert.NoError(b, err)
-	}
-	b.ReportAllocs()
 }

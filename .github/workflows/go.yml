@@ -11,7 +11,7 @@ on:
 
 jobs:
 
-  test:
+  convTest:
     name: Test with Coverage
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +28,9 @@ jobs:
       run: go mod download
 
     - name: Unit Test
-      run: go test -timeout=1800s -covermode atomic -coverprofile=./cover.out -v ./... 
+      run: |
+        export DISABLE_TEST_DEBUG_LOG=true
+        go test -timeout=1800s -covermode atomic -coverprofile=./cover.out ./...
 
     - uses: codecov/codecov-action@v4
       with:
@@ -38,3 +40,52 @@ jobs:
         verbose: false
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  raceTest:
+    name: Test with race detector
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go env
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22.2'
+      id: xboot
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Unit Test
+      run: |
+        export DISABLE_TEST_DEBUG_LOG=true
+        go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./lib/id 
+        go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./lib/list
+        go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./lib/queue
+        go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./timer
+
+  benchTest:
+    name: Benchmark Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go env
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22.2'
+      id: xboot
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Unit Test
+      run: |
+        export DISABLE_TEST_DEBUG_LOG=true
+        go test -benchmem -bench ^Benchmark.*$ ./lib/list
+        go test -benchmem -bench ^Benchmark.*$ ./lib/kv
+        go test -benchmem -bench ^Benchmark.*$ ./lib/queue
+        go test -benchmem -bench ^Benchmark.*$ ./lib/tree
+        go test -benchmem -bench ^Benchmark.*$ ./timer
