@@ -41,13 +41,13 @@ type LinkedList[T comparable] interface {
 	// PushBack inserts a new element e with value v at the back of list l and returns e.
 	PushBack(v T) *NodeElement[T]
 	// MoveToFront moves an element e to the front of list l.
-	MoveToFront(targetE *NodeElement[T])
+	MoveToFront(targetE *NodeElement[T]) bool
 	// MoveToBack moves an element e to the back of list l.
-	MoveToBack(targetE *NodeElement[T])
+	MoveToBack(targetE *NodeElement[T]) bool
 	// MoveBefore moves an element srcE in front of element dstE.
-	MoveBefore(srcE, dstE *NodeElement[T])
+	MoveBefore(srcE, dstE *NodeElement[T]) bool
 	// MoveAfter moves an element srcE next to element dstE.
-	MoveAfter(srcE, dstE *NodeElement[T])
+	MoveAfter(srcE, dstE *NodeElement[T]) bool
 	// PushFrontList inserts a copy of another linked list at the front of list l.
 	PushFrontList(srcList LinkedList[T])
 	// PushBackList inserts a copy of another linked list at the back of list l.
