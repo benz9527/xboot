@@ -344,22 +344,3 @@ func TestXTimingWheels_AfterFunc_Slots(t *testing.T) {
 	}
 	<-ctx.Done()
 }
-
-func BenchmarkNewTimingWheels_AfterFunc(b *testing.B) {
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, disableTimingWheelsScheduleCancelTask, true)
-	ctx = context.WithValue(ctx, disableTimingWheelsSchedulePoll, true)
-	tw := NewXTimingWheels(
-		ctx,
-		WithTimingWheelsTickMs(1*time.Millisecond),
-		WithTimingWheelsSlotSize(20),
-	)
-	defer tw.Shutdown()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := tw.AfterFunc(time.Duration(i+1)*time.Millisecond, func(ctx context.Context, md JobMetadata) {
-		})
-		assert.NoError(b, err)
-	}
-	b.ReportAllocs()
-}
