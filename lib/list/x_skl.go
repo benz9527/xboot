@@ -56,22 +56,28 @@ const (
 	sklProbability = 0.25                   // P = 1/4, a skip list node element has 1/4 probability to have a level
 )
 
-var (
-	ErrXSklNotFound             = errors.New("[x-skl] key or value not found")
-	ErrXSklDisabledValReplace   = errors.New("[x-skl] value replace is disabled")
-	ErrXSklConcRWLoadFailed     = errors.New("[x-skl] concurrent read-write causes load failed")
-	ErrXSklConcRWLoadEmpty      = errors.New("[x-skl] concurrent read-write causes load empty")
-	ErrXSklConcRemoving         = errors.New("[x-skl] concurrent removing")
-	ErrXSklConcRemoveTryLock    = errors.New("[x-skl] concurrent remove acquires segmented lock failed")
-	ErrXSklUnknownReason        = errors.New("[x-skl] unknown reason error")
-	ErrXSklUnknownType          = errors.New("[x-skl] unknown skip list type")
-	ErrXSklIsFull               = errors.New("[x-skl] is full")
-	ErrXSklIsEmpty              = errors.New("[x-skl] is empty")
-	errXSklRbtreeRedViolation   = errors.New("[x-skl] red-black tree violation")
-	errXSklRbtreeBlackViolation = errors.New("[x-skl] red-black tree violation")
-	errSklOptionWrongTypeApply  = errors.New("[skl-option] init with wrong type")
-	errSklOptionHasBeenEnabled  = errors.New("[skl-option] it has been enabled or set already")
-	errSklOptionEmptySettingVal = errors.New("[skl-option] empty setting value")
+type sklError string
+
+func (err sklError) Error() string {
+	return string(err)
+}
+
+const (
+	ErrXSklNotFound             = sklError("[x-skl] key or value not found")
+	ErrXSklDisabledValReplace   = sklError("[x-skl] value replace is disabled")
+	ErrXSklConcRWLoadFailed     = sklError("[x-skl] concurrent read-write causes load failed")
+	ErrXSklConcRWLoadEmpty      = sklError("[x-skl] concurrent read-write causes load empty")
+	ErrXSklConcRemoving         = sklError("[x-skl] concurrent removing")
+	ErrXSklConcRemoveTryLock    = sklError("[x-skl] concurrent remove acquires segmented lock failed")
+	ErrXSklUnknownReason        = sklError("[x-skl] unknown reason error")
+	ErrXSklUnknownType          = sklError("[x-skl] unknown skip list type")
+	ErrXSklIsFull               = sklError("[x-skl] is full")
+	ErrXSklIsEmpty              = sklError("[x-skl] is empty")
+	errXSklRbtreeRedViolation   = sklError("[x-skl] red-black tree violation")
+	errXSklRbtreeBlackViolation = sklError("[x-skl] red-black tree violation")
+	errSklOptionWrongTypeApply  = sklError("[skl-option] init with wrong type")
+	errSklOptionHasBeenEnabled  = sklError("[skl-option] it has been enabled or set already")
+	errSklOptionEmptySettingVal = sklError("[skl-option] empty setting value")
 )
 
 type SklType uint8
