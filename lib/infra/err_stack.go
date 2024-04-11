@@ -308,11 +308,11 @@ func (es *errorStack) Format(state fmt.State, verb rune) {
 			}
 			_, _ = io.WriteString(state, "])")
 		} else if state.Flag('+') {
-			_, _ = io.WriteString(state, "error messages:\n\t")
 			for i, iter := 0, es; iter != nil; i, iter = i+1, iter.upper {
 				if i > 0 {
 					_, _ = io.WriteString(state, "\n")
 				}
+				_, _ = io.WriteString(state, "error messages:\n\t")
 				if iter.err != nil {
 					_, _ = io.WriteString(state, iter.err.Error())
 				} else {
