@@ -3,10 +3,11 @@ package id
 import (
 	crand "crypto/rand"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"strconv"
 	"sync"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 var classicNanoIDAlphabet = [64]byte{
@@ -51,13 +52,13 @@ func init() {
 
 func ClassicNanoID(length int) (NanoIDGen, error) {
 	if length < 1 || length > 255 {
-		return nil, errors.New("invalid nano-id length: " + strconv.Itoa(length))
+		return nil, infra.NewErrorStack("invalid nano-id length: " + strconv.Itoa(length))
 	}
 
 	preAllocSize := length * length * 8
 	bytes := make([]byte, preAllocSize)
 	if _, err := crand.Read(bytes); err != nil {
-		return nil, fmt.Errorf("[nano-id] pre-allocate bytes failed, %w", err)
+		return nil, infra.WrapErrorStackWithMessage(err, "[nano-id] pre-allocate bytes failed")
 	}
 	nanoID := make([]byte, length)
 	offset := 0
