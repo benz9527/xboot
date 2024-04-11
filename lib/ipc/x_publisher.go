@@ -2,12 +2,12 @@ package ipc
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"runtime"
 	"sync/atomic"
 	"time"
 
+	"github.com/benz9527/xboot/lib/infra"
 	"github.com/benz9527/xboot/lib/queue"
 )
 
@@ -45,14 +45,14 @@ func (pub *xPublisher[T]) Start() error {
 	if atomic.CompareAndSwapInt32((*int32)(&pub.status), int32(pubReady), int32(pubRunning)) {
 		return nil
 	}
-	return fmt.Errorf("publisher already started")
+	return infra.NewErrorStack("[disruptor] publisher already started")
 }
 
 func (pub *xPublisher[T]) Stop() error {
 	if atomic.CompareAndSwapInt32((*int32)(&pub.status), int32(pubRunning), int32(pubReady)) {
 		return nil
 	}
-	return fmt.Errorf("publisher already stopped")
+	return infra.NewErrorStack("[disruptor] publisher already stopped")
 }
 
 func (pub *xPublisher[T]) IsStopped() bool {
@@ -61,7 +61,7 @@ func (pub *xPublisher[T]) IsStopped() bool {
 
 func (pub *xPublisher[T]) Publish(event T) (uint64, bool, error) {
 	if pub.IsStopped() {
-		return 0, false, fmt.Errorf("publisher closed")
+		return 0, false, infra.NewErrorStack("[disruptor] publisher closed")
 	}
 	nextWriteCursor := pub.seq.GetWriteCursor().Next()
 	for {
@@ -75,7 +75,7 @@ func (pub *xPublisher[T]) Publish(event T) (uint64, bool, error) {
 		}
 		runtime.Gosched()
 		if pub.IsStopped() {
-			return 0, false, fmt.Errorf("publisher closed")
+			return 0, false, infra.NewErrorStack("[disruptor] publisher closed")
 		}
 	}
 }

@@ -185,8 +185,7 @@ func TestStackTraceFormat(t *testing.T) {
 }
 
 func testStackTrace() stackTrace {
-	const depth = 8
-	var pcs [depth]uintptr
+	var pcs = make([]uintptr, 8)
 	n := runtime.Callers(1, pcs[:])
 	var st stack = pcs[0:n]
 	return st.StackTrace()
@@ -421,6 +420,12 @@ func TestErrorStackMarshalJSON(t *testing.T) {
 	require.NotNil(t, es)
 
 	es = WrapErrorStack(es)
+	require.NotNil(t, es)
+
+	es = NewErrorStack("")
+	require.Nil(t, es)
+
+	es = NewErrorStack("test16")
 	require.NotNil(t, es)
 }
 

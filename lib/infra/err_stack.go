@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -357,6 +358,19 @@ func (es *errorStack) MarshalJSON() ([]byte, error) {
 	return []byte(builder.String()), nil
 }
 
+func NewErrorStack(errMsg string) error {
+	errMsg = strings.TrimSpace(errMsg)
+	if len(errMsg) <= 0 {
+		return nil
+	}
+	s := getCallers(32)
+	return &errorStack{
+		err:   errors.New(errMsg),
+		stack: &s,
+		upper: nil,
+	}
+}
+
 func WrapErrorStack(err error) error {
 	if err == nil {
 		return nil
@@ -411,11 +425,11 @@ func AppendErrorStack(es error, errors ...error) error {
 	}
 }
 
-func WrapErrorStackWithMessage(es error, msg string) error {
-	if len(msg) <= 0 {
+func WrapErrorStackWithMessage(es error, errMsg string) error {
+	if len(errMsg) <= 0 {
 		return es
 	}
-	err := fmt.Errorf("%s", msg)
+	err := fmt.Errorf("%s", errMsg)
 	if es == nil {
 		s := getCallers(32)
 		return &errorStack{

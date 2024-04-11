@@ -1,7 +1,6 @@
 package ipc
 
 import (
-	"fmt"
 	"runtime"
 	"sync/atomic"
 
@@ -56,7 +55,7 @@ func (sub *xSubscriber[T]) Start() error {
 		go sub.eventsHandle()
 		return nil
 	}
-	return fmt.Errorf("subscriber already started")
+	return infra.NewErrorStack("[disruptor] subscriber already started")
 }
 
 func (sub *xSubscriber[T]) Stop() error {
@@ -64,7 +63,7 @@ func (sub *xSubscriber[T]) Stop() error {
 		sub.strategy.Done()
 		return nil
 	}
-	return fmt.Errorf("subscriber already stopped")
+	return infra.NewErrorStack("[disruptor] subscriber already stopped")
 }
 
 func (sub *xSubscriber[T]) IsStopped() bool {
@@ -111,5 +110,5 @@ func (sub *xSubscriber[T]) eventsHandle() {
 func (sub *xSubscriber[T]) HandleEvent(event T) error {
 	//defer sub.strategy.Done() // Slow performance issue
 	err := sub.handler(event)
-	return err
+	return infra.WrapErrorStack(err)
 }
