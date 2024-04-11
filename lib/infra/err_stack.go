@@ -250,6 +250,20 @@ type errorStack struct {
 	upper *errorStack
 }
 
+// For errors.Is(err, target error) and errors.As(err error, target any).
+func (es *errorStack) Unwrap() []error {
+	_errors := make([]error, 0, 8)
+	for err := es.err; es != nil; es = es.upper {
+		switch x := err.(type) {
+		case interface{ Unwrap() []error }:
+			_errors = append(_errors, x.Unwrap()...)
+		default:
+			_errors = append(_errors, err)
+		}
+	}
+	return _errors
+}
+
 func (es *errorStack) Error() string {
 	builder := strings.Builder{}
 	for i, iter := 0, es; iter != nil; i, iter = i+1, iter.upper {

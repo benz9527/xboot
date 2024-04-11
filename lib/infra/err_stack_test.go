@@ -433,8 +433,12 @@ func (e testStrError) Error() string {
 func TestErrorStack_StrError(t *testing.T) {
 	const (
 		stErr1 = testStrError("test1-error")
+		stErr2 = testStrError("test2-error")
+		stErr3 = testStrError("test3-error")
 	)
 	es := WrapErrorStack(stErr1)
+	require.True(t, errors.Is(es, stErr1))
+
 	_bytes, err := json.Marshal(es)
 	require.NoError(t, err)
 	t.Log(string(_bytes))
@@ -443,4 +447,7 @@ func TestErrorStack_StrError(t *testing.T) {
 	t.Logf("%s\n", es)
 	t.Logf("%+v\n", es)
 	t.Logf("%#v\n", es)
+
+	merr := AppendErrorStack(es, stErr2, stErr3)
+	require.True(t, errors.Is(merr, stErr2))
 }
