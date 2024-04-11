@@ -262,7 +262,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparato
 	switch mode := xNodeMode(atomicLoadBits(&node.flags, xNodeModeFlagBits)); mode {
 	case unique:
 		if ifNotPresent[0] {
-			return false, ErrXSklDisabledValReplace
+			return false, infra.WrapErrorStack(ErrXSklDisabledValReplace)
 		}
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&node.root.vptr)), unsafe.Pointer(&val))
 	case linkedList:
@@ -282,7 +282,7 @@ func (node *xConcSklNode[K, V]) storeVal(ver uint64, val V, vcmp SklValComparato
 		// impossible run to here
 		panic( /* debug assertion */ "[x-conc-skl] unknown x-node type")
 	}
-	return isAppend, err
+	return isAppend, infra.WrapErrorStack(err)
 }
 
 func (node *xConcSklNode[K, V]) atomicLoadRoot() *xNode[V] {
@@ -311,7 +311,7 @@ func (node *xConcSklNode[K, V]) llInsert(val V, vcmp SklValComparator[V], ifNotP
 	for pred, n := node.root, node.root.linkedListNext(); n != nil; n = n.linkedListNext() {
 		if /* replace */ res := vcmp(val, *n.vptr); res == 0 {
 			if /* disabled */ ifNotPresent[0] {
-				return false, ErrXSklDisabledValReplace
+				return false, infra.WrapErrorStack(ErrXSklDisabledValReplace)
 			}
 			atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&n.vptr)), unsafe.Pointer(&val))
 			break
@@ -719,13 +719,13 @@ func (node *xConcSklNode[K, V]) rbRemoveNode(z *xNode[V]) (res *xNode[V], err er
 
 func (node *xConcSklNode[K, V]) rbRemove(val V, vcmp SklValComparator[V]) (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 	z := node.rbSearch(node.root, func(vn *xNode[V]) int64 {
 		return vcmp(val, *vn.vptr)
 	})
 	if z == nil {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 	defer func() {
 		atomic.AddInt64(&node.count, -1)
@@ -736,11 +736,11 @@ func (node *xConcSklNode[K, V]) rbRemove(val V, vcmp SklValComparator[V]) (*xNod
 
 func (node *xConcSklNode[K, V]) rbRemoveMin() (*xNode[V], error) {
 	if atomic.LoadInt64(&node.count) <= 0 {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 	_min := node.root.minimum()
 	if _min.isNilLeaf() {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 	defer func() {
 		atomic.AddInt64(&node.count, -1)
@@ -1014,7 +1014,7 @@ func (node *xConcSklNode[K, V]) rbRedViolationValidate() error {
 		if aux = stack[size-1]; aux.isRed() {
 			if (!aux.parent.isRoot() && aux.parent.isRed()) ||
 				(aux.left.isRed() || aux.right.isRed()) {
-				return errXSklRbtreeRedViolation
+				return infra.WrapErrorStack(errXSklRbtreeRedViolation)
 			}
 		}
 
@@ -1090,7 +1090,7 @@ func (node *xConcSklNode[K, V]) rbBlackViolationValidate() error {
 	blackDepth := leaves[0].blackDepthTo(node.root)
 	for i := 1; i < len(leaves); i++ {
 		if leaves[i].blackDepthTo(node.root) != blackDepth {
-			return errXSklRbtreeBlackViolation
+			return infra.WrapErrorStack(errXSklRbtreeBlackViolation)
 		}
 	}
 	return nil

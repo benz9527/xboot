@@ -94,7 +94,7 @@ func (skl *xComSkl[K, V]) Levels() int32 {
 
 func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	if skl.Len() >= sklMaxSize {
-		return ErrXSklIsFull
+		return infra.WrapErrorStack(ErrXSklIsFull)
 	}
 
 	var (
@@ -123,7 +123,8 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 				pred = cur
 			} else /* replace */ if res == 0 && skl.vcmp(val, cur.Element().Val()) == 0 {
 				if /* disabled */ ifNotPresent[0] {
-					return ErrXSklDisabledValReplace
+					return infra.WrapErrorStack(ErrXSklDisabledValReplace)
+
 				}
 				cur.element = &xSklElement[K, V]{
 					key: key,
@@ -176,25 +177,25 @@ func (skl *xComSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 
 func (skl *xComSkl[K, V]) LoadFirst(key K) (SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	e, _ := skl.findPredecessor0(key, nil)
 	if e.levels() == nil {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 	return e.levels()[0].Element(), nil
 }
 
 func (skl *xComSkl[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, aux := skl.findPredecessor0(key, aux[:])
 	if pred == nil {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 
 	target := pred.levels()[0]
@@ -202,7 +203,7 @@ func (skl *xComSkl[K, V]) RemoveFirst(key K) (SklElement[K, V], error) {
 		skl.removeNode(target, aux)
 		return target.Element(), nil
 	}
-	return nil, ErrXSklNotFound
+	return nil, infra.WrapErrorStack(ErrXSklNotFound)
 }
 
 func (skl *xComSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K, V]) bool) {
@@ -248,10 +249,10 @@ func (skl *xComSkl[K, V]) PeekHead() SklElement[K, V] {
 func (skl *xComSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 	target := skl.head
 	if skl.Len() <= 0 || target == nil {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 	if target = target.levels()[0]; target == nil {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 	element = target.Element()
 	return skl.RemoveFirst(element.Key())
@@ -261,13 +262,13 @@ func (skl *xComSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 
 func (skl *xComSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, _ := skl.findPredecessor0(key, aux)
 	if pred == nil {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
@@ -281,12 +282,12 @@ func (skl *xComSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklEl
 
 func (skl *xComSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	pred, _ := skl.findPredecessor0(key, nil)
 	if pred == nil {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
@@ -298,13 +299,13 @@ func (skl *xComSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 
 func (skl *xComSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, aux := skl.findPredecessor0(key, aux)
 	if pred == nil {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)
@@ -328,13 +329,13 @@ func (skl *xComSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Skl
 
 func (skl *xComSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	aux := make([]*xComSklNode[K, V], sklMaxLevel)
 	pred, aux := skl.findPredecessor0(key, aux)
 	if pred == nil {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
 
 	elements := make([]SklElement[K, V], 0, 16)

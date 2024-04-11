@@ -122,7 +122,7 @@ func (skl *xConcSkl[K, V]) Levels() int32 {
 // Only works for unique element skip-list.
 func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 	if skl.Len() >= sklMaxSize {
-		return ErrXSklIsFull
+		return infra.WrapErrorStack(ErrXSklIsFull)
 	}
 
 	var (
@@ -142,11 +142,11 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			if /* conc rm */ atomicIsSet(&node.flags, nodeRemovingFlagBit) {
 				continue
 			} else if /* conc d-check */ skl.Len() >= sklMaxSize {
-				return ErrXSklIsFull
+				return infra.WrapErrorStack(ErrXSklIsFull)
 			}
 
 			if isAppend, err := node.storeVal(ver, val, skl.vcmp, ifNotPresent...); err != nil {
-				return err
+				return infra.WrapErrorStack(err)
 			} else if isAppend {
 				atomic.AddInt64(&skl.nodeLen, 1)
 			}
@@ -180,7 +180,7 @@ func (skl *xConcSkl[K, V]) Insert(key K, val V, ifNotPresent ...bool) error {
 			continue
 		} else if /* conc d-check */ skl.Len() >= sklMaxSize {
 			unlockNodes(ver, lockedLevels, aux[0:sklMaxLevel]...)
-			return ErrXSklIsFull
+			return infra.WrapErrorStack(ErrXSklIsFull)
 		}
 
 		node := newXConcSklNode(key, val, newLvls, skl.loadXNodeMode(), skl.vcmp)
@@ -301,7 +301,7 @@ func (skl *xConcSkl[K, V]) Foreach(action func(i int64, item SklIterationItem[K,
 // or nil if no val is present.
 func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 	isDesc := isSet(skl.flags, xConcSklKeyCmpFlagBit)
 
@@ -317,7 +317,7 @@ func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err error
 		if /* found */ nIdx != nil && key == nIdx.key {
 			if atomicAreEqual(&nIdx.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw empty */ atomic.LoadInt64(&nIdx.count) <= 0 {
-					return nil, ErrXSklConcRWLoadEmpty
+					return nil, infra.WrapErrorStack(ErrXSklConcRWLoadEmpty)
 				}
 				switch mode {
 				case unique:
@@ -340,7 +340,7 @@ func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err error
 					}
 				case rbtree:
 					if x := nIdx.root.minimum(); x == nil {
-						return nil, ErrXSklConcRWLoadEmpty
+						return nil, infra.WrapErrorStack(ErrXSklConcRWLoadEmpty)
 					} else {
 						return &xSklElement[K, V]{
 							key: key,
@@ -351,16 +351,16 @@ func (skl *xConcSkl[K, V]) LoadFirst(key K) (element SklElement[K, V], err error
 					panic("[x-conc-skl] unknown x-node type")
 				}
 			}
-			return nil, ErrXSklConcRWLoadFailed
+			return nil, infra.WrapErrorStack(ErrXSklConcRWLoadFailed)
 		}
 	}
-	return nil, ErrXSklNotFound
+	return nil, infra.WrapErrorStack(ErrXSklNotFound)
 }
 
 // RemoveFirst deletes the val for a key, only the first value.
 func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	var (
@@ -386,7 +386,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 					topLevel = foundAt
 					if !rmNode.tryLock(ver) {
 						if /* d-check */ atomicIsSet(&rmNode.flags, nodeRemovingFlagBit) {
-							return nil, ErrXSklConcRemoveTryLock
+							return nil, infra.WrapErrorStack(ErrXSklConcRemoveTryLock)
 						}
 						isMarked = false
 						continue
@@ -394,7 +394,7 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 
 					if /* node locked, d-check */ atomicIsSet(&rmNode.flags, nodeRemovingFlagBit) {
 						rmNode.unlock(ver)
-						return nil, ErrXSklConcRemoving
+						return nil, infra.WrapErrorStack(ErrXSklConcRemoving)
 					}
 
 					atomicSet(&rmNode.flags, nodeRemovingFlagBit)
@@ -533,9 +533,9 @@ func (skl *xConcSkl[K, V]) RemoveFirst(key K) (element SklElement[K, V], err err
 	}
 
 	if foundAt == -1 {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
-	return nil, ErrXSklUnknownReason
+	return nil, infra.WrapErrorStack(ErrXSklUnknownReason)
 }
 
 func (skl *xConcSkl[K, V]) PeekHead() (element SklElement[K, V]) {
@@ -597,7 +597,7 @@ func (skl *xConcSkl[K, V]) PeekHead() (element SklElement[K, V]) {
 func (skl *xConcSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 	forward := skl.atomicLoadHead().atomicLoadNextNode(0)
 	if forward == nil {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 	return skl.RemoveFirst(forward.key)
 }
@@ -606,7 +606,7 @@ func (skl *xConcSkl[K, V]) PopHead() (element SklElement[K, V], err error) {
 
 func (skl *xConcSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	var (
@@ -625,7 +625,7 @@ func (skl *xConcSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklE
 		if /* found */ nIdx != nil && key == nIdx.key {
 			if atomicAreEqual(&nIdx.flags, nodeInsertedFlagBit|nodeRemovingFlagBit, insertFullyLinked) {
 				if /* conc rw */ atomic.LoadInt64(&nIdx.count) <= 0 {
-					return nil, ErrXSklConcRWLoadEmpty
+					return nil, infra.WrapErrorStack(ErrXSklConcRWLoadEmpty)
 				}
 				switch mode {
 				case unique:
@@ -656,15 +656,15 @@ func (skl *xConcSkl[K, V]) LoadIfMatch(key K, matcher func(that V) bool) ([]SklE
 					panic("[x-conc-skl] unknown x-node type")
 				}
 			}
-			return nil, ErrXSklConcRWLoadFailed
+			return nil, infra.WrapErrorStack(ErrXSklConcRWLoadFailed)
 		}
 	}
-	return nil, ErrXSklNotFound
+	return nil, infra.WrapErrorStack(ErrXSklNotFound)
 }
 
 func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	var (
@@ -709,15 +709,15 @@ func (skl *xConcSkl[K, V]) LoadAll(key K) ([]SklElement[K, V], error) {
 					panic("[x-conc-skl] unknown x-node type")
 				}
 			}
-			return nil, ErrXSklConcRWLoadFailed
+			return nil, infra.WrapErrorStack(ErrXSklConcRWLoadFailed)
 		}
 	}
-	return nil, ErrXSklNotFound
+	return nil, infra.WrapErrorStack(ErrXSklNotFound)
 }
 
 func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	var (
@@ -846,14 +846,14 @@ func (skl *xConcSkl[K, V]) RemoveIfMatch(key K, matcher func(that V) bool) ([]Sk
 	}
 
 	if foundAt == -1 {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
-	return nil, ErrXSklUnknownReason
+	return nil, infra.WrapErrorStack(ErrXSklUnknownReason)
 }
 
 func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	if skl.Len() <= 0 {
-		return nil, ErrXSklIsEmpty
+		return nil, infra.WrapErrorStack(ErrXSklIsEmpty)
 	}
 
 	var (
@@ -968,7 +968,7 @@ func (skl *xConcSkl[K, V]) RemoveAll(key K) ([]SklElement[K, V], error) {
 	}
 
 	if foundAt == -1 {
-		return nil, ErrXSklNotFound
+		return nil, infra.WrapErrorStack(ErrXSklNotFound)
 	}
-	return nil, ErrXSklUnknownReason
+	return nil, infra.WrapErrorStack(ErrXSklUnknownReason)
 }

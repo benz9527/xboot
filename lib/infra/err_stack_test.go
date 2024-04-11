@@ -423,3 +423,24 @@ func TestErrorStackMarshalJSON(t *testing.T) {
 	es = WrapErrorStack(es)
 	require.NotNil(t, es)
 }
+
+type testStrError string
+
+func (e testStrError) Error() string {
+	return string(e)
+}
+
+func TestErrorStack_StrError(t *testing.T) {
+	const (
+		stErr1 = testStrError("test1-error")
+	)
+	es := WrapErrorStack(stErr1)
+	_bytes, err := json.Marshal(es)
+	require.NoError(t, err)
+	t.Log(string(_bytes))
+
+	t.Logf("%v\n", es)
+	t.Logf("%s\n", es)
+	t.Logf("%+v\n", es)
+	t.Logf("%#v\n", es)
+}
