@@ -79,7 +79,7 @@ func testSimpleAfterFuncSdkDefaultTime(t *testing.T) {
 
 func TestXTimingWheels_SimpleAfterFunc(t *testing.T) {
 	_, debugLogDisabled := os.LookupEnv("DISABLE_TEST_DEBUG_LOG")
-	loops := 1
+	loops := 100
 	for i := 0; i < loops; i++ {
 		if !debugLogDisabled {
 			t.Logf("loop %d\n", i)

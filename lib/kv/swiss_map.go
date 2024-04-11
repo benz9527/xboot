@@ -9,6 +9,7 @@ import (
 	"go.uber.org/multierr"
 
 	ibits "github.com/benz9527/xboot/lib/bits"
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 // References:
@@ -98,13 +99,18 @@ const (
 	deleted        int8   = -2   // 0b1111_1110, OxFE; https://github.com/abseil/abseil-cpp/blob/61e47a454c81eb07147b0315485f476513cc1230/absl/container/internal/raw_hash_set.h#L506
 )
 
+type kvError string
+
+func (e kvError) Error() string { return string(e) }
+
+const (
+	errSwissMapConcurrentRehash = kvError("[swiss-map] concurrent rehash")
+	errSwissMapNextSlotsCapOvf  = kvError("[swiss-map] slots overflow")
+)
+
 var (
 	// amd64 && !nosimd 256 * 1024 * 1024; !amd64 || nosimd 512 * 1024 * 1024
 	maxSlotCap = 1 << (32 - ibits.CeilPowOf2(slotSize))
-
-	// Errors
-	errSwissMapConcurrentRehash = errors.New("[swiss-map] concurrent rehash")
-	errSwissMapNextSlotsCapOvf  = errors.New("[swiss-map] slots overflow")
 )
 
 // A 57 bits hash prefix.
@@ -150,10 +156,10 @@ func (m *swissMap[K, V]) Put(key K, val V) error {
 	if m.resident >= m.limit {
 		n, err := m.nextCap()
 		if err != nil {
-			return err
+			return infra.WrapErrorStack(err)
 		}
 		if err = m.rehash(n); err != nil {
-			return err
+			return infra.WrapErrorStack(err)
 		}
 	}
 	m.put(key, val)
@@ -294,7 +300,7 @@ func (m *swissMap[K, V]) MigrateFrom(_m map[K]V) error {
 			merr = multierr.Append(merr, err)
 		}
 	}
-	return merr
+	return infra.WrapErrorStack(merr)
 }
 
 func (m *swissMap[K, V]) Len() int64 {
@@ -311,7 +317,7 @@ func (m *swissMap[K, V]) nextCap() (uint32, error) {
 	}
 	newCap := int64(atomic.LoadUint32(&m.slotCap)) * 2
 	if newCap > int64(maxSlotCap) {
-		return 0, errSwissMapNextSlotsCapOvf
+		return 0, infra.WrapErrorStack(errSwissMapNextSlotsCapOvf)
 	}
 	return uint32(newCap), nil
 }
@@ -319,7 +325,7 @@ func (m *swissMap[K, V]) nextCap() (uint32, error) {
 func (m *swissMap[K, V]) rehash(newCapacity uint32) error {
 	oldCtrlMetadataSet, oldSlots, oldSlotCap := m.ctrlMetadataSet, m.slots, atomic.LoadUint32(&m.slotCap)
 	if !atomic.CompareAndSwapUint32(&m.slotCap, oldSlotCap, newCapacity) {
-		return errSwissMapConcurrentRehash
+		return infra.WrapErrorStack(errSwissMapConcurrentRehash)
 	}
 
 	m.slots = make([]swissMapSlot[K, V], newCapacity)

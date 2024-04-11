@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"testing"
@@ -271,6 +272,16 @@ func TestAutoGrowthArena_unsafe_sliceGCRelease(t *testing.T) {
 		arr := unsafe.Slice((*byte)(objs[i].obj.arr), 4)
 		t.Logf("after gc, i: %d; arr len: %d; arr value: %v\n", i, len(arr), arr)
 	}
+}
+
+func TestSklErrorStack(t *testing.T) {
+	errFn := func() error {
+		return ErrXSklIsEmpty
+	}
+	err := errFn()
+	require.Error(t, err)
+	stack := debug.Stack()
+	t.Logf("%s\n", stack)
 }
 
 func BenchmarkXConcSklBuffer_xConcSklNode(b *testing.B) {

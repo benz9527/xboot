@@ -79,7 +79,7 @@ func testXSinglePipelineDisruptorUint64(
 	}
 	for i := 0; i < gTotal; i++ {
 		for j := 0; j < tasks; j++ {
-			checkBM.SetBit(uint64(i*tasks+j))
+			checkBM.SetBit(uint64(i*tasks + j))
 		}
 	}
 	beginTs := time.Now()
@@ -207,7 +207,7 @@ func testXDisruptorString(t *testing.T, gTotal, tasks int, capacity uint64, bs B
 	}
 	for i := 0; i < gTotal; i++ {
 		for j := 0; j < tasks; j++ {
-			checkBM.SetBit(uint64(i*tasks+j))
+			checkBM.SetBit(uint64(i*tasks + j))
 		}
 	}
 	beginTs := time.Now()
@@ -335,7 +335,7 @@ func TestXDisruptorWithBitmapCheck_DataRace(t *testing.T) {
 
 func TestXDisruptorWithBitmapCheckAndReport_DataRace(t *testing.T) {
 	errorCounter := &atomic.Uint64{}
-	reportFile, err := os.OpenFile(filepath.Join(os.TempDir(), "pubsub-report-"+time.Now().Format("2006-01-02_15_04_05")+".txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	reportFile, err := os.OpenFile(filepath.Join(os.TempDir(), "pubsub-report-"+time.Now().Format("2006-01-02_15_04_05")+".txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	defer func() {
 		if reportFile != nil {
 			_ = reportFile.Close()
@@ -381,7 +381,7 @@ func TestXDisruptorWithBitmapCheckAndReport_DataRace(t *testing.T) {
 
 func TestXDisruptorWithBitmapCheckAndReport_Str_DataRace(t *testing.T) {
 	errorCounter := &atomic.Uint64{}
-	reportFile, err := os.OpenFile(filepath.Join(os.TempDir(), "pubsub-report-str-"+time.Now().Format("2006-01-02_15_04_05")+".txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	reportFile, err := os.OpenFile(filepath.Join(os.TempDir(), "pubsub-report-str-"+time.Now().Format("2006-01-02_15_04_05")+".txt"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	defer func() {
 		if reportFile != nil {
 			_ = reportFile.Close()

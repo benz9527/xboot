@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -91,8 +92,7 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 		return ErrTimingWheelEmptyJob
 	}
 	if task.Cancelled() {
-		return fmt.Errorf("[timing wheel] task %s is cancelled, %w",
-			task.GetJobID(), ErrTimingWheelTaskCancelled)
+		return ErrTimingWheelTaskCancelled
 	}
 
 	taskExpiredMs := task.GetExpiredMs()
@@ -104,8 +104,7 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 
 	if level == 0 && diff <= tickMs {
 		task.setSlot(immediateExpiredSlot)
-		return fmt.Errorf("[timing wheel] task task expired ms  %d is before %d, %w",
-			taskExpiredMs, currentTimeMs+tickMs, ErrTimingWheelTaskIsExpired)
+		return ErrTimingWheelTaskIsExpired
 	}
 	if diff > tickMs && diff < interval {
 		virtualID := taskExpiredMs / tickMs
@@ -113,10 +112,8 @@ func (tw *timingWheel) addTask(task Task, level int64) error {
 		slot := tw.slots[slotID]
 		if slot.GetExpirationMs() == virtualID*tickMs {
 			if err := slot.AddTask(task); errors.Is(err, ErrTimingWheelTaskUnableToBeAddedToSlot) {
-				slog.Warn("unable add a task to slot, set it as immediately expired", "ms", task.GetExpiredMs(), "ID", task.GetJobID())
 				task.setSlot(immediateExpiredSlot)
-				return fmt.Errorf("[timing wheel] task task expired ms  %d is before %d, %w",
-					taskExpiredMs, currentTimeMs+tickMs, ErrTimingWheelTaskIsExpired)
+				return ErrTimingWheelTaskIsExpired
 			} else if err != nil {
 				return err
 			}
@@ -248,36 +245,36 @@ func (xtw *xTimingWheels) AddTask(task Task) error {
 
 func (xtw *xTimingWheels) AfterFunc(delayMs time.Duration, fn Job) (Task, error) {
 	if delayMs.Milliseconds() < xtw.GetTickMs() {
-		return nil, fmt.Errorf("[x-timing-wheels] delay ms %d is less than tick ms %d, %w",
-			delayMs.Milliseconds(), xtw.GetTickMs(), ErrTimingWheelTaskTooShortExpiration)
+		return nil, infra.WrapErrorStackWithMessage(ErrTimingWheelTaskTooShortExpiration, "[x-timing-wheels] delay ms "+strconv.FormatInt(delayMs.Milliseconds(), 10)+
+			" is less than tick ms "+strconv.FormatInt(xtw.GetTickMs(), 10))
 	}
 	if fn == nil {
-		return nil, ErrTimingWheelEmptyJob
+		return nil, infra.WrapErrorStack(ErrTimingWheelEmptyJob)
 	}
 
 	var now = xtw.clock.NowInDefaultTZ()
 	task := NewOnceTask(
 		xtw.ctx,
-		JobID(fmt.Sprintf("%v", xtw.idGenerator())),
+		JobID(strconv.FormatUint(xtw.idGenerator(), 10)),
 		now.Add(delayMs).UnixMilli(),
 		fn,
 	)
 
 	if !xtw.isRunning.Load() {
-		return nil, ErrTimingWheelStopped
+		return nil, infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 	if err := xtw.AddTask(task); err != nil {
-		return nil, err
+		return nil, infra.WrapErrorStack(err)
 	}
 	return task, nil
 }
 
 func (xtw *xTimingWheels) ScheduleFunc(schedFn func() Scheduler, fn Job) (Task, error) {
 	if schedFn == nil {
-		return nil, ErrTimingWheelUnknownScheduler
+		return nil, infra.WrapErrorStack(ErrTimingWheelUnknownScheduler)
 	}
 	if fn == nil {
-		return nil, ErrTimingWheelEmptyJob
+		return nil, infra.WrapErrorStack(ErrTimingWheelEmptyJob)
 	}
 
 	var now = xtw.clock.NowInDefaultTZ()
@@ -289,25 +286,25 @@ func (xtw *xTimingWheels) ScheduleFunc(schedFn func() Scheduler, fn Job) (Task, 
 	)
 
 	if !xtw.isRunning.Load() {
-		return nil, ErrTimingWheelStopped
+		return nil, infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 	if err := xtw.AddTask(task); err != nil {
-		return nil, err
+		return nil, infra.WrapErrorStack(err)
 	}
 	return task, nil
 }
 
 func (xtw *xTimingWheels) CancelTask(jobID JobID) error {
 	if len(jobID) <= 0 {
-		return ErrTimingWheelTaskEmptyJobID
+		return infra.WrapErrorStack(ErrTimingWheelTaskEmptyJobID)
 	}
 
 	if xtw.isRunning.Load() {
-		return ErrTimingWheelStopped
+		return infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 	task, ok := xtw.tasksMap.Get(jobID)
 	if !ok {
-		return ErrTimingWheelTaskNotFound
+		return infra.WrapErrorStack(ErrTimingWheelTaskNotFound)
 	}
 
 	event := xtw.twEventPool.Get()
@@ -427,7 +424,7 @@ func (xtw *xTimingWheels) addTask(task Task) error {
 	if err == nil || errors.Is(err, ErrTimingWheelTaskIsExpired) {
 		xtw.tasksMap.AddOrUpdate(task.GetJobID(), task)
 	}
-	return err
+	return infra.WrapErrorStack(err)
 }
 
 // handleTask all tasks which are called by this method
@@ -520,16 +517,16 @@ func (xtw *xTimingWheels) handleTask(t Task) {
 
 func (xtw *xTimingWheels) cancelTask(jobID JobID) error {
 	if !xtw.isRunning.Load() {
-		return ErrTimingWheelStopped
+		return infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 
 	task, ok := xtw.tasksMap.Get(jobID)
 	if !ok {
-		return ErrTimingWheelTaskNotFound
+		return infra.WrapErrorStack(ErrTimingWheelTaskNotFound)
 	}
 
 	if task.GetSlot() != nil && !task.GetSlot().RemoveTask(task) {
-		return ErrTimingWheelTaskUnableToBeRemoved
+		return infra.WrapErrorStack(ErrTimingWheelTaskUnableToBeRemoved)
 	}
 
 	defer func() {
@@ -539,8 +536,8 @@ func (xtw *xTimingWheels) cancelTask(jobID JobID) error {
 
 	task.Cancel()
 
-	xtw.tasksMap.Delete(jobID)
-	return nil
+	_, err := xtw.tasksMap.Delete(jobID)
+	return infra.WrapErrorStack(err)
 }
 
 // NewXTimingWheels creates a new timing wheel.

@@ -71,18 +71,18 @@ func (xtw *xTimingWheelsV2) Shutdown() {
 
 func (xtw *xTimingWheelsV2) AddTask(task Task) error {
 	if len(task.GetJobID()) <= 0 {
-		return ErrTimingWheelTaskEmptyJobID
+		return infra.WrapErrorStack(ErrTimingWheelTaskEmptyJobID)
 	}
 	if task.GetJob() == nil {
-		return ErrTimingWheelEmptyJob
+		return infra.WrapErrorStack(ErrTimingWheelEmptyJob)
 	}
 	if !xtw.isRunning.Load() {
-		return ErrTimingWheelStopped
+		return infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 	event := xtw.twEventPool.Get()
 	event.AddTask(task)
 	_, _, err := xtw.twEventDisruptor.Publish(event)
-	return err
+	return infra.WrapErrorStack(err)
 }
 
 func (xtw *xTimingWheelsV2) AfterFunc(delayMs time.Duration, fn Job) (Task, error) {
@@ -91,7 +91,7 @@ func (xtw *xTimingWheelsV2) AfterFunc(delayMs time.Duration, fn Job) (Task, erro
 			delayMs.Milliseconds(), xtw.GetTickMs(), ErrTimingWheelTaskTooShortExpiration)
 	}
 	if fn == nil {
-		return nil, ErrTimingWheelEmptyJob
+		return nil, infra.WrapErrorStack(ErrTimingWheelEmptyJob)
 	}
 
 	var now = xtw.clock.NowInDefaultTZ()
@@ -128,31 +128,31 @@ func (xtw *xTimingWheelsV2) ScheduleFunc(schedFn func() Scheduler, fn Job) (Task
 	)
 
 	if !xtw.isRunning.Load() {
-		return nil, ErrTimingWheelStopped
+		return nil, infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 	if err := xtw.AddTask(task); err != nil {
-		return nil, err
+		return nil, infra.WrapErrorStack(err)
 	}
 	return task, nil
 }
 
 func (xtw *xTimingWheelsV2) CancelTask(jobID JobID) error {
 	if len(jobID) <= 0 {
-		return ErrTimingWheelTaskEmptyJobID
+		return infra.WrapErrorStack(ErrTimingWheelTaskEmptyJobID)
 	}
 
 	if xtw.isRunning.Load() {
-		return ErrTimingWheelStopped
+		return infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 	task, ok := xtw.tasksMap.Get(jobID)
 	if !ok {
-		return ErrTimingWheelTaskNotFound
+		return infra.WrapErrorStack(ErrTimingWheelTaskNotFound)
 	}
 
 	event := xtw.twEventPool.Get()
 	event.CancelTaskJobID(task.GetJobID())
 	_, _, err := xtw.twEventDisruptor.Publish(event)
-	return err
+	return infra.WrapErrorStack(err)
 }
 
 func (xtw *xTimingWheelsV2) schedule(ctx context.Context) {
@@ -380,12 +380,12 @@ func (xtw *xTimingWheelsV2) handleTask(t Task) {
 
 func (xtw *xTimingWheelsV2) cancelTask(jobID JobID) error {
 	if !xtw.isRunning.Load() {
-		return ErrTimingWheelStopped
+		return infra.WrapErrorStack(ErrTimingWheelStopped)
 	}
 
 	task, ok := xtw.tasksMap.Get(jobID)
 	if !ok {
-		return ErrTimingWheelTaskNotFound
+		return infra.WrapErrorStack(ErrTimingWheelTaskNotFound)
 	}
 
 	xtw.schedLock.Lock()
@@ -402,8 +402,8 @@ func (xtw *xTimingWheelsV2) cancelTask(jobID JobID) error {
 
 	task.Cancel()
 
-	xtw.tasksMap.Delete(jobID)
-	return nil
+	_, err := xtw.tasksMap.Delete(jobID)
+	return infra.WrapErrorStack(err)
 }
 
 // NewXTimingWheelsV2 creates a new timing wheel.

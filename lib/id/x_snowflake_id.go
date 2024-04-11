@@ -1,10 +1,11 @@
 package id
 
 import (
-	"fmt"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 // SnowFlakeID Clock Rollback Issue.
@@ -45,18 +46,20 @@ const (
 	xSnowflakeTsAndSequenceMask = int64(-1 ^ (-1 << (xSnowflakeTsDiffBits + xSnowflakeSequenceBits)))
 )
 
-var (
-	errSFInvalidWorkerID = fmt.Errorf("worker id invalid")
+const (
+	errSFInvalidWorkerID = sfError("worker id invalid")
 )
 
 // The now function could use the relative timestamp generator implementation.
 func xSnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (UUIDGen, error) {
 	if dataCenterID < 0 || dataCenterID > xSnowflakeDIDMax {
-		return nil, fmt.Errorf("dataCenterID: %d (max: %d), %w", dataCenterID, xSnowflakeDIDMax, errSFInvalidDataCenterID)
+		return nil, infra.WrapErrorStackWithMessage(errSFInvalidDataCenterID, "dataCenterID: "+strconv.FormatInt(dataCenterID, 10)+
+			" (max: "+strconv.FormatInt(xSnowflakeDIDMax, 10)+")")
 	}
 
 	if machineID < 0 || machineID > xSnowflakeMIDMax {
-		return nil, fmt.Errorf("machineID: %d (max: %d), %w", machineID, xSnowflakeMIDMax, errSFInvalidMachineID)
+		return nil, infra.WrapErrorStackWithMessage(errSFInvalidMachineID, "machineID: "+strconv.FormatInt(machineID, 10)+
+			" (max: "+strconv.FormatInt(xSnowflakeMIDMax, 10)+")")
 	}
 
 	tsAndSequence := now().UnixNano() / 1e6
@@ -91,7 +94,8 @@ func XSnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (UUIDGen,
 
 func XSnowFlakeIDByWorkerID(workerID int64, now func() time.Time) (UUIDGen, error) {
 	if workerID < 0 || workerID > xSnowflakeWorkerIDMax {
-		return nil, fmt.Errorf("workerID: %d (max: %d), %w", workerID, xSnowflakeWorkerIDMax, errSFInvalidWorkerID)
+		return nil, infra.WrapErrorStackWithMessage(errSFInvalidWorkerID, "workerID: "+strconv.FormatInt(workerID, 10)+
+			" (max: "+strconv.FormatInt(xSnowflakeWorkerIDMax, 10)+")")
 	}
 	idMask := int64(0x1f)
 	mID := workerID & idMask

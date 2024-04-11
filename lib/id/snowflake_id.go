@@ -1,10 +1,11 @@
 package id
 
 import (
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 // SnowFlake 64 bits
@@ -31,9 +32,13 @@ const (
 	classicSnowflakeTsDiffMax       = int64(-1 ^ (-1 << classicSnowflakeTsDiffBits))
 )
 
-var (
-	errSFInvalidDataCenterID = fmt.Errorf("data-center id invalid")
-	errSFInvalidMachineID    = fmt.Errorf("machine id invalid")
+type sfError string
+
+func (e sfError) Error() string { return string(e) }
+
+const (
+	errSFInvalidDataCenterID = sfError("[snowflake-id] data-center id invalid")
+	errSFInvalidMachineID    = sfError("[snowflake-id] machine id invalid")
 )
 
 // The now function is easily to be affected by clock skew. Then
@@ -41,11 +46,13 @@ var (
 // Deprecated: Please use the SnowFlakeID(datacenterID, machineID int64, now func() time.Time) (UUIDGen, error)
 func StandardSnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (Gen, error) {
 	if dataCenterID < 0 || dataCenterID > classicSnowflakeDIDMax {
-		return nil, fmt.Errorf("dataCenterID: %d (max: %d), %w", dataCenterID, classicSnowflakeDIDMax, errSFInvalidDataCenterID)
+		return nil, infra.WrapErrorStackWithMessage(errSFInvalidDataCenterID, "dataCenterID: "+strconv.FormatInt(dataCenterID, 10)+
+			" (max: "+strconv.FormatInt(classicSnowflakeDIDMax, 10)+")")
 	}
 
 	if machineID < 0 || machineID > classicSnowflakeMIDMax {
-		return nil, fmt.Errorf("machineID: %d (max: %d), %w", machineID, classicSnowflakeMIDMax, errSFInvalidMachineID)
+		return nil, infra.WrapErrorStackWithMessage(errSFInvalidMachineID, "machineID: "+strconv.FormatInt(machineID, 10)+
+			" (max: "+strconv.FormatInt(classicSnowflakeMIDMax, 10)+")")
 	}
 
 	var lock = sync.Mutex{}
@@ -81,11 +88,11 @@ func StandardSnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (G
 
 func SnowFlakeID(dataCenterID, machineID int64, now func() time.Time) (UUIDGen, error) {
 	if dataCenterID < 0 || dataCenterID > classicSnowflakeDIDMax {
-		return nil, errSFInvalidDataCenterID
+		return nil, infra.WrapErrorStack(errSFInvalidDataCenterID)
 	}
 
 	if machineID < 0 || machineID > classicSnowflakeMIDMax {
-		return nil, errSFInvalidMachineID
+		return nil, infra.WrapErrorStack(errSFInvalidMachineID)
 	}
 
 	var lock = sync.Mutex{}

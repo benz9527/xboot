@@ -9,21 +9,24 @@ package timer
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
-var (
-	ErrTimingWheelStopped                   = errors.New("timing wheel stopped")
-	ErrTimingWheelTaskNotFound              = errors.New("task not found")
-	ErrTimingWheelTaskEmptyJobID            = errors.New("empty job id in task")
-	ErrTimingWheelEmptyJob                  = errors.New("empty job in task")
-	ErrTimingWheelTaskIsExpired             = errors.New("task is expired")
-	ErrTimingWheelTaskUnableToBeAddedToSlot = errors.New("task unable to be added to a flushed slot")
-	ErrTimingWheelTaskUnableToBeRemoved     = errors.New("task unable to be removed")
-	ErrTimingWheelTaskTooShortExpiration    = errors.New("task expiration is too short")
-	ErrTimingWheelUnknownScheduler          = errors.New("unknown schedule")
-	ErrTimingWheelTaskCancelled             = errors.New("task cancelled")
+type twError string
+
+func (e twError) Error() string { return string(e) }
+
+const (
+	ErrTimingWheelStopped                   = twError("[timing-wheels] stopped")
+	ErrTimingWheelTaskNotFound              = twError("[timing-wheels] task not found")
+	ErrTimingWheelTaskEmptyJobID            = twError("[timing-wheels] empty job id in task")
+	ErrTimingWheelEmptyJob                  = twError("[timing-wheels] empty job in task")
+	ErrTimingWheelTaskIsExpired             = twError("[timing-wheels] task is expired")
+	ErrTimingWheelTaskUnableToBeAddedToSlot = twError("[timing-wheels] task unable to be added to a flushed slot")
+	ErrTimingWheelTaskUnableToBeRemoved     = twError("[timing-wheels] task unable to be removed")
+	ErrTimingWheelTaskTooShortExpiration    = twError("[timing-wheels] task expiration is too short")
+	ErrTimingWheelUnknownScheduler          = twError("[timing-wheels] unknown schedule")
+	ErrTimingWheelTaskCancelled             = twError("[timing-wheels] task cancelled")
 )
 
 type TimingWheelCommonMetadata interface {

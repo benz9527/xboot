@@ -1,11 +1,11 @@
 package ipc
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
 	"github.com/benz9527/xboot/lib/bits"
+	"github.com/benz9527/xboot/lib/infra"
 	"github.com/benz9527/xboot/lib/queue"
 )
 
@@ -56,30 +56,30 @@ func (dis *xDisruptor[T]) Start() error {
 	if atomic.CompareAndSwapInt32((*int32)(&dis.status), int32(disruptorReady), int32(disruptorRunning)) {
 		if err := dis.sub.Start(); err != nil {
 			atomic.StoreInt32((*int32)(&dis.status), int32(disruptorReady))
-			return err
+			return infra.WrapErrorStack(err)
 		}
 		if err := dis.pub.Start(); err != nil {
 			atomic.StoreInt32((*int32)(&dis.status), int32(disruptorReady))
-			return err
+			return infra.WrapErrorStack(err)
 		}
 		return nil
 	}
-	return fmt.Errorf("disruptor already started")
+	return infra.NewErrorStack("[disruptor] already started")
 }
 
 func (dis *xDisruptor[T]) Stop() error {
 	if atomic.CompareAndSwapInt32((*int32)(&dis.status), int32(disruptorRunning), int32(disruptorReady)) {
 		if err := dis.pub.Stop(); err != nil {
 			atomic.CompareAndSwapInt32((*int32)(&dis.status), int32(disruptorRunning), int32(disruptorReady))
-			return err
+			return infra.WrapErrorStack(err)
 		}
 		if err := dis.sub.Stop(); err != nil {
 			atomic.CompareAndSwapInt32((*int32)(&dis.status), int32(disruptorRunning), int32(disruptorReady))
-			return err
+			return infra.WrapErrorStack(err)
 		}
 		return nil
 	}
-	return fmt.Errorf("disruptor already stopped")
+	return infra.NewErrorStack("[disruptor] already stopped")
 }
 
 func (dis *xDisruptor[T]) IsStopped() bool {

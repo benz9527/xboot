@@ -3,6 +3,7 @@ package timer
 import (
 	"sync/atomic"
 
+	"github.com/benz9527/xboot/lib/infra"
 	"github.com/benz9527/xboot/lib/list"
 )
 
@@ -85,7 +86,7 @@ func (slot *xSlot) AddTask(task Task) error {
 		return nil
 	}
 	if slot.GetExpirationMs() == slotHasBeenFlushedMs {
-		return ErrTimingWheelTaskUnableToBeAddedToSlot
+		return infra.WrapErrorStack(ErrTimingWheelTaskUnableToBeAddedToSlot)
 	}
 
 	elementRefs := slot.tasks.AppendValue(task)
