@@ -2,7 +2,6 @@ package tree
 
 import (
 	"cmp"
-	"errors"
 	"sync/atomic"
 
 	"github.com/benz9527/xboot/lib/infra"
@@ -341,7 +340,7 @@ func (tree *rbTree[K, V]) Insert(key K, val V, ifNotPresent ...bool) (err error)
 	res := tree.keyCompare(key, y.key)
 	if /* equal */ res == 0 {
 		if /* disabled */ ifNotPresent[0] {
-			return errors.New("[rbtree] replace disabled")
+			return infra.NewErrorStack("[rbtree] replace disabled")
 		}
 		y.val = val
 		return nil
@@ -604,13 +603,13 @@ func (tree *rbTree[K, V]) removeNode(z *rbNode[K, V]) (res *rbNode[K, V], err er
 
 func (tree *rbTree[K, V]) Remove(key K) (RBNode[K, V], error) {
 	if atomic.LoadInt64(&tree.count) <= 0 {
-		return nil, errors.New("[rbtree] empty element to remove")
+		return nil, infra.NewErrorStack("[rbtree] empty element to remove")
 	}
 	z := tree.Search(tree.root, func(node RBNode[K, V]) int64 {
 		return tree.keyCompare(key, node.Key())
 	})
 	if z == nil {
-		return nil, errors.New("[rbtree] key not found")
+		return nil, infra.NewErrorStack("[rbtree] key not found")
 	}
 	defer func() {
 		atomic.AddInt64(&tree.count, -1)
@@ -621,11 +620,11 @@ func (tree *rbTree[K, V]) Remove(key K) (RBNode[K, V], error) {
 
 func (tree *rbTree[K, V]) RemoveMin() (RBNode[K, V], error) {
 	if atomic.LoadInt64(&tree.count) <= 0 {
-		return nil, errors.New("[rbtree] key not found")
+		return nil, infra.NewErrorStack("[rbtree] key not found")
 	}
 	_min := tree.root.minimum()
 	if _min.isNilLeaf() {
-		return nil, errors.New("[rbtree] key not found")
+		return nil, infra.NewErrorStack("[rbtree] key not found")
 	}
 	defer func() {
 		atomic.AddInt64(&tree.count, -1)
