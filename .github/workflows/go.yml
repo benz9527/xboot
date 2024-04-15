@@ -92,3 +92,4 @@ jobs:
         go test -benchmem -bench ^Benchmark.*$ ./lib/queue
         go test -benchmem -bench ^Benchmark.*$ ./lib/tree
         go test -benchmem -bench ^Benchmark.*$ ./timer
+        go test -benchmem -bench ^Benchmark.*$ ./lib/xlog
