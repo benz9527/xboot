@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"go.uber.org/multierr"
+	"go.uber.org/zap/zapcore"
 )
 
 // References:
@@ -113,6 +114,20 @@ func (fr frame) MarshalJSON() ([]byte, error) {
 	return []byte(builder.String()), nil
 }
 
+func (fr frame) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if enc == nil {
+		return errors.New("zapcore object marshal error")
+	}
+	name := fr.name()
+	if name == "unknownFunc" {
+		enc.AddString("frame", "unknownFrame")
+		return nil
+	}
+	enc.AddString("func", name)
+	enc.AddString("fileAndLine", fr.file()+":"+strconv.Itoa(fr.line()))
+	return nil
+}
+
 func funcName(name string) string {
 	i := strings.LastIndex(name, "/")
 	name = name[i+1:]
@@ -204,6 +219,26 @@ func (st stackTrace) MarshalJSON() ([]byte, error) {
 	return []byte(builder.String()), nil
 }
 
+func (st stackTrace) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if enc == nil {
+		return errors.New("zapcore object marshal error")
+	}
+	if err := enc.AddArray("frames", zapcore.ArrayMarshalerFunc(func(enc zapcore.ArrayEncoder) error {
+		if enc == nil {
+			return errors.New("zapcore array marshal error")
+		}
+		for _, frame := range st {
+			if err := enc.AppendObject(frame); err != nil {
+				return err
+			}
+		}
+		return nil
+	})); err != nil {
+		return err
+	}
+	return nil
+}
+
 type stack []uintptr
 
 func (stack stack) StackTrace() stackTrace {
@@ -238,11 +273,37 @@ func (st stack) MarshalJSON() ([]byte, error) {
 	return []byte(builder.String()), nil
 }
 
+func (st stack) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if enc == nil {
+		return errors.New("zapcore object marshal error")
+	}
+	return st.StackTrace().MarshalLogObject(enc)
+}
+
+func (st stack) MarshalLogArray(enc zapcore.ArrayEncoder) error {
+	if enc == nil {
+		return errors.New("zapcore object marshal error")
+	}
+	for _, frame := range st.StackTrace() {
+		if err := enc.AppendObject(frame); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func getCallers(depth int8) stack {
 	pcs := make([]uintptr, depth)
 	n := runtime.Callers(3, pcs[:])
 	var st stack = pcs[0:n]
 	return st
+}
+
+type ErrorStack interface {
+	Error() string
+	Unwrap() []error
+	MarshalJSON() ([]byte, error)
+	zapcore.ObjectMarshaler
 }
 
 type errorStack struct {
@@ -356,6 +417,33 @@ func (es *errorStack) MarshalJSON() ([]byte, error) {
 	}
 	_, _ = builder.WriteString("]")
 	return []byte(builder.String()), nil
+}
+
+func (es *errorStack) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if es == nil || enc == nil {
+		return nil
+	}
+	if err := enc.AddArray("stacktrace", zapcore.ArrayMarshalerFunc(func(ae zapcore.ArrayEncoder) error {
+		for iter := es; iter != nil; iter = iter.upper {
+			if err := ae.AppendObject(zapcore.ObjectMarshalerFunc(func(oe zapcore.ObjectEncoder) error {
+				if iter.err != nil {
+					oe.AddString("error", iter.err.Error())
+				}
+				if iter.stack != nil {
+					if err := oe.AddArray("errorStack", iter.stack); err != nil {
+						return err
+					}
+				}
+				return nil
+			})); err != nil {
+				return err
+			}
+		}
+		return nil
+	})); err != nil {
+		return err
+	}
+	return nil
 }
 
 func NewErrorStack(errMsg string) error {
