@@ -3,6 +3,7 @@ package xlog
 import (
 	"context"
 	"os"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -54,7 +55,7 @@ const (
 
 var (
 	writerMap = map[LogOutWriterType]zapcore.WriteSyncer{
-		StdOut: zapcore.Lock(os.Stdout),
+		StdOut: &zapcore.BufferedWriteSyncer{WS: os.Stdout, Size: 512 * 1024, FlushInterval: 30 * time.Second},
 	}
 	encoderMap = map[LogEncoderType]func(cfg zapcore.EncoderConfig) zapcore.Encoder{
 		JSON:      zapcore.NewJSONEncoder,
@@ -70,12 +71,17 @@ func getEncoderByType(typ LogEncoderType) func(cfg zapcore.EncoderConfig) zapcor
 	return enc
 }
 
-func getOutWriterByType(typ LogOutWriterType) zapcore.WriteSyncer {
+func getOutWriterByType(typ LogOutWriterType) (zapcore.WriteSyncer, func() error) {
 	out, ok := writerMap[typ]
 	if !ok {
-		return zapcore.Lock(os.Stdout)
+		return zapcore.Lock(os.Stdout), nil
 	}
-	return out
+	if _, ok := out.(*zapcore.BufferedWriteSyncer); ok {
+		return out, func() error {
+			return out.(*zapcore.BufferedWriteSyncer).Stop()
+		}
+	}
+	return out, nil
 }
 
 type Banner interface {
@@ -84,7 +90,7 @@ type Banner interface {
 }
 
 type xLogCore interface {
-	build(lvl zapcore.Level, encoder LogEncoderType, writer LogOutWriterType) (core zapcore.Core, err error)
+	build(lvl zapcore.Level, encoder LogEncoderType, writer LogOutWriterType) (core zapcore.Core, stop func() error, err error)
 }
 
 type XLogger interface {

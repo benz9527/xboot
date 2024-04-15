@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -45,11 +46,17 @@ func (l *xLogger) Banner(banner Banner) {
 		case PlainText:
 			enc = zapcore.NewConsoleEncoder(core)
 		}
+		ws, stop := getOutWriterByType(l.writer)
+		defer func() {
+			if stop != nil {
+				_ = stop()
+			}
+		}()
+
 		_l := l.logger.Load().WithOptions(
 			zap.WrapCore(func(core zapcore.Core) zapcore.Core {
 				return zapcore.NewCore(
-					enc,
-					getOutWriterByType(l.writer),
+					enc, ws,
 					zap.LevelEnablerFunc(func(level zapcore.Level) bool {
 						return level >= l.level
 					}),
@@ -183,7 +190,7 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 	l.ctxFields = cfg.ctxFields
 
 	if cfg.core == nil {
-		cfg.core = consoleCore{}
+		cfg.core = &consoleCore{}
 	}
 }
 
@@ -199,9 +206,14 @@ func NewXLogger(opts ...XLoggerOption) *xLogger {
 	xl := &xLogger{}
 	cfg.apply(xl)
 
-	core, err := cfg.core.build(xl.level, xl.encoder, xl.writer)
+	core, stop, err := cfg.core.build(xl.level, xl.encoder, xl.writer)
 	if err != nil {
 		panic(err)
+	}
+	if stop != nil {
+		runtime.SetFinalizer(xl, func(xl *xLogger) {
+			_ = stop()
+		})
 	}
 
 	// Disable zap logger error stack.
