@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -20,11 +19,50 @@ import (
 var printBanner = sync.Once{}
 
 type xLogger struct {
-	logger    atomic.Pointer[zap.Logger]
-	level     zapcore.Level
-	ctxFields kv.ThreadSafeStorer[string, string]
-	writer    LogOutWriterType
-	encoder   LogEncoderType
+	logger              atomic.Pointer[zap.Logger]
+	ctxFields           kv.ThreadSafeStorer[string, string]
+	dynamicLevelEnabler zap.AtomicLevel
+	lvlEncoder          zapcore.LevelEncoder
+	tsEncoder           zapcore.TimeEncoder
+	writer              LogOutWriterType
+	encoder             LogEncoderType
+}
+
+func (l *xLogger) zap() *zap.Logger {
+	return l.logger.Load()
+}
+
+func (l *xLogger) timeEncoder() zapcore.TimeEncoder {
+	return l.tsEncoder
+}
+
+func (l *xLogger) levelEncoder() zapcore.LevelEncoder {
+	return l.lvlEncoder
+}
+
+func (l *xLogger) outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder {
+	return getEncoderByType(l.encoder)
+}
+
+func (l *xLogger) writeSyncer() zapcore.WriteSyncer {
+	return getOutWriterByType(l.writer)
+}
+
+func (l *xLogger) levelEnablerFunc() zap.LevelEnablerFunc {
+	return l.dynamicLevelEnabler.Enabled
+}
+
+// IncreaseLogLevel we can increase or decrease the log level concurrently.
+func (l *xLogger) IncreaseLogLevel(level zapcore.Level) {
+	l.dynamicLevelEnabler.SetLevel(level)
+}
+
+func (l *xLogger) Sync() error {
+	return l.logger.Load().Sync()
+}
+
+func (l *xLogger) Level() string {
+	return l.dynamicLevelEnabler.Level().String()
 }
 
 func (l *xLogger) Banner(banner Banner) {
@@ -46,21 +84,11 @@ func (l *xLogger) Banner(banner Banner) {
 		case PlainText:
 			enc = zapcore.NewConsoleEncoder(core)
 		}
-		ws, stop := getOutWriterByType(l.writer)
-		defer func() {
-			if stop != nil {
-				_ = stop()
-			}
-		}()
-
+		ws := getOutWriterByType(l.writer)
+		lvlEnabler := zap.NewAtomicLevelAt(zapcore.InfoLevel)
 		_l := l.logger.Load().WithOptions(
 			zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-				return zapcore.NewCore(
-					enc, ws,
-					zap.LevelEnablerFunc(func(level zapcore.Level) bool {
-						return level >= l.level
-					}),
-				)
+				return zapcore.NewCore(enc, ws, lvlEnabler)
 			}),
 		)
 		switch l.encoder {
@@ -70,15 +98,6 @@ func (l *xLogger) Banner(banner Banner) {
 			_l.Info(banner.PlainText())
 		}
 	})
-}
-
-func (l *xLogger) IncreaseLogLevel(level zapcore.Level) {
-	logger := l.logger.Load().WithOptions(zap.IncreaseLevel(level))
-	l.logger.Store(logger)
-}
-
-func (l *xLogger) Sync() error {
-	return l.logger.Load().Sync()
 }
 
 func (l *xLogger) Debug(msg string, fields ...zap.Field) {
@@ -167,7 +186,7 @@ type loggerCfg struct {
 	lvlEncoder  zapcore.LevelEncoder
 	tsEncoder   zapcore.TimeEncoder
 	level       *zapcore.Level
-	core        xLogCore
+	core        XLogCore
 }
 
 func (cfg *loggerCfg) apply(l *xLogger) {
@@ -184,9 +203,9 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 	}
 
 	if cfg.level != nil {
-		l.level = *cfg.level
+		l.dynamicLevelEnabler = zap.NewAtomicLevelAt(*cfg.level)
 	} else {
-		l.level = getLogLevelOrDefault(os.Getenv("XLOG_LVL"))
+		l.dynamicLevelEnabler = zap.NewAtomicLevelAt(getLogLevelOrDefault(os.Getenv("XLOG_LVL")))
 	}
 
 	l.ctxFields = cfg.ctxFields
@@ -194,10 +213,12 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 	if cfg.lvlEncoder == nil {
 		cfg.lvlEncoder = zapcore.CapitalLevelEncoder
 	}
+	l.lvlEncoder = cfg.lvlEncoder
 
 	if cfg.tsEncoder == nil {
 		cfg.tsEncoder = zapcore.ISO8601TimeEncoder
 	}
+	l.tsEncoder = cfg.tsEncoder
 
 	if cfg.core == nil {
 		cfg.core = &consoleCore{}
@@ -206,7 +227,7 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 
 type XLoggerOption func(*loggerCfg) error
 
-func NewXLogger(opts ...XLoggerOption) *xLogger {
+func NewXLogger(opts ...XLoggerOption) XLogger {
 	cfg := &loggerCfg{}
 	for _, o := range opts {
 		if err := o(cfg); err != nil {
@@ -216,20 +237,15 @@ func NewXLogger(opts ...XLoggerOption) *xLogger {
 	xl := &xLogger{}
 	cfg.apply(xl)
 
-	core, stop, err := cfg.core.Build(
-		xl.level,
+	core, err := cfg.core.Build(
+		xl.dynamicLevelEnabler,
 		xl.encoder,
 		xl.writer,
-		cfg.lvlEncoder,
-		cfg.tsEncoder,
+		xl.lvlEncoder,
+		xl.tsEncoder,
 	)
 	if err != nil {
 		panic(err)
-	}
-	if stop != nil {
-		runtime.SetFinalizer(xl, func(xl *xLogger) {
-			_ = stop()
-		})
 	}
 
 	// Disable zap logger error stack.

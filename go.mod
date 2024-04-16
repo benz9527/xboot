@@ -19,6 +19,8 @@ require (
 	golang.org/x/sys v0.18.0
 )
 
+require go.uber.org/fx v1.21.0
+
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect

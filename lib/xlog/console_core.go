@@ -1,21 +1,20 @@
 package xlog
 
 import (
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var _ xLogCore = (*consoleCore)(nil)
+var _ XLogCore = (*consoleCore)(nil)
 
 type consoleCore struct{}
 
 func (cc *consoleCore) Build(
-	lvl zapcore.Level,
+	lvlEnabler zapcore.LevelEnabler,
 	encoder LogEncoderType,
 	writer LogOutWriterType,
 	lvlEnc zapcore.LevelEncoder,
 	tsEnc zapcore.TimeEncoder,
-) (core zapcore.Core, stop func() error, err error) {
+) (core zapcore.Core, err error) {
 	config := zapcore.EncoderConfig{
 		MessageKey:    "msg",
 		LevelKey:      "lvl",
@@ -25,17 +24,11 @@ func (cc *consoleCore) Build(
 		CallerKey:     "callAt",
 		EncodeCaller:  zapcore.ShortCallerEncoder,
 		FunctionKey:   "fn",
-		NameKey:       coreKeyIgnored,
+		NameKey:       "component",
+		EncodeName:    zapcore.FullNameEncoder,
 		StacktraceKey: coreKeyIgnored,
 	}
-	levelFn := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
-		return level >= lvl
-	})
-	ws, stop := getOutWriterByType(writer)
-	core = zapcore.NewCore(
-		getEncoderByType(encoder)(config),
-		ws,
-		levelFn,
-	)
-	return core, stop, nil
+	ws := getOutWriterByType(writer)
+	core = zapcore.NewCore(getEncoderByType(encoder)(config), ws, lvlEnabler)
+	return core, nil
 }
