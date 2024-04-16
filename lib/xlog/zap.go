@@ -32,13 +32,13 @@ func (l *xLogger) Banner(banner Banner) {
 		var enc zapcore.Encoder
 		core := zapcore.EncoderConfig{
 			MessageKey:    "banner", // Required, but the plain text will be ignored.
-			LevelKey:      "",
+			LevelKey:      coreKeyIgnored,
 			EncodeLevel:   nil,
-			TimeKey:       "",
+			TimeKey:       coreKeyIgnored,
 			EncodeTime:    nil,
-			CallerKey:     "",
+			CallerKey:     coreKeyIgnored,
 			EncodeCaller:  nil,
-			StacktraceKey: "",
+			StacktraceKey: coreKeyIgnored,
 		}
 		switch l.encoder {
 		case JSON:
@@ -164,6 +164,8 @@ type loggerCfg struct {
 	ctxFields   kv.ThreadSafeStorer[string, string]
 	writerType  *LogOutWriterType
 	encoderType *LogEncoderType
+	lvlEncoder  zapcore.LevelEncoder
+	tsEncoder   zapcore.TimeEncoder
 	level       *zapcore.Level
 	core        xLogCore
 }
@@ -189,6 +191,14 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 
 	l.ctxFields = cfg.ctxFields
 
+	if cfg.lvlEncoder == nil {
+		cfg.lvlEncoder = zapcore.CapitalLevelEncoder
+	}
+
+	if cfg.tsEncoder == nil {
+		cfg.tsEncoder = zapcore.ISO8601TimeEncoder
+	}
+
 	if cfg.core == nil {
 		cfg.core = &consoleCore{}
 	}
@@ -206,7 +216,13 @@ func NewXLogger(opts ...XLoggerOption) *xLogger {
 	xl := &xLogger{}
 	cfg.apply(xl)
 
-	core, stop, err := cfg.core.build(xl.level, xl.encoder, xl.writer)
+	core, stop, err := cfg.core.Build(
+		xl.level,
+		xl.encoder,
+		xl.writer,
+		cfg.lvlEncoder,
+		cfg.tsEncoder,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -236,12 +252,12 @@ func WithXLoggerWriter(w LogOutWriterType) XLoggerOption {
 	}
 }
 
-func WithXLoggerEncoder(e LogEncoderType) XLoggerOption {
+func WithXLoggerEncoder(logEnc LogEncoderType) XLoggerOption {
 	return func(cfg *loggerCfg) error {
-		if e == _encMax {
+		if logEnc == _encMax {
 			return infra.NewErrorStack("unknown xlogger encoder")
 		}
-		cfg.encoderType = &e
+		cfg.encoderType = &logEnc
 		return nil
 	}
 }
@@ -254,6 +270,26 @@ func WithXLoggerLevel(lvl LogLevel) XLoggerOption {
 	}
 }
 
+func WithXLoggerLevelEncoder(lvlEnc zapcore.LevelEncoder) XLoggerOption {
+	return func(cfg *loggerCfg) error {
+		if lvlEnc == nil {
+			lvlEnc = zapcore.CapitalColorLevelEncoder
+		}
+		cfg.lvlEncoder = lvlEnc
+		return nil
+	}
+}
+
+func WithXLoggerTimeEncoder(tsEnc zapcore.TimeEncoder) XLoggerOption {
+	return func(cfg *loggerCfg) error {
+		if tsEnc == nil {
+			tsEnc = zapcore.ISO8601TimeEncoder
+		}
+		cfg.tsEncoder = tsEnc
+		return nil
+	}
+}
+
 func WithXLoggerContextFieldExtract(field string, mapTo ...string) XLoggerOption {
 	return func(cfg *loggerCfg) error {
 		if len(field) == 0 {
@@ -262,7 +298,7 @@ func WithXLoggerContextFieldExtract(field string, mapTo ...string) XLoggerOption
 		if cfg.ctxFields == nil {
 			cfg.ctxFields = kv.NewThreadSafeMap[string, string]()
 		}
-		if len(mapTo) == 0 || mapTo[0] == "" {
+		if len(mapTo) == 0 || mapTo[0] == ContextKeyMapToItself {
 			mapTo = []string{field}
 		}
 		return cfg.ctxFields.AddOrUpdate(field, mapTo[0])
@@ -309,9 +345,9 @@ func extractFieldsFromContext(
 	for _, key := range keys {
 		v := ctx.Value(key)
 		mapTo, _ := targets.Get(key)
-		if v == nil && mapTo != "_" { // Underline means omitempty.
+		if v == nil && mapTo != ContextKeyMapToOmitempty {
 			newFields = append(newFields, zap.String(mapTo, "nil"))
-		} else if v != nil && mapTo != "_" {
+		} else if v != nil && mapTo != ContextKeyMapToOmitempty {
 			newFields = append(newFields, zap.Any(mapTo, v))
 		}
 	}

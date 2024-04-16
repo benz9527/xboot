@@ -9,16 +9,24 @@ var _ xLogCore = (*consoleCore)(nil)
 
 type consoleCore struct{}
 
-func (cc *consoleCore) build(lvl zapcore.Level, encoder LogEncoderType, writer LogOutWriterType) (core zapcore.Core, stop func() error, err error) {
+func (cc *consoleCore) Build(
+	lvl zapcore.Level,
+	encoder LogEncoderType,
+	writer LogOutWriterType,
+	lvlEnc zapcore.LevelEncoder,
+	tsEnc zapcore.TimeEncoder,
+) (core zapcore.Core, stop func() error, err error) {
 	config := zapcore.EncoderConfig{
 		MessageKey:    "msg",
 		LevelKey:      "lvl",
-		EncodeLevel:   zapcore.CapitalLevelEncoder,
+		EncodeLevel:   lvlEnc,
 		TimeKey:       "ts",
-		EncodeTime:    zapcore.ISO8601TimeEncoder,
+		EncodeTime:    tsEnc,
 		CallerKey:     "callAt",
 		EncodeCaller:  zapcore.ShortCallerEncoder,
-		StacktraceKey: "stack",
+		FunctionKey:   "fn",
+		NameKey:       coreKeyIgnored,
+		StacktraceKey: coreKeyIgnored,
 	}
 	levelFn := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
 		return level >= lvl

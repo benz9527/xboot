@@ -53,6 +53,12 @@ const (
 	_writerMax
 )
 
+const (
+	ContextKeyMapToOmitempty = "_"
+	ContextKeyMapToItself    = ""
+	coreKeyIgnored           = ""
+)
+
 var (
 	writerMap = map[LogOutWriterType]zapcore.WriteSyncer{
 		StdOut: &zapcore.BufferedWriteSyncer{WS: os.Stdout, Size: 512 * 1024, FlushInterval: 30 * time.Second},
@@ -90,7 +96,13 @@ type Banner interface {
 }
 
 type xLogCore interface {
-	build(lvl zapcore.Level, encoder LogEncoderType, writer LogOutWriterType) (core zapcore.Core, stop func() error, err error)
+	Build(
+		zapcore.Level,
+		LogEncoderType,
+		LogOutWriterType,
+		zapcore.LevelEncoder,
+		zapcore.TimeEncoder,
+	) (core zapcore.Core, stop func() error, err error)
 }
 
 type XLogger interface {
