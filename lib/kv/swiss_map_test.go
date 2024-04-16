@@ -464,8 +464,8 @@ func BenchmarkStringSwissMaps(b *testing.B) {
 			var ok bool
 			for i := 0; i < b.N; i++ {
 				_, ok = m.Get(keys[uint32(i)&mod])
+				require.True(b, ok)
 			}
-			assert.True(b, ok)
 			bb.ReportAllocs()
 		})
 	}

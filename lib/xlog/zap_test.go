@@ -46,7 +46,8 @@ func (w *testMemOutWriter) Reset() {
 
 func TestLoggerPrintBanner(t *testing.T) {
 	w := &testMemOutWriter{data: make([]byte, 0, 4096)}
-	writerMap[testMemAsOut] = zapcore.AddSync(w)
+	err := writerMap.Put(testMemAsOut, zapcore.AddSync(w))
+	require.NoError(t, err)
 
 	level := zapcore.DebugLevel
 	cfg := zap.NewDevelopmentEncoderConfig()
@@ -63,7 +64,6 @@ func TestLoggerPrintBanner(t *testing.T) {
 	)
 
 	logger := &xLogger{
-		level:  zapcore.InfoLevel,
 		writer: testMemAsOut,
 	}
 	logger.logger.Store(l)
@@ -84,7 +84,6 @@ func TestLoggerPrintBanner(t *testing.T) {
 		zap.AddCallerSkip(1), // Use caller filename as service
 	)
 	logger = &xLogger{
-		level:   zapcore.InfoLevel,
 		writer:  testMemAsOut,
 		encoder: PlainText,
 	}
@@ -238,12 +237,31 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 			logger.InfoContext(ctx, "info message 4", field)
 
 			logger.IncreaseLogLevel(zapcore.WarnLevel)
+			require.Equal(t, zapcore.WarnLevel.String(), logger.Level())
 			logger.Logf(getLogLevelOrDefault(""), "unprintable debug message 3")
 			logger.Logf(getLogLevelOrDefault(LogLevelDebug.String()), "unprintable debug message 4")
 			logger.Logf(getLogLevelOrDefault(LogLevelInfo.String()), "unprintable info message 5")
 			logger.Logf(getLogLevelOrDefault(LogLevelWarn.String()), "printable warn message 3")
 			logger.Logf(getLogLevelOrDefault(LogLevelError.String()), "printable error message 3")
 			logger.ErrorStackf(err1, "error message 4")
+
+			logger.IncreaseLogLevel(zapcore.DebugLevel)
+			require.Equal(t, zapcore.DebugLevel.String(), logger.Level())
+			logger.Logf(getLogLevelOrDefault(""), "dynamic printable debug message 4")
+			logger.Logf(getLogLevelOrDefault(LogLevelDebug.String()), "dynamic printable debug message 5")
+			logger.Logf(getLogLevelOrDefault(LogLevelInfo.String()), "dynamic printable info message 6")
+			logger.Logf(getLogLevelOrDefault(LogLevelWarn.String()), "dynamic printable warn message 4")
+			logger.Logf(getLogLevelOrDefault(LogLevelError.String()), "dynamic printable error message 4")
+			logger.ErrorStackf(err1, "error message 5")
+
+			logger.IncreaseLogLevel(zapcore.WarnLevel)
+			require.Equal(t, zapcore.WarnLevel.String(), logger.Level())
+			logger.Logf(getLogLevelOrDefault(""), "unprintable debug message 5")
+			logger.Logf(getLogLevelOrDefault(LogLevelDebug.String()), "unprintable debug message 6")
+			logger.Logf(getLogLevelOrDefault(LogLevelInfo.String()), "unprintable info message 7")
+			logger.Logf(getLogLevelOrDefault(LogLevelWarn.String()), "printable warn message 5")
+			logger.Logf(getLogLevelOrDefault(LogLevelError.String()), "printable error message 5")
+			logger.ErrorStackf(err1, "error message 6")
 
 			err := logger.Sync()
 			if err != nil {
@@ -278,6 +296,7 @@ func TestXLogger_Zap_DataRace(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+	_ = logger.Sync()
 }
 
 func BenchmarkXLogger_Zap(b *testing.B) {

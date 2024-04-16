@@ -1,33 +1,34 @@
 package xlog
 
 import (
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var _ xLogCore = (*consoleCore)(nil)
+var _ XLogCore = (*consoleCore)(nil)
 
 type consoleCore struct{}
 
-func (cc *consoleCore) build(lvl zapcore.Level, encoder LogEncoderType, writer LogOutWriterType) (core zapcore.Core, stop func() error, err error) {
+func (cc *consoleCore) Build(
+	lvlEnabler zapcore.LevelEnabler,
+	encoder LogEncoderType,
+	writer LogOutWriterType,
+	lvlEnc zapcore.LevelEncoder,
+	tsEnc zapcore.TimeEncoder,
+) (core zapcore.Core, err error) {
 	config := zapcore.EncoderConfig{
 		MessageKey:    "msg",
 		LevelKey:      "lvl",
-		EncodeLevel:   zapcore.CapitalLevelEncoder,
+		EncodeLevel:   lvlEnc,
 		TimeKey:       "ts",
-		EncodeTime:    zapcore.ISO8601TimeEncoder,
+		EncodeTime:    tsEnc,
 		CallerKey:     "callAt",
 		EncodeCaller:  zapcore.ShortCallerEncoder,
-		StacktraceKey: "stack",
+		FunctionKey:   "fn",
+		NameKey:       "component",
+		EncodeName:    zapcore.FullNameEncoder,
+		StacktraceKey: coreKeyIgnored,
 	}
-	levelFn := zap.LevelEnablerFunc(func(level zapcore.Level) bool {
-		return level >= lvl
-	})
-	ws, stop := getOutWriterByType(writer)
-	core = zapcore.NewCore(
-		getEncoderByType(encoder)(config),
-		ws,
-		levelFn,
-	)
-	return core, stop, nil
+	ws := getOutWriterByType(writer)
+	core = zapcore.NewCore(getEncoderByType(encoder)(config), ws, lvlEnabler)
+	return core, nil
 }

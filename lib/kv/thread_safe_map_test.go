@@ -1,6 +1,8 @@
 package kv
 
 import (
+	"math/bits"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,7 +12,9 @@ func TestThreadSafeMap_SimpleCRUD(t *testing.T) {
 	keys := genStrKeys(8, 10000)
 	vals := make([]int, 0, len(keys))
 	m := make(map[string]int, len(keys))
-	_m := NewThreadSafeMap[string, int]()
+	_m := NewThreadSafeMap[string, int](WithThreadSafeMapInitCap[string, int](10_000),
+		WithThreadSafeMapCloseableItemCheck[string, int](),
+	)
 	for i, key := range keys {
 		m[key] = i
 		vals = append(vals, i)
@@ -45,4 +49,28 @@ func TestThreadSafeMap_SimpleCRUD(t *testing.T) {
 
 	err = _m.Purge()
 	require.NoError(t, err)
+}
+
+func BenchmarkStringThreadSafeMap(b *testing.B) {
+	const strKeyLen = 8
+	sizes := []int{16, 128, 1024, 8192, 131072}
+	for _, n := range sizes {
+		b.Run("n="+strconv.Itoa(n), func(bb *testing.B) {
+			keys := genStrKeys(strKeyLen, n)
+			n := uint32(len(keys))
+			mod := n - 1 // power of 2 fast modulus
+			require.Equal(bb, 1, bits.OnesCount32(n))
+			m := NewThreadSafeMap[string, string](WithThreadSafeMapInitCap[string, string](n))
+			for _, k := range keys {
+				_ = m.AddOrUpdate(k, k)
+			}
+			bb.ResetTimer()
+			var ok bool
+			for i := 0; i < b.N; i++ {
+				_, ok = m.Get(keys[uint32(i)&mod])
+				require.True(b, ok)
+			}
+			bb.ReportAllocs()
+		})
+	}
 }

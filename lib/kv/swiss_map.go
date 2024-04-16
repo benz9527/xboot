@@ -108,10 +108,8 @@ const (
 	errSwissMapNextSlotsCapOvf  = kvError("[swiss-map] slots overflow")
 )
 
-var (
-	// amd64 && !nosimd 256 * 1024 * 1024; !amd64 || nosimd 512 * 1024 * 1024
-	maxSlotCap = 1 << (32 - ibits.CeilPowOf2(slotSize))
-)
+// amd64 && !nosimd 256 * 1024 * 1024; !amd64 || nosimd 512 * 1024 * 1024
+var maxSlotCap = 1 << (32 - ibits.CeilPowOf2(slotSize))
 
 // A 57 bits hash prefix.
 // The whole hash truncated to a unsigned 64-bit integer.
@@ -372,7 +370,7 @@ func newSwissMap[K comparable, V any](capacity uint32) *swissMap[K, V] {
 }
 
 func NewSwissMap[K comparable, V any](capacity uint32) Map[K, V] {
-	return NewSwissMap[K, V](capacity)
+	return newSwissMap[K, V](capacity)
 }
 
 func calcSlotCapacity(size uint32) uint32 {
