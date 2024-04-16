@@ -6,11 +6,14 @@ import (
 	"sync"
 
 	"go.uber.org/multierr"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 type threadSafeMap[K comparable, V any] struct {
 	lock           sync.RWMutex
 	m              *swissMap[K, V]
+	initCap        uint32
 	isClosableItem bool
 }
 
@@ -41,7 +44,6 @@ func (t *threadSafeMap[K, V]) Get(key K) (item V, exists bool) {
 }
 
 func (t *threadSafeMap[K, V]) ListKeys(filters ...SafeStoreKeyFilterFunc[K]) []K {
-
 	realFilters := make([]SafeStoreKeyFilterFunc[K], 0, len(filters))
 	for _, filter := range filters {
 		if filter != nil {
@@ -124,22 +126,48 @@ func (t *threadSafeMap[K, V]) Purge() error {
 		})
 	}
 	t.m = nil
-	return merr
+	return infra.WrapErrorStack(merr)
 }
 
-func NewThreadSafeMap[K comparable, V any]() ThreadSafeStorer[K, V] {
-	isCloserItem := false
-	nilT := new(V)
-	if !reflect.ValueOf(nilT).IsNil() {
-		if reflect.TypeOf(nilT).Implements(reflect.TypeOf((*io.Closer)(nil)).Elem()) {
-			isCloserItem = true
-		}
-	} else {
-		_nilT := *new(V)
-		if reflect.TypeOf(_nilT).Implements(reflect.TypeOf((*io.Closer)(nil)).Elem()) {
-			isCloserItem = true
+type ThreadSafeMapOption[K comparable, V any] func(*threadSafeMap[K, V]) error
+
+func NewThreadSafeMap[K comparable, V any](opts ...ThreadSafeMapOption[K, V]) ThreadSafeStorer[K, V] {
+	tsm := &threadSafeMap[K, V]{}
+	for _, opt := range opts {
+		if err := opt(tsm); err != nil {
+			panic(err)
 		}
 	}
+	if tsm.initCap == 0 {
+		tsm.initCap = 1024
+	}
+	tsm.m = newSwissMap[K, V](tsm.initCap)
+	return tsm
+}
 
-	return &threadSafeMap[K, V]{m: newSwissMap[K, V](1024), isClosableItem: isCloserItem}
+func WithThreadSafeMapInitCap[K comparable, V any](capacity uint32) ThreadSafeMapOption[K, V] {
+	return func(tsm *threadSafeMap[K, V]) error {
+		if capacity == 0 {
+			capacity = 1024
+		}
+		tsm.initCap = capacity
+		return nil
+	}
+}
+
+func WithThreadSafeMapCloseableItemCheck[K comparable, V any]() ThreadSafeMapOption[K, V] {
+	return func(tsm *threadSafeMap[K, V]) error {
+		nilT := new(V)
+		if !reflect.ValueOf(nilT).IsNil() {
+			if reflect.TypeOf(nilT).Implements(reflect.TypeOf((*io.Closer)(nil)).Elem()) {
+				tsm.isClosableItem = true
+			}
+		} else {
+			_nilT := *new(V)
+			if reflect.TypeOf(_nilT).Implements(reflect.TypeOf((*io.Closer)(nil)).Elem()) {
+				tsm.isClosableItem = true
+			}
+		}
+		return nil
+	}
 }
