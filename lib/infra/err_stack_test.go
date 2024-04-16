@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 var initPC = caller()
@@ -185,7 +186,7 @@ func TestStackTraceFormat(t *testing.T) {
 }
 
 func testStackTrace() stackTrace {
-	var pcs = make([]uintptr, 8)
+	pcs := make([]uintptr, 8)
 	n := runtime.Callers(1, pcs[:])
 	var st stack = pcs[0:n]
 	return st.StackTrace()
@@ -395,6 +396,12 @@ func TestErrorStackMarshalJSON(t *testing.T) {
 	t.Logf("%+v\n", es)
 	t.Logf("%#v\n", es)
 
+	l, err := zap.NewDevelopment()
+	require.NoError(t, err)
+
+	var _es *errorStack = nil
+	l.Error("test zap nil err", zap.Inline(_es))
+
 	es = WrapErrorStackWithMessage(nil, "")
 	require.Nil(t, es)
 
@@ -415,6 +422,7 @@ func TestErrorStackMarshalJSON(t *testing.T) {
 
 	es = AppendErrorStack(errors.New("test12"), errors.New("test13"))
 	require.NotNil(t, es)
+	l.Info("test zap dev logger", zap.Inline(es.(*errorStack)))
 
 	es = WrapErrorStackWithMessage(errors.New("test14"), "test15")
 	require.NotNil(t, es)
