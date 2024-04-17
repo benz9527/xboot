@@ -24,24 +24,18 @@ func NewAntsXLogger(logger XLogger) *AntsXLogger {
 		zap().
 		Named("Ants").
 		WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-			config := zapcore.EncoderConfig{
-				MessageKey:    "msg",
-				LevelKey:      "lvl",
-				EncodeLevel:   logger.levelEncoder(),
-				TimeKey:       "ts",
-				EncodeTime:    logger.timeEncoder(),
-				CallerKey:     coreKeyIgnored,
-				EncodeCaller:  zapcore.ShortCallerEncoder,
-				FunctionKey:   coreKeyIgnored,
-				NameKey:       "component",
-				EncodeName:    zapcore.FullNameEncoder,
-				StacktraceKey: coreKeyIgnored,
+			if core == nil {
+				panic("[XLogger] core is nil")
 			}
-			return zapcore.NewCore(
-				logger.outEncoder()(config),
-				logger.writeSyncer(),
-				logger.levelEnablerFunc(),
-			)
+			cc, ok := core.(XLogCore)
+			if !ok {
+				panic("[XLogger] core is not XLogCore")
+			}
+			var err error
+			if cc, err = WrapCore(cc, componentCoreEncodeCfg); err != nil {
+				panic(err)
+			}
+			return cc
 		})),
 	)
 	return &AntsXLogger{

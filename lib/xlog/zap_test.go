@@ -14,6 +14,17 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+func TestLogLevelString(t *testing.T) {
+	require.Equal(t, "DEBUG", LogLevelDebug.String())
+	require.Equal(t, "INFO", LogLevelInfo.String())
+	require.Equal(t, "WARN", LogLevelWarn.String())
+	require.Equal(t, "ERROR", LogLevelError.String())
+	require.Equal(t, zapcore.DebugLevel, LogLevelDebug.zapLevel())
+	require.Equal(t, zapcore.InfoLevel, LogLevelInfo.zapLevel())
+	require.Equal(t, zapcore.WarnLevel, LogLevelWarn.zapLevel())
+	require.Equal(t, zapcore.ErrorLevel, LogLevelError.zapLevel())
+}
+
 type testBanner struct{}
 
 func (b testBanner) JSON() string {

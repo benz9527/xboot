@@ -22,14 +22,14 @@ const (
 
 func (lvl LogLevel) zapLevel() zapcore.Level {
 	switch lvl {
-	case LogLevelDebug:
-		return zapcore.DebugLevel
 	case LogLevelInfo:
 		return zapcore.InfoLevel
 	case LogLevelWarn:
 		return zapcore.WarnLevel
 	case LogLevelError:
 		return zapcore.ErrorLevel
+	case LogLevelDebug:
+		fallthrough
 	default:
 	}
 	return zapcore.DebugLevel
@@ -105,14 +105,21 @@ type Banner interface {
 }
 
 type XLogCore interface {
-	Build(
-		zapcore.LevelEnabler,
-		LogEncoderType,
-		LogOutWriterType,
-		zapcore.LevelEncoder,
-		zapcore.TimeEncoder,
-	) (core zapcore.Core, err error)
+	timeEncoder() zapcore.TimeEncoder
+	levelEncoder() zapcore.LevelEncoder
+	writeSyncer() zapcore.WriteSyncer
+	outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder
+
+	zapcore.Core
 }
+
+type XLogCoreConstructor func(
+	zapcore.LevelEnabler,
+	LogEncoderType,
+	LogOutWriterType,
+	zapcore.LevelEncoder,
+	zapcore.TimeEncoder,
+) XLogCore
 
 // XLogger mainly implemented by Uber zap logger.
 //
@@ -134,11 +141,6 @@ type XLogCore interface {
 // Log format is not recommended, because it is low performance.
 type XLogger interface {
 	zap() *zap.Logger
-	timeEncoder() zapcore.TimeEncoder
-	levelEncoder() zapcore.LevelEncoder
-	writeSyncer() zapcore.WriteSyncer
-	levelEnablerFunc() zap.LevelEnablerFunc
-	outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder
 
 	IncreaseLogLevel(level zapcore.Level)
 	Level() string
