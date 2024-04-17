@@ -22,34 +22,12 @@ type xLogger struct {
 	logger              atomic.Pointer[zap.Logger]
 	ctxFields           kv.ThreadSafeStorer[string, string]
 	dynamicLevelEnabler zap.AtomicLevel
-	lvlEncoder          zapcore.LevelEncoder
-	tsEncoder           zapcore.TimeEncoder
 	writer              LogOutWriterType
 	encoder             LogEncoderType
 }
 
 func (l *xLogger) zap() *zap.Logger {
 	return l.logger.Load()
-}
-
-func (l *xLogger) timeEncoder() zapcore.TimeEncoder {
-	return l.tsEncoder
-}
-
-func (l *xLogger) levelEncoder() zapcore.LevelEncoder {
-	return l.lvlEncoder
-}
-
-func (l *xLogger) outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder {
-	return getEncoderByType(l.encoder)
-}
-
-func (l *xLogger) writeSyncer() zapcore.WriteSyncer {
-	return getOutWriterByType(l.writer)
-}
-
-func (l *xLogger) levelEnablerFunc() zap.LevelEnablerFunc {
-	return l.dynamicLevelEnabler.Enabled
 }
 
 // IncreaseLogLevel we can increase or decrease the log level concurrently.
@@ -180,13 +158,14 @@ func (l *xLogger) ErrorStackf(err error, format string, args ...any) {
 }
 
 type loggerCfg struct {
-	ctxFields   kv.ThreadSafeStorer[string, string]
-	writerType  *LogOutWriterType
-	encoderType *LogEncoderType
-	lvlEncoder  zapcore.LevelEncoder
-	tsEncoder   zapcore.TimeEncoder
-	level       *zapcore.Level
-	core        XLogCore
+	ctxFields        kv.ThreadSafeStorer[string, string]
+	writerType       *LogOutWriterType
+	encoderType      *LogEncoderType
+	lvlEncoder       zapcore.LevelEncoder
+	tsEncoder        zapcore.TimeEncoder
+	level            *zapcore.Level
+	coreConstructors []XLogCoreConstructor
+	cores            []zapcore.Core
 }
 
 func (cfg *loggerCfg) apply(l *xLogger) {
@@ -213,15 +192,25 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 	if cfg.lvlEncoder == nil {
 		cfg.lvlEncoder = zapcore.CapitalLevelEncoder
 	}
-	l.lvlEncoder = cfg.lvlEncoder
 
 	if cfg.tsEncoder == nil {
 		cfg.tsEncoder = zapcore.ISO8601TimeEncoder
 	}
-	l.tsEncoder = cfg.tsEncoder
 
-	if cfg.core == nil {
-		cfg.core = &consoleCore{}
+	if cfg.coreConstructors == nil || len(cfg.coreConstructors) == 0 {
+		cfg.coreConstructors = []XLogCoreConstructor{
+			newConsoleCore,
+		}
+	}
+	cfg.cores = make([]zapcore.Core, 0, 16)
+	for _, cc := range cfg.coreConstructors {
+		cfg.cores = append(cfg.cores, cc(
+			l.dynamicLevelEnabler,
+			l.encoder,
+			l.writer,
+			cfg.lvlEncoder,
+			cfg.tsEncoder,
+		))
 	}
 }
 
@@ -237,20 +226,9 @@ func NewXLogger(opts ...XLoggerOption) XLogger {
 	xl := &xLogger{}
 	cfg.apply(xl)
 
-	core, err := cfg.core.Build(
-		xl.dynamicLevelEnabler,
-		xl.encoder,
-		xl.writer,
-		xl.lvlEncoder,
-		xl.tsEncoder,
-	)
-	if err != nil {
-		panic(err)
-	}
-
 	// Disable zap logger error stack.
 	l := zap.New(
-		zapcore.NewTee(core),
+		zapcore.NewTee(cfg.cores...),
 		zap.AddCallerSkip(1), // Use caller filename as service
 		zap.AddCaller(),
 	)
@@ -323,7 +301,10 @@ func WithXLoggerContextFieldExtract(field string, mapTo ...string) XLoggerOption
 
 func WithXLoggerConsoleCore() XLoggerOption {
 	return func(cfg *loggerCfg) error {
-		cfg.core = &consoleCore{}
+		if cfg.coreConstructors != nil || len(cfg.coreConstructors) <= 0 {
+			cfg.coreConstructors = make([]XLogCoreConstructor, 0, 16)
+		}
+		cfg.coreConstructors = append(cfg.coreConstructors, newConsoleCore)
 		return nil
 	}
 }
