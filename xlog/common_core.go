@@ -7,6 +7,8 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
+var _ XLogCore = (*commonCore)(nil)
+
 type commonCore struct {
 	lvlEnabler zapcore.LevelEnabler
 	lvlEnc     zapcore.LevelEncoder
@@ -47,22 +49,21 @@ func WrapCore(core XLogCore, cfg *zapcore.EncoderConfig) (XLogCore, error) {
 	}
 	cfg.EncodeLevel = core.levelEncoder()
 	cfg.EncodeTime = core.timeEncoder()
-	lvlEnabler := zap.LevelEnablerFunc(func(l zapcore.Level) bool {
-		return core.Enabled(l)
-	})
 
 	cc := &commonCore{
-		ws:         core.writeSyncer(),
-		enc:        core.outEncoder(),
-		lvlEnabler: lvlEnabler,
-		lvlEnc:     core.levelEncoder(),
-		tsEnc:      core.timeEncoder(),
-		core:       zapcore.NewCore(core.outEncoder()(*cfg), core.writeSyncer(), lvlEnabler),
+		ws:  core.writeSyncer(),
+		enc: core.outEncoder(),
+		lvlEnabler: zap.LevelEnablerFunc(func(l zapcore.Level) bool {
+			return core.Enabled(l)
+		}),
+		lvlEnc: core.levelEncoder(),
+		tsEnc:  core.timeEncoder(),
 	}
+	cc.core = zapcore.NewCore(core.outEncoder()(*cfg), core.writeSyncer(), cc.lvlEnabler)
 	return cc, nil
 }
 
-var componentCoreEncodeCfg = &zapcore.EncoderConfig{
+var componentCoreEncoderCfg = &zapcore.EncoderConfig{
 	MessageKey:    "msg",
 	LevelKey:      "lvl",
 	TimeKey:       "ts",

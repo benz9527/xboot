@@ -22,8 +22,8 @@ type xLogger struct {
 	logger              atomic.Pointer[zap.Logger]
 	ctxFields           kv.ThreadSafeStorer[string, string]
 	dynamicLevelEnabler zap.AtomicLevel
-	writer              LogOutWriterType
-	encoder             LogEncoderType
+	writer              logOutWriterType
+	encoder             logEncoderType
 }
 
 func (l *xLogger) zap() *zap.Logger {
@@ -159,8 +159,8 @@ func (l *xLogger) ErrorStackf(err error, format string, args ...any) {
 
 type loggerCfg struct {
 	ctxFields        kv.ThreadSafeStorer[string, string]
-	writerType       *LogOutWriterType
-	encoderType      *LogEncoderType
+	writerType       *logOutWriterType
+	encoderType      *logEncoderType
 	lvlEncoder       zapcore.LevelEncoder
 	tsEncoder        zapcore.TimeEncoder
 	level            *zapcore.Level
@@ -201,6 +201,7 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 		cfg.coreConstructors = []XLogCoreConstructor{
 			newConsoleCore,
 		}
+		l.writer = StdOut
 	}
 	cfg.cores = make([]zapcore.Core, 0, 16)
 	for _, cc := range cfg.coreConstructors {
@@ -236,7 +237,7 @@ func NewXLogger(opts ...XLoggerOption) XLogger {
 	return xl
 }
 
-func WithXLoggerWriter(w LogOutWriterType) XLoggerOption {
+func WithXLoggerWriter(w logOutWriterType) XLoggerOption {
 	return func(cfg *loggerCfg) error {
 		if w == _writerMax {
 			return infra.NewErrorStack("unknown xlogger writer")
@@ -246,7 +247,7 @@ func WithXLoggerWriter(w LogOutWriterType) XLoggerOption {
 	}
 }
 
-func WithXLoggerEncoder(logEnc LogEncoderType) XLoggerOption {
+func WithXLoggerEncoder(logEnc logEncoderType) XLoggerOption {
 	return func(cfg *loggerCfg) error {
 		if logEnc == _encMax {
 			return infra.NewErrorStack("unknown xlogger encoder")
@@ -256,7 +257,7 @@ func WithXLoggerEncoder(logEnc LogEncoderType) XLoggerOption {
 	}
 }
 
-func WithXLoggerLevel(lvl LogLevel) XLoggerOption {
+func WithXLoggerLevel(lvl logLevel) XLoggerOption {
 	return func(cfg *loggerCfg) error {
 		_lvl := lvl.zapLevel()
 		cfg.level = &_lvl

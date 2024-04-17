@@ -8,10 +8,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/benz9527/xboot/lib/infra"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 func TestLogLevelString(t *testing.T) {
@@ -129,8 +130,8 @@ type testObj3 struct {
 func TestXLogger_Zap_AllAPIs(t *testing.T) {
 	testcases := []struct {
 		name          string
-		encoder       LogEncoderType
-		writer        LogOutWriterType
+		encoder       logEncoderType
+		writer        logOutWriterType
 		core          string
 		defaultLogger bool
 		ctxM          map[string]string

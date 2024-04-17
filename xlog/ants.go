@@ -32,7 +32,7 @@ func NewAntsXLogger(logger XLogger) *AntsXLogger {
 				panic("[XLogger] core is not XLogCore")
 			}
 			var err error
-			if cc, err = WrapCore(cc, componentCoreEncodeCfg); err != nil {
+			if cc, err = WrapCore(cc, componentCoreEncoderCfg); err != nil {
 				panic(err)
 			}
 			return cc
