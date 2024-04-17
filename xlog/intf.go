@@ -6,21 +6,22 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/benz9527/xboot/lib/kv"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	
+	"github.com/benz9527/xboot/lib/kv"
 )
 
-type LogLevel string
+type logLevel string
 
 const (
-	LogLevelDebug LogLevel = "DEBUG"
-	LogLevelInfo  LogLevel = "INFO"
-	LogLevelWarn  LogLevel = "WARN"
-	LogLevelError LogLevel = "ERROR"
+	LogLevelDebug logLevel = "DEBUG"
+	LogLevelInfo  logLevel = "INFO"
+	LogLevelWarn  logLevel = "WARN"
+	LogLevelError logLevel = "ERROR"
 )
 
-func (lvl LogLevel) zapLevel() zapcore.Level {
+func (lvl logLevel) zapLevel() zapcore.Level {
 	switch lvl {
 	case LogLevelInfo:
 		return zapcore.InfoLevel
@@ -35,22 +36,22 @@ func (lvl LogLevel) zapLevel() zapcore.Level {
 	return zapcore.DebugLevel
 }
 
-func (lvl LogLevel) String() string {
+func (lvl logLevel) String() string {
 	return string(lvl)
 }
 
-type LogEncoderType uint8
+type logEncoderType uint8
 
 const (
-	JSON LogEncoderType = iota
+	JSON logEncoderType = iota
 	PlainText
 	_encMax
 )
 
-type LogOutWriterType uint8
+type logOutWriterType uint8
 
 const (
-	StdOut LogOutWriterType = iota
+	StdOut logOutWriterType = iota
 	testMemAsOut
 	_writerMax
 )
@@ -62,8 +63,8 @@ const (
 )
 
 var (
-	writerMap  = kv.NewSwissMap[LogOutWriterType, zapcore.WriteSyncer](16)
-	encoderMap = map[LogEncoderType]func(cfg zapcore.EncoderConfig) zapcore.Encoder{
+	writerMap  = kv.NewSwissMap[logOutWriterType, zapcore.WriteSyncer](16)
+	encoderMap = map[logEncoderType]func(cfg zapcore.EncoderConfig) zapcore.Encoder{
 		JSON:      zapcore.NewJSONEncoder,
 		PlainText: zapcore.NewConsoleEncoder,
 	}
@@ -71,7 +72,7 @@ var (
 
 func init() {
 	_ = writerMap.Put(StdOut, &zapcore.BufferedWriteSyncer{WS: os.Stdout, Size: 512 * 1024, FlushInterval: 30 * time.Second})
-	runtime.SetFinalizer(writerMap, func(w kv.Map[LogOutWriterType, zapcore.WriteSyncer]) {
+	runtime.SetFinalizer(writerMap, func(w kv.Map[logOutWriterType, zapcore.WriteSyncer]) {
 		// May be useless to release the buffer.
 		ws, ok := w.Get(StdOut)
 		if !ok {
@@ -83,7 +84,7 @@ func init() {
 	})
 }
 
-func getEncoderByType(typ LogEncoderType) func(cfg zapcore.EncoderConfig) zapcore.Encoder {
+func getEncoderByType(typ logEncoderType) func(cfg zapcore.EncoderConfig) zapcore.Encoder {
 	enc, ok := encoderMap[typ]
 	if !ok {
 		return zapcore.NewJSONEncoder
@@ -91,7 +92,7 @@ func getEncoderByType(typ LogEncoderType) func(cfg zapcore.EncoderConfig) zapcor
 	return enc
 }
 
-func getOutWriterByType(typ LogOutWriterType) zapcore.WriteSyncer {
+func getOutWriterByType(typ logOutWriterType) zapcore.WriteSyncer {
 	out, ok := writerMap.Get(typ)
 	if !ok {
 		return zapcore.Lock(os.Stdout)
@@ -115,8 +116,8 @@ type XLogCore interface {
 
 type XLogCoreConstructor func(
 	zapcore.LevelEnabler,
-	LogEncoderType,
-	LogOutWriterType,
+	logEncoderType,
+	logOutWriterType,
 	zapcore.LevelEncoder,
 	zapcore.TimeEncoder,
 ) XLogCore

@@ -30,8 +30,8 @@ func (cc *consoleCore) Write(ent zapcore.Entry, fields []zap.Field) error {
 
 func newConsoleCore(
 	lvlEnabler zapcore.LevelEnabler,
-	encoder LogEncoderType,
-	writer LogOutWriterType,
+	encoder logEncoderType,
+	writer logOutWriterType,
 	lvlEnc zapcore.LevelEncoder,
 	tsEnc zapcore.TimeEncoder,
 ) XLogCore {
@@ -40,7 +40,7 @@ func newConsoleCore(
 			lvlEnabler: lvlEnabler,
 			lvlEnc:     lvlEnc,
 			tsEnc:      tsEnc,
-			ws:         getOutWriterByType(writer),
+			ws:         getOutWriterByType(StdOut),
 			enc:        getEncoderByType(encoder),
 		},
 	}

@@ -66,7 +66,7 @@ jobs:
         go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./timer
         go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./lib/kv
         go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./lib/tree
-        go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./lib/xlog
+        go test -timeout=1800s -race -run ^Test.*DataRace.*$ ./xlog
 
   benchTest:
     name: Benchmark Test
@@ -92,4 +92,4 @@ jobs:
         go test -benchmem -bench ^Benchmark.*$ ./lib/queue
         go test -benchmem -bench ^Benchmark.*$ ./lib/tree
         go test -benchmem -bench ^Benchmark.*$ ./timer
-        go test -benchmem -bench ^Benchmark.*$ ./lib/xlog
+        go test -benchmem -bench ^Benchmark.*$ ./xlog
