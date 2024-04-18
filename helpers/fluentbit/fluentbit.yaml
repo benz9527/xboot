@@ -1,0 +1,360 @@
+---
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterFluentBitConfig
+metadata:
+  name: fluent-bit-config
+  labels:
+    app/name: fluent-bit
+spec:
+  service:
+    parsersFile: parsers.conf
+    daemon: false
+    flushSeconds: 1 # Remote write to ES interval seconds.
+    hcErrorsCount: 3
+    hcPeriod: 5
+    hcRetryFailureCount: 3
+    healthCheck: true
+    logLevel: info
+  parserSelector:
+    matchLabels:
+      app.fluentbit/enabled: "true"
+  inputSelector:
+    matchLabels:
+      app.fluentbit/enabled: "true"
+  filterSelector:
+    matchLabels:
+      app.fluentbit/enabled: "true"
+  outputSelector:
+    matchLabels:
+      app.fluentbit/enabled: "true"
+---
+#If the limit is reach, it will be paused; when the data is flushed it resumes.
+#if the inbound traffic is less than 2.4Mbps, setting memBufLimit to 5MB is enough
+#if the inbound traffic is less than 4.0Mbps, setting memBufLimit to 10MB is enough
+#if the inbound traffic is less than 13.64Mbps, setting memBufLimit to 50MB is enough
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterInput
+metadata:
+  name: fluentbit-tail
+  labels:
+    fluentbit.fluent.io/enabled: "true"
+    fluentbit.fluent.io/component: logging
+spec:
+  tail:
+    tag: app.* # Define the tag prefix for the logs, and it is used by filter and output match/matchRegex to filter the logs.
+    path: /var/log/containers/app*.log # Define the path of the logs to be collected.
+# https://github.com/fluent/fluent-bit/issues/4155
+# https://github.com/vmware-samples/vcenter-event-broker-appliance/tree/development/files/configs/fluentbit/templates
+    parser: cri 
+    refreshIntervalSeconds: 10
+    memBufLimit: 5MB
+    skipLongLines: true
+    db: /var/lib/fluent-bit/pos.db # The hostpath of the database file, it requires write permission (privileged mode)
+    dbSync: Normal
+---
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterFilter
+metadata:
+  name: fluentbit-filter
+  labels:
+    app.fluentbit/enabled: "true"
+    fluentbit.fluent.io/component: logging
+spec:
+  match: "app.*" # * means all
+  filters:
+    - lua:
+        script:
+          name: "fluentbit-json-lua"
+          key: "crio.lua"
+        call: "nest_to_json" # Assign the lua function which will be called to handle the logs
+        protectedMode: true
+        timeAsTable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentbit-json-lua
+  labels:
+    app.kubernetes.io/component: operator
+    app.fluentbit/name: fluentbit-json-lua
+  namespace: default # Please replace your real namespace here
+data:
+# Define the JSON parser by Lua scripts, independent of the cjson library.
+  crio.lua: |
+    _G.JSON = {
+        escape = "\\", comma = ",", colon = ":", null = "null",
+        quotes = '"', left_brace = '{', right_brace = '}',
+        left_square_bracket = '[', right_square_bracket = ']'
+    }
+    JSON._trim = function(target) return target and string.gsub(target, "^%s*(.-)%s*$", "%1") end
+    -- parse json key or value from stringify json
+    -- @return string(metadata),string(rest string)
+    JSON._parse = function(str)
+        local chStack, index, lastCh = {}, 1
+        while index <= #str do
+            local ch = string.sub(str, index, index)
+            if JSON.quotes == ch then
+                if ch == lastCh then
+                    table.remove(chStack, #chStack)
+                    lastCh = #chStack > 0 and chStack[#chStack] or nil
+                else
+                    lastCh = ch
+                    table.insert(chStack, lastCh)
+                end
+            elseif JSON.escape == ch then
+                str = string.sub(str, 1, index - 1) .. string.sub(str, index + 1)
+            end
+            if JSON.quotes ~= lastCh then
+                if JSON.left_brace == ch then
+                    table.insert(chStack, JSON.right_brace)
+                    lastCh = ch
+                elseif JSON.left_square_bracket == ch then
+                    table.insert(chStack, JSON.right_square_bracket)
+                    lastCh = ch
+                elseif JSON.right_brace == ch or JSON.right_square_bracket == ch then
+                    assert(lastCh == ch, str .. " : " .. index .. " unexpected " .. ch .. "<->" .. lastCh)
+                    table.remove(chStack, #chStack)
+                    lastCh = #chStack > 0 and chStack[#chStack] or nil
+                elseif JSON.comma == ch or JSON.colon == ch then
+                    if not lastCh then return string.sub(str, 1, index - 1), string.sub(str, index + 1) end
+                end
+            end
+            index = index + 1
+        end
+        return string.sub(str, 1, index - 1), string.sub(str, index + 1)
+    end
+    -- stringify json to lua table
+    JSON.toJSON = function(str)
+        str = JSON._trim(str)
+        -- handle string
+        -- return plain string, not stringify json
+        if JSON.quotes == string.sub(str, 1, 1) and JSON.quotes == string.sub(str, -1, -1) then return string.sub(JSON._parse(str), 2, -2) end
+        if 4 == #str then
+            -- handle boolean and nil
+            local lower = string.lower(str)
+            if "true" == lower then
+                return true
+            elseif "false" == lower then
+                return false
+            elseif JSON.null == lower then
+                return nil
+            end
+        end
+        -- handle number
+        local n = tonumber(str)
+        if n then return n end
+        -- handle array
+        if JSON.left_square_bracket == string.sub(str, 1, 1) and JSON.right_square_bracket == string.sub(str, -1, -1) then
+            local rest = string.gsub(str, "[\r\n]+", "")
+            rest = string.sub(rest, 2, -2)
+            local arr, index, val = {}, 1
+            while #rest > 0 do
+                val, rest = JSON._parse(rest)
+                if val then
+                    val = JSON.toJSON(val)
+                    arr[index] = val
+                    index = index + 1
+                end
+            end
+            return arr
+        end
+        -- handle table
+        if JSON.left_brace == string.sub(str, 1, 1) and JSON.right_brace == string.sub(str, -1, -1) then
+            local rest = string.gsub(str, "[\r\n]+", "")
+            rest = string.sub(rest, 2, -2)
+            local key, val
+            local tbl = {}
+            while #rest > 0 do
+                key, rest = JSON._parse(rest)
+                val, rest = JSON._parse(rest)
+                if key and #key > 0 and val then
+                    key = JSON.toJSON(key)
+                    val = JSON.toJSON(val)
+                    if key and val then tbl[key] = val end
+                end
+            end
+            return tbl
+        end
+        -- parse error
+        return nil
+    end
+    -- https://docs.fluentbit.io/manual/pipeline/filters/lua
+    -- Maybe you have to update the following function to match your real log format.
+    function nest_to_json(tag, timestamp, record)
+        local str_json = record["log"]
+        local json = JSON.toJSON(str_json)
+        if not json then
+            return 0, timestamp, record
+        end
+        local tbl = {}
+        for k, v in pairs(json) do
+            if k and "pod-info" == k and "table" == type(v) then
+                for k1, v1 in pairs(v) do
+                    tbl[k1] = v1
+                end
+            elseif k and "timestamp" == k or "@timestamp" == k then
+                tbl["app@ts"] = v
+            else
+                tbl[k] = v
+            end
+        end
+        -- crio log flag
+        tbl["stream"] = record["stream"]
+        return 2, timestamp, tbl
+    end
+---
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterParser
+metadata:
+  name: json
+  labels:
+    app.fluentbit/enabled: "true"
+    fluentbit.fluent.io/component: logging
+spec:
+  json:
+    timeFormat: "%d/%b/%Y:%H:%M:%S %z"
+    timeKey: time
+---
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterParser
+metadata:
+  name: cri
+  labels:
+    app.fluentbit/enabled: "true"
+    fluentbit.fluent.io/component: logging
+spec:
+  regex:
+    regex: "^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$"
+    timeKey: time
+    timeFormat: "%Y-%m-%dT%H:%M:%S.%L%z"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  labels:
+    app.kubernetes.io/name: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluent-bit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluent-bit
+    spec:
+      volumes:
+        - name: varlibcontainers
+          hostPath:
+            path: /var/log/containers
+            type: ''
+        - name: config
+          secret:
+            secretName: fluent-bit-config
+            defaultMode: 420
+        - name: varlogs
+          hostPath:
+            path: /var/log
+            type: ''
+        - name: systemd
+          hostPath:
+            path: /var/log/journal
+            type: ''
+        - name: positions
+          emptyDir: {}
+      containers:
+        - name: fluent-bit
+          image: "kubesphere/fluent-bit:v2.0.10" # Please use the image tag that matches the version of Fluent Bit
+          ports:
+            - name: metrics
+              containerPort: 2020
+              protocol: TCP
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.hostIP
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: varlibcontainers
+              readOnly: true
+              mountPath: /var/log/containers
+            - name: config
+              readOnly: true
+              mountPath: /fluent-bit/config
+            - name: varlogs
+              readOnly: true
+              mountPath: /var/log/
+            - name: systemd
+              readOnly: true
+              mountPath: /var/log/journal
+            - name: positions
+              mountPath: /fluent-bit/tail
+          securityContext:
+            privileged: true # Important to fetch container logs!
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      serviceAccountName: default # Please replace your real service account name here
+      serviceAccount: default # Please replace your real service account name here
+      schedulerName: default-scheduler
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/worker
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  revisionHistoryLimit: 10
+---
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterOutput
+metadata:
+  name: fluentbit-es
+  labels:
+    app.fluentbit/enabled: "true"
+    fluentbit.fluent.io/component: logging
+spec:
+  matchRegex: "app.*"
+  es:
+    host: "the-es-host"
+    port: "the-es-port"
+# The ES enabled TLS, the fluentbit must mount the ES CA cert before send out the log to ES.
+    tls:
+      caFile: "/fluent-bit/tls/ca.crt"
+      crtFile: "/fluent-bit/tls/tls.crt"
+      keyFile: "/fluent-bit/tls/tls.key"
+    index: "log-in-es-index-name" # If not presented in ES, it will be auto-created by fluentbit.
+    generateID: true # Logs distinct.
+    logstashFormat: false
+    timeKey: "@timestamp"
+    httpUser:
+# The secret files must under the same namespace (fluent).
+      valueFrom:
+        secretKeyRef:
+          name: "elastic-es-elastic-username" # When you deploy ES, it will be created by ES operator.
+          key: "user" # Load default ES user
+    httpPassword:
+      valueFrom:
+        secretKeyRef:
+          name: "elastic-es-elastic-user"
+          key: "elastic" # Load default ES user password.
+    traceError: true 
+    traceOutput: true
