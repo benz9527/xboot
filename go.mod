@@ -3,6 +3,7 @@ module github.com/benz9527/xboot
 go 1.22.2
 
 require (
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/mmcloughlin/avo v0.6.0
 	github.com/panjf2000/ants/v2 v2.9.1
 	github.com/samber/lo v1.39.0
@@ -15,11 +16,10 @@ require (
 	go.opentelemetry.io/otel/metric v1.24.0
 	go.opentelemetry.io/otel/sdk/metric v1.24.0
 	go.uber.org/automaxprocs v1.5.3
+	go.uber.org/fx v1.21.0
 	go.uber.org/multierr v1.11.0
 	golang.org/x/sys v0.18.0
 )
-
-require go.uber.org/fx v1.21.0
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
