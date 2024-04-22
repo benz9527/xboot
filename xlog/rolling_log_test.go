@@ -1,6 +1,7 @@
 package xlog
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -99,21 +100,13 @@ func TestParseFileSizeUnit(t *testing.T) {
 	}
 }
 
-func TestRollingLog_Write(t *testing.T) {
-	log := &RollingLog{
-		FileMaxSize:       "1KB",
-		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
-		FileCompressible:  true,
-		FileMaxBackups:    4,
-		FileMaxAge:        "3day",
-		FileCompressBatch: 2,
-	}
+func testRollingLogWriteRunCore(t *testing.T, log *RollingLog) {
 	size, err := parseFileSize(log.FileMaxSize)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1024), size)
 	log.maxSize = size
 	log.fileWatcher, err = fsnotify.NewWatcher()
-	log.fileWatcher.Add(os.TempDir())
+	log.fileWatcher.Add(log.FilePath)
 	require.NoError(t, err)
 	go log.watchAndArchive()
 
@@ -122,7 +115,27 @@ func TestRollingLog_Write(t *testing.T) {
 		_, err = log.Write(data)
 		require.NoError(t, err)
 	}
+	time.Sleep(1 * time.Second)
 	err = log.Close()
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
+}
+
+func TestRollingLog_Write(t *testing.T) {
+	log := &RollingLog{
+		FileMaxSize:       "1KB",
+		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		FileCompressible:  true,
+		FileMaxBackups:    4,
+		FileMaxAge:        "3day",
+		FileCompressBatch: 2,
+		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		FilePath:          os.TempDir(),
+	}
+	loop := 2
+	for i := 0; i < loop; i++ {
+		testRollingLogWriteRunCore(t, log)
+	}
+	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
+	require.NoError(t, err)
+	require.LessOrEqual(t, int((loop-1)*log.FileMaxBackups), len(reader.File))
 }
