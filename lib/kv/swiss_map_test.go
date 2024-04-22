@@ -474,9 +474,9 @@ func BenchmarkStringSwissMaps(b *testing.B) {
 
 func TestStringSwissMapsWriteOnly(t *testing.T) {
 	const strKeyLen = 8
-	sizes := []int{16, 128, 1024, 8192, 131072}
+	sizes := []int{16, 128, 1024, 8192, 131072, 1<<20, 1<<24}
 	for _, n := range sizes {
-		t.Run("n="+strconv.Itoa(n), func(tt *testing.T) {
+		t.Run("SwissMap n="+strconv.Itoa(n), func(tt *testing.T) {
 			keys := genStrKeys(strKeyLen, n)
 			n := uint32(len(keys))
 			require.Equal(tt, 1, bits.OnesCount32(n))
@@ -493,15 +493,7 @@ func TestStringSwissMapsWriteOnly(t *testing.T) {
 				require.Equal(tt, k, v)
 			}
 		})
-	}
-}
-
-func TestStringGoNativeMapWriteOnly(t *testing.T) {
-	const strKeyLen = 8
-	// sizes := []int{16, 128, 1024, 8192, 131072}
-	sizes := []int{131072}
-	for _, n := range sizes {
-		t.Run("n="+strconv.Itoa(n), func(tt *testing.T) {
+		t.Run("Map n="+strconv.Itoa(n), func(tt *testing.T) {
 			keys := genStrKeys(strKeyLen, n)
 			n := uint32(len(keys))
 			require.Equal(tt, 1, bits.OnesCount32(n))
