@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	randv2 "math/rand/v2"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	"github.com/benz9527/xboot/lib/id"
@@ -467,6 +468,54 @@ func BenchmarkStringSwissMaps(b *testing.B) {
 				require.True(b, ok)
 			}
 			bb.ReportAllocs()
+		})
+	}
+}
+
+func TestStringSwissMapsWriteOnly(t *testing.T) {
+	const strKeyLen = 8
+	sizes := []int{16, 128, 1024, 8192, 131072}
+	for _, n := range sizes {
+		t.Run("n="+strconv.Itoa(n), func(tt *testing.T) {
+			keys := genStrKeys(strKeyLen, n)
+			n := uint32(len(keys))
+			require.Equal(tt, 1, bits.OnesCount32(n))
+			m := newSwissMap[string, string](n)
+			var count atomic.Uint32
+			for _, k := range keys {
+				err := m.Put(k, k)
+				require.NoError(tt, err)
+				count.Add(1)
+			}
+			for _, k := range keys {
+				v, ok := m.Get(k)
+				require.True(tt, ok)
+				require.Equal(tt, k, v)
+			}
+		})
+	}
+}
+
+func TestStringGoNativeMapWriteOnly(t *testing.T) {
+	const strKeyLen = 8
+	// sizes := []int{16, 128, 1024, 8192, 131072}
+	sizes := []int{131072}
+	for _, n := range sizes {
+		t.Run("n="+strconv.Itoa(n), func(tt *testing.T) {
+			keys := genStrKeys(strKeyLen, n)
+			n := uint32(len(keys))
+			require.Equal(tt, 1, bits.OnesCount32(n))
+			m := make(map[string]string, n)
+			var count atomic.Uint32
+			for _, k := range keys {
+				m[k] = k
+				count.Add(1)
+			}
+			for _, k := range keys {
+				v, ok := m[k]
+				require.True(tt, ok)
+				require.Equal(tt, k, v)
+			}
 		})
 	}
 }

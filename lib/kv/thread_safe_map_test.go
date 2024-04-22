@@ -1,8 +1,11 @@
 package kv
 
 import (
+	"fmt"
 	"math/bits"
+	randv2 "math/rand/v2"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,6 +68,91 @@ func BenchmarkStringThreadSafeMap(b *testing.B) {
 				_ = m.AddOrUpdate(k, k)
 			}
 			bb.ResetTimer()
+			var ok bool
+			for i := 0; i < b.N; i++ {
+				_, ok = m.Get(keys[uint32(i)&mod])
+				require.True(b, ok)
+			}
+			bb.ReportAllocs()
+		})
+	}
+}
+
+func BenchmarkThreadSafeMapReadWrite(b *testing.B) {
+	value := []byte(`abc`)
+	for i := 0; i <= 10; i++ {
+		b.Run(fmt.Sprintf("frac_%d", i), func(bb *testing.B) {
+			readFrac := float32(i) / 10.0
+			tsm := NewThreadSafeMap[int, []byte](
+				WithThreadSafeMapInitCap[int, []byte](4096),
+			)
+			bb.ResetTimer()
+			var count int
+			bb.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					if randv2.Float32() < readFrac {
+						v, exists := tsm.Get(randv2.Int())
+						if exists && v != nil {
+							count++
+						}
+					} else {
+						err := tsm.AddOrUpdate(randv2.Int(), value)
+						require.NoError(bb, err)
+					}
+				}
+			})
+		})
+	}
+}
+
+func BenchmarkStringThreadSafeMap_DataRace(b *testing.B) {
+	const strKeyLen = 8
+	sizes := []int{16, 128, 1024, 8192, 131072}
+	for _, n := range sizes {
+		b.Run("n="+strconv.Itoa(n), func(bb *testing.B) {
+			keys := genStrKeys(strKeyLen, n)
+			n := uint32(len(keys))
+			mod := n - 1 // power of 2 fast modulus
+			require.Equal(bb, 1, bits.OnesCount32(n))
+			m := NewThreadSafeMap[string, string](WithThreadSafeMapInitCap[string, string](n))
+			channels := make([]chan string, 4)
+			for i := 0; i < len(channels); i++ {
+				channels[i] = make(chan string)
+			}
+			wg := sync.WaitGroup{}
+			wg.Add(4)
+			bb.ResetTimer()
+			go func() {
+				for k := range channels[0] {
+					_ = m.AddOrUpdate(k, k)
+				}
+				wg.Done()
+			}()
+			go func() {
+				for k := range channels[1] {
+					_ = m.AddOrUpdate(k, k)
+				}
+				wg.Done()
+			}()
+			go func() {
+				for k := range channels[2] {
+					_ = m.AddOrUpdate(k, k)
+				}
+				wg.Done()
+			}()
+			go func() {
+				for k := range channels[3] {
+					_ = m.AddOrUpdate(k, k)
+				}
+				wg.Done()
+			}()
+			for i, k := range keys {
+				channels[i%4] <- k
+			}
+			for i := 0; i < 4; i++ {
+				close(channels[i])
+			}
+			wg.Wait()
 			var ok bool
 			for i := 0; i < b.N; i++ {
 				_, ok = m.Get(keys[uint32(i)&mod])
