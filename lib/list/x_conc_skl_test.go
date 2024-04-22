@@ -6,6 +6,7 @@ import (
 	randv2 "math/rand/v2"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -659,8 +660,8 @@ func TestXConcSklUnique(t *testing.T) {
 func BenchmarkXSklReadWrite(b *testing.B) {
 	value := []byte(`abc`)
 	for i := 0; i <= 10; i++ {
-		readFrac := float32(i) / 10.0
 		b.Run(fmt.Sprintf("frac_%d", i), func(b *testing.B) {
+			readFrac := float32(i) / 10.0
 			opts := make([]SklOption[int, []byte], 0, 2)
 			opts = append(opts, WithXConcSklDataNodeUniqueMode[int, []byte]())
 			skl, err := NewSkl[int, []byte](
@@ -671,13 +672,13 @@ func BenchmarkXSklReadWrite(b *testing.B) {
 				panic(err)
 			}
 			b.ResetTimer()
-			var count int
+			count := atomic.Int64{}
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					if randv2.Float32() < readFrac {
 						v, err := skl.LoadFirst(randv2.Int())
 						if err != nil && v != nil {
-							count++
+							count.Add(1)
 						}
 					} else {
 						skl.Insert(randv2.Int(), value)
