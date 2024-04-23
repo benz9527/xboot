@@ -397,11 +397,11 @@ func splitHash(hash uint64) (hi h1, lo h2) {
 // Fast mod N should not select uint32(X) & uint32(N - 1), it
 // is bad performance for swiss-map to do put.
 // https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
-func findSlotIndex(hi h1, groups uint32) uint32 {
+func findSlotIndex(hi h1, slots uint32) uint32 {
 	// This is not equal to uint32(X) & uint32(N - 1),
 	// but it is completely fair to let mod of X be 
 	// uniformly distributed at [0,N).
-	return uint32((uint64(uint32(hi)) * uint64(groups)) >> 32)
+	return uint32((uint64(uint32(hi)) * uint64(slots)) >> 32)
 }
 
 // Hash collision, find bit as index, start from the trailing then unset it.
