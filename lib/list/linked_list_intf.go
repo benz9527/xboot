@@ -20,7 +20,8 @@ type BasicLinkedList[T comparable] interface {
 	// Remove removes targetE from l if targetE is an element of list l and returns targetE or nil if the list is empty.
 	Remove(targetE *NodeElement[T]) *NodeElement[T]
 	// Foreach traverses the list l and executes function fn for each element.
-	Foreach(fn func(idx int64, e *NodeElement[T]))
+	// If fn returns an error, the traversal stops and returns the error.
+	Foreach(fn func(idx int64, e *NodeElement[T]) error) error
 	// FindFirst finds the first element that satisfies the compareFn and returns the element and true if found.
 	// If compareFn is not provided, it will use the default compare function that compares the value of element.
 	FindFirst(v T, compareFn ...func(e *NodeElement[T]) bool) (*NodeElement[T], bool)

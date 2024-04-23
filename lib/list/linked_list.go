@@ -202,6 +202,8 @@ package list
 
 import (
 	"sync/atomic"
+
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 var _ LinkedList[struct{}] = (*doublyLinkedList[struct{}])(nil) // Type check assertion
@@ -464,10 +466,10 @@ func (l *doublyLinkedList[T]) Remove(targetE *NodeElement[T]) *NodeElement[T] {
 }
 
 // Foreach, allows remove linked list elements while iterating.
-func (l *doublyLinkedList[T]) Foreach(fn func(idx int64, e *NodeElement[T])) {
+func (l *doublyLinkedList[T]) Foreach(fn func(idx int64, e *NodeElement[T]) error) error {
 	if l == nil || l.root == nil || fn == nil || l.len.Load() == 0 ||
 		l.getRoot() == l.getRootHead() && l.getRoot() == l.getRootTail() {
-		return
+		return infra.NewErrorStack("[doubly-linked-list] empty")
 	}
 
 	var (
@@ -477,10 +479,13 @@ func (l *doublyLinkedList[T]) Foreach(fn func(idx int64, e *NodeElement[T])) {
 	// Avoid remove in an iteration, result in memory leak
 	for iterator != l.getRoot() {
 		n := iterator.Next()
-		fn(idx, iterator)
+		if err := fn(idx, iterator); err != nil {
+			return err
+		}
 		iterator = n
 		idx++
 	}
+	return nil
 }
 
 // ReverseForeach, allows remove linked list elements while iterating.
