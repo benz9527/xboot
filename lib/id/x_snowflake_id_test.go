@@ -27,7 +27,43 @@ func TestGetMACAsWorkerID(t *testing.T) {
 	t.Log(iface.HardwareAddr[4], iface.HardwareAddr[5])
 }
 
-func TestXSnowFlakeID_ByMAC(t *testing.T) {
+func TestXSnowFlakeID(t *testing.T) {
+	gen, err := XSnowFlakeID(
+		-1,
+		1,
+		func() time.Time {
+			return time.Now()
+		},
+	)
+	require.Error(t, err)
+
+	gen, err = XSnowFlakeID(
+		1,
+		-1,
+		func() time.Time {
+			return time.Now()
+		},
+	)
+	require.Error(t, err)
+
+	gen, err = XSnowFlakeID(
+		xSnowflakeDIDMax+1,
+		1,
+		func() time.Time {
+			return time.Now()
+		},
+	)
+	require.Error(t, err)
+
+	gen, err = XSnowFlakeID(
+		1,
+		xSnowflakeMIDMax+1,
+		func() time.Time {
+			return time.Now()
+		},
+	)
+	require.Error(t, err)
+
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		t.Skip("unable to fetch interfaces MAC", err)
@@ -39,7 +75,7 @@ func TestXSnowFlakeID_ByMAC(t *testing.T) {
 	}
 
 	workerID := ((int64(iface.HardwareAddr[4]) & 0b11) << 8) | int64(iface.HardwareAddr[5]&0xFF)
-	gen, err := XSnowFlakeIDByWorkerID(
+	gen, err = XSnowFlakeIDByWorkerID(
 		workerID,
 		func() time.Time {
 			return time.Now()
@@ -50,6 +86,7 @@ func TestXSnowFlakeID_ByMAC(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		require.Less(t, gen.Number(), gen.Number())
 	}
+	require.NotEqual(t, gen.Str(), gen.Str())
 }
 
 func TestXSnowFlakeID_ByMAC_DataRace(t *testing.T) {
@@ -76,6 +113,7 @@ func TestXSnowFlakeID_ByMAC_DataRace(t *testing.T) {
 			require.Less(t, gen.Number(), gen.Number())
 		}()
 	}
+	require.NotEqual(t, gen.Str(), gen.Str())
 }
 
 func BenchmarkXSnowFlakeID_ByMAC(b *testing.B) {

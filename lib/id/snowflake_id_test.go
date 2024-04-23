@@ -25,7 +25,18 @@ func BenchmarkStandardSnowflake_IDGen(b *testing.B) {
 
 func TestStandardSnowflake_IDGen(t *testing.T) {
 	hrtime.ClockInit()
-	idGen, err := StandardSnowFlakeID(1, 1, func() time.Time {
+
+	idGen, err := StandardSnowFlakeID(-1, 1, func() time.Time {
+		return hrtime.NowInDefaultTZ()
+	})
+	require.Error(t, err)
+
+	idGen, err = StandardSnowFlakeID(1, -1, func() time.Time {
+		return hrtime.NowInDefaultTZ()
+	})
+	require.Error(t, err)
+
+	idGen, err = StandardSnowFlakeID(1, 1, func() time.Time {
 		return hrtime.NowInDefaultTZ()
 	})
 	require.NoError(t, err)
@@ -35,11 +46,22 @@ func TestStandardSnowflake_IDGen(t *testing.T) {
 }
 
 func TestSnowFlakeID(t *testing.T) {
-	gen, err := SnowFlakeID(1, 1, func() time.Time {
+	gen, err := SnowFlakeID(-1, 1, func() time.Time {
+		return time.Now()
+	})
+	require.Error(t, err)
+
+	gen, err = SnowFlakeID(1, -1, func() time.Time {
+		return time.Now()
+	})
+	require.Error(t, err)
+
+	gen, err = SnowFlakeID(1, 1, func() time.Time {
 		return time.Now()
 	})
 	require.Nil(t, err)
 	for i := 0; i < 1000; i++ {
 		require.Less(t, gen.Number(), gen.Number())
 	}
+	require.NotEqual(t, gen.Str(), gen.Str())
 }
