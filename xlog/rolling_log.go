@@ -397,6 +397,3 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 	}
 	return nil
 }
-
-func Init() {
-}
