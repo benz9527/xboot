@@ -1,8 +1,6 @@
 package xlog
 
 import (
-	"fmt"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -15,7 +13,7 @@ func (l *AntsXLogger) Printf(format string, args ...any) {
 	if l == nil || l.logger == nil {
 		return
 	}
-	l.logger.Debug(fmt.Sprintf(format, args...))
+	l.logger.Logf(zapcore.ErrorLevel, format, args...)
 }
 
 func NewAntsXLogger(logger XLogger) *AntsXLogger {

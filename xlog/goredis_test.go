@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-func TestGoRedisXLogger(t *testing.T) {
+func TestGoRedisXLogger_ParentLogLevelChanged(t *testing.T) {
 	var (
 		parentLogger XLogger         = nil
 		logger       *GoRedisXLogger = nil
