@@ -1,28 +1,28 @@
 package xlog
 
 import (
-	"fmt"
+	"context"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-type AntsXLogger struct {
+type GoRedisXLogger struct {
 	logger XLogger
 }
 
-func (l *AntsXLogger) Printf(format string, args ...any) {
+func (l *GoRedisXLogger) Printf(ctx context.Context, format string, v ...any) {
 	if l == nil || l.logger == nil {
 		return
 	}
-	l.logger.Debug(fmt.Sprintf(format, args...))
+	l.logger.Logf(zapcore.DebugLevel, format, v...)
 }
 
-func NewAntsXLogger(logger XLogger) *AntsXLogger {
+func NewGoRedisXLogger(logger XLogger) *GoRedisXLogger {
 	l := &xLogger{}
 	l.logger.Store(logger.
 		zap().
-		Named("Ants").
+		Named("GoRedis").
 		WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
 			if core == nil {
 				panic("[XLogger] core is nil")
@@ -38,7 +38,7 @@ func NewAntsXLogger(logger XLogger) *AntsXLogger {
 			return cc
 		})),
 	)
-	return &AntsXLogger{
+	return &GoRedisXLogger{
 		logger: l,
 	}
 }

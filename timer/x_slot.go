@@ -138,9 +138,10 @@ func (slot *xSlot) Flush(reinsert TaskHandler) {
 	//      Otherwise, cancel it.
 	// 4. Reset the slot, ready for next round.
 	// Not the atomic operation, it is possible to be nil still
-	slot.tasks.Foreach(func(idx int64, iterator *list.NodeElement[Task]) {
+	_ = slot.tasks.Foreach(func(idx int64, iterator *list.NodeElement[Task]) error {
 		task := iterator.Value
 		slot.removeTask(task) // clean task reference at first
 		reinsert(task)
+		return nil
 	})
 }

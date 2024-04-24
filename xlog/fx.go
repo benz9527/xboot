@@ -11,7 +11,7 @@ type FxXLogger struct {
 }
 
 func (l *FxXLogger) LogEvent(event fxevent.Event) {
-	if l == nil {
+	if l == nil || l.logger == nil {
 		return
 	}
 
