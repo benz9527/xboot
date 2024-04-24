@@ -29,8 +29,6 @@ func (arena *xLogArena) availableBytes() uint64 {
 }
 
 func (arena *xLogArena) reset() {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
 	if arena.wOffset == 0 {
 		return
 	}
@@ -54,8 +52,6 @@ func (arena *xLogArena) allocate(size uint64) (uint64, bool) {
 }
 
 func (arena *xLogArena) cache(log []byte) bool {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
 	if arena.buf == nil || arena.queue == nil {
 		return false
 	}
@@ -72,8 +68,6 @@ func (arena *xLogArena) cache(log []byte) bool {
 }
 
 func (arena *xLogArena) flush(writer io.WriteCloser) error {
-	arena.mu.Lock()
-	arena.mu.Unlock()
 	if arena.queue == nil {
 		return nil
 	}
@@ -107,10 +101,14 @@ type XLogBufferSyncer struct {
 	ticker        *time.Ticker
 	closeC        chan struct{}
 	once          sync.Once
+	mu            sync.Mutex
 }
 
 // Sync implements zapcore.WriteSyncer.
 func (syncer *XLogBufferSyncer) Sync() error {
+	syncer.mu.Lock()
+	defer syncer.mu.Unlock()
+
 	err := syncer.arena.flush(syncer.outWriter)
 	if err != nil {
 		return err
@@ -121,6 +119,9 @@ func (syncer *XLogBufferSyncer) Sync() error {
 
 // Write implements zapcore.WriteSyncer.
 func (syncer *XLogBufferSyncer) Write(log []byte) (n int, err error) {
+	syncer.mu.Lock()
+	defer syncer.mu.Unlock()
+
 	if !syncer.arena.cache(log) {
 		if err := syncer.arena.flush(syncer.outWriter); err != nil {
 			return 0, err
