@@ -17,7 +17,6 @@ type logRecord struct {
 }
 
 type xLogArena struct {
-	mu      sync.Mutex
 	buf     []byte
 	size    uint64
 	wOffset uint64
@@ -36,8 +35,6 @@ func (arena *xLogArena) reset() {
 }
 
 func (arena *xLogArena) release() {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
 	arena.reset()
 	arena.buf = nil
 	arena.queue = nil

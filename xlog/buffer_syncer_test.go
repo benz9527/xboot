@@ -1,11 +1,17 @@
 package xlog
 
 import (
+	"archive/zip"
+	"os"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/benz9527/xboot/lib/id"
 )
@@ -106,4 +112,123 @@ func TestXLogBufferSyncer_Console_DataRace(t *testing.T) {
 		require.True(t, ok)
 	}
 	syncer.Stop()
+}
+
+func testBufferSyncerRollingLogWriteRunCore(t *testing.T, log *RollingLog, syncer zapcore.WriteSyncer) {
+	size, err := parseFileSize(log.FileMaxSize)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1024), size)
+	log.maxSize = size
+	log.fileWatcher, err = fsnotify.NewWatcher()
+	log.fileWatcher.Add(log.FilePath)
+	require.NoError(t, err)
+	go log.watchAndArchive()
+
+	for i := 0; i < 100; i++ {
+		data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog rolling log write test!\n")
+		_, err = syncer.Write(data)
+		require.NoError(t, err)
+	}
+	time.Sleep(1 * time.Second)
+	err = log.Close()
+	require.NoError(t, err)
+}
+
+func testBufferSyncerRollingLogWriteDataRaceRunCore(t *testing.T, log *RollingLog, syncer zapcore.WriteSyncer) {
+	size, err := parseFileSize(log.FileMaxSize)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1024), size)
+	log.maxSize = size
+	log.fileWatcher, err = fsnotify.NewWatcher()
+	log.fileWatcher.Add(log.FilePath)
+	require.NoError(t, err)
+	go log.watchAndArchive()
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		for i := 0; i < 50; i++ {
+			data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog rolling log write test!\n")
+			_, err = syncer.Write(data)
+			require.NoError(t, err)
+		}
+		wg.Done()
+	}()
+	go func() {
+		for i := 50; i < 100; i++ {
+			data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog rolling log write test!\n")
+			_, err = syncer.Write(data)
+			require.NoError(t, err)
+		}
+		wg.Done()
+	}()
+	wg.Wait()
+	time.Sleep(1 * time.Second)
+	err = log.Close()
+	require.NoError(t, err)
+}
+
+func TestXLogBufferSyncer_RollingLog(t *testing.T) {
+	log := &RollingLog{
+		FileMaxSize:       "1KB",
+		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		FileCompressible:  true,
+		FileMaxBackups:    4,
+		FileMaxAge:        "3day",
+		FileCompressBatch: 2,
+		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		FilePath:          os.TempDir(),
+	}
+
+	syncer := &XLogBufferSyncer{
+		outWriter: log,
+		arena: &xLogArena{
+			size: 1 << 10,
+		},
+		flushInterval: 500 * time.Millisecond,
+	}
+	syncer.initialize()
+
+	loop := 2
+	for i := 0; i < loop; i++ {
+		testBufferSyncerRollingLogWriteRunCore(t, log, syncer)
+	}
+	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
+	require.NoError(t, err)
+	require.LessOrEqual(t, int((loop-1)*log.FileMaxBackups), len(reader.File))
+	reader.Close()
+	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
+	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
+}
+
+func TestXLogBufferSyncer_RollingLog_DataRace(t *testing.T) {
+	log := &RollingLog{
+		FileMaxSize:       "1KB",
+		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		FileCompressible:  true,
+		FileMaxBackups:    4,
+		FileMaxAge:        "3day",
+		FileCompressBatch: 2,
+		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		FilePath:          os.TempDir(),
+	}
+
+	syncer := &XLogBufferSyncer{
+		outWriter: log,
+		arena: &xLogArena{
+			size: 1 << 10,
+		},
+		flushInterval: 500 * time.Millisecond,
+	}
+	syncer.initialize()
+
+	loop := 2
+	for i := 0; i < loop; i++ {
+		testBufferSyncerRollingLogWriteDataRaceRunCore(t, log, syncer)
+	}
+	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
+	require.NoError(t, err)
+	require.LessOrEqual(t, int((loop-1)*log.FileMaxBackups), len(reader.File))
+	reader.Close()
+	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
+	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
 }

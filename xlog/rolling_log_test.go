@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,4 +139,29 @@ func TestRollingLog_Write(t *testing.T) {
 	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
 	require.NoError(t, err)
 	require.LessOrEqual(t, int((loop-1)*log.FileMaxBackups), len(reader.File))
+	reader.Close()
+	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
+	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
+}
+
+func testCleanLogFiles(t *testing.T, path, namePrefix, nameSuffix string) {
+	// Walk through the log files and find the expired ones.
+	entries, err := os.ReadDir(path)
+	logInfos := make([]os.FileInfo, 0, 16)
+	if err == nil && len(entries) > 0 {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				filename := entry.Name()
+				if strings.HasPrefix(filename, namePrefix) && strings.HasSuffix(filename, nameSuffix) {
+					if info, err := entry.Info(); err == nil && info != nil {
+						logInfos = append(logInfos, info)
+					}
+				}
+			}
+		}
+	}
+	for _, logInfo := range logInfos {
+		err = os.Remove(filepath.Join(path, logInfo.Name()))
+		require.NoError(t, err)
+	}
 }
