@@ -63,6 +63,26 @@ func WrapCore(core XLogCore, cfg *zapcore.EncoderConfig) (XLogCore, error) {
 	return cc, nil
 }
 
+func WrapCoreNewLevelEnabler(core XLogCore, lvlEnabler zapcore.LevelEnabler, cfg *zapcore.EncoderConfig) (XLogCore, error) {
+	if cfg == nil {
+		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
+	}
+	cfg.EncodeLevel = core.levelEncoder()
+	cfg.EncodeTime = core.timeEncoder()
+
+	cc := &commonCore{
+		ws:  core.writeSyncer(),
+		enc: core.outEncoder(),
+		lvlEnabler: zap.LevelEnablerFunc(func(l zapcore.Level) bool {
+			return lvlEnabler.Enabled(l)
+		}),
+		lvlEnc: core.levelEncoder(),
+		tsEnc:  core.timeEncoder(),
+	}
+	cc.core = zapcore.NewCore(core.outEncoder()(*cfg), core.writeSyncer(), cc.lvlEnabler)
+	return cc, nil
+}
+
 var componentCoreEncoderCfg = &zapcore.EncoderConfig{
 	MessageKey:    "msg",
 	LevelKey:      "lvl",

@@ -2,6 +2,8 @@ package xlog
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -15,7 +17,12 @@ func (l *GoRedisXLogger) Printf(ctx context.Context, format string, v ...any) {
 	if l == nil || l.logger == nil {
 		return
 	}
-	l.logger.Logf(zapcore.DebugLevel, format, v...)
+	log := fmt.Sprintf(format, v...)
+	if strings.Contains(log, "failed") {
+		l.logger.Logf(zapcore.ErrorLevel, log)
+		return
+	}
+	l.logger.Logf(zapcore.InfoLevel, log)
 }
 
 func NewGoRedisXLogger(logger XLogger) *GoRedisXLogger {

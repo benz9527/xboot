@@ -78,6 +78,10 @@ func (l *xLogger) Banner(banner Banner) {
 	})
 }
 
+func (l *xLogger) Log(lvl zapcore.Level, msg string, fields ...zap.Field) {
+	l.logger.Load().Log(lvl, msg, fields...)
+}
+
 func (l *xLogger) Debug(msg string, fields ...zap.Field) {
 	l.logger.Load().Debug(msg, fields...)
 }
@@ -91,8 +95,9 @@ func (l *xLogger) Warn(msg string, fields ...zap.Field) {
 }
 
 func (l *xLogger) Error(err error, msg string, fields ...zap.Field) {
-	newFields := []zap.Field{
-		zap.String("error", err.Error()),
+	var newFields = make([]zap.Field, 0, len(fields)+1)
+	if err != nil {
+		newFields = append(newFields, zap.String("error", err.Error()))
 	}
 	newFields = append(newFields, fields...)
 	l.logger.Load().Error(msg, newFields...)
@@ -129,7 +134,9 @@ func (l *xLogger) WarnContext(ctx context.Context, msg string, fields ...zap.Fie
 
 func (l *xLogger) ErrorContext(ctx context.Context, err error, msg string, fields ...zap.Field) {
 	newFields := extractFieldsFromContext(ctx, l.ctxFields)
-	newFields = append(newFields, zap.String("error", err.Error()))
+	if err != nil {
+		newFields = append(newFields, zap.String("error", err.Error()))
+	}
 	newFields = append(newFields, fields...)
 	l.logger.Load().Error(msg, newFields...)
 }

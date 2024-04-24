@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	
+
 	"github.com/benz9527/xboot/lib/kv"
 )
 
@@ -146,20 +146,38 @@ type XLogger interface {
 	IncreaseLogLevel(level zapcore.Level)
 	Level() string
 	Sync() error
-	Banner(banner Banner)
+	XBannerPrinter
+	XAnyLogger
+	XBasicContextLogger
+	XBasicLogger
+	XFormatLogger
+}
 
+type XFormatLogger interface {
+	Logf(lvl zapcore.Level, format string, args ...any)
+	ErrorStackf(err error, format string, args ...any)
+}
+
+type XAnyLogger interface {
+	Log(lvl zapcore.Level, msg string, fields ...zap.Field)
+}
+
+type XBasicLogger interface {
 	Debug(msg string, fields ...zap.Field)
 	Info(msg string, fields ...zap.Field)
 	Warn(msg string, fields ...zap.Field)
 	Error(err error, msg string, fields ...zap.Field)
 	ErrorStack(err error, msg string, fields ...zap.Field)
+}
 
+type XBasicContextLogger interface {
 	DebugContext(ctx context.Context, msg string, fields ...zap.Field)
 	InfoContext(ctx context.Context, msg string, fields ...zap.Field)
 	WarnContext(ctx context.Context, msg string, fields ...zap.Field)
 	ErrorContext(ctx context.Context, err error, msg string, fields ...zap.Field)
 	ErrorStackContext(ctx context.Context, err error, msg string, fields ...zap.Field)
+}
 
-	Logf(lvl zapcore.Level, format string, args ...any)
-	ErrorStackf(err error, format string, args ...any)
+type XBannerPrinter interface {
+	Banner(banner Banner)
 }
