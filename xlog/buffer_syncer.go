@@ -21,12 +21,10 @@ type xLogArena struct {
 	buf     []byte
 	size    uint64
 	wOffset uint64
-	queue   list.LinkedList[*logRecord]
+	queue   list.LinkedList[logRecord]
 }
 
 func (arena *xLogArena) availableBytes() uint64 {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
 	return arena.size - arena.wOffset
 }
 
@@ -48,7 +46,7 @@ func (arena *xLogArena) release() {
 }
 
 func (arena *xLogArena) allocate(size uint64) (uint64, bool) {
-	if arena.wOffset+size > arena.size {
+	if arena.availableBytes() < size {
 		return 0, false // Flush first
 	}
 	arena.wOffset += size
@@ -64,7 +62,7 @@ func (arena *xLogArena) cache(log []byte) bool {
 
 	if offset, ok := arena.allocate(uint64(len(log))); ok {
 		copy(arena.buf[offset:], log)
-		_ = arena.queue.AppendValue(&logRecord{
+		_ = arena.queue.AppendValue(logRecord{
 			startOffset: offset,
 			length:      uint64(len(log)),
 		})
@@ -75,13 +73,14 @@ func (arena *xLogArena) cache(log []byte) bool {
 
 func (arena *xLogArena) flush(writer io.WriteCloser) error {
 	arena.mu.Lock()
-	defer arena.mu.Unlock()
+	arena.mu.Unlock()
 	if arena.queue == nil {
 		return nil
 	}
 
-	err := arena.queue.Foreach(func(idx int64, e *list.NodeElement[*logRecord]) error {
-		if _, err := writer.Write(arena.buf[e.Value.startOffset : e.Value.startOffset+e.Value.length]); err != nil {
+	err := arena.queue.Foreach(func(idx int64, e *list.NodeElement[logRecord]) error {
+		data := arena.buf[e.Value.startOffset : e.Value.startOffset+e.Value.length]
+		if _, err := writer.Write(data); err != nil {
 			return err
 		}
 		arena.queue.Remove(e)
@@ -90,9 +89,13 @@ func (arena *xLogArena) flush(writer io.WriteCloser) error {
 	if err != nil {
 		return err
 	}
-	arena.reset()
 	return nil
 }
+
+const (
+	defaultBufferSize    = 512 << 10
+	defaultFlushInterval = 30 * time.Second
+)
 
 var _ zapcore.WriteSyncer = (*XLogBufferSyncer)(nil)
 
@@ -100,33 +103,48 @@ type XLogBufferSyncer struct {
 	outWriter     io.WriteCloser
 	flushInterval time.Duration
 	arena         *xLogArena
+	clock         zapcore.Clock
 	ticker        *time.Ticker
 	closeC        chan struct{}
+	once          sync.Once
 }
 
 // Sync implements zapcore.WriteSyncer.
 func (syncer *XLogBufferSyncer) Sync() error {
-	return syncer.arena.flush(syncer.outWriter)
+	err := syncer.arena.flush(syncer.outWriter)
+	if err != nil {
+		return err
+	}
+	syncer.arena.reset()
+	return nil
 }
 
 // Write implements zapcore.WriteSyncer.
-func (x *XLogBufferSyncer) Write(log []byte) (n int, err error) {
-	cached := x.arena.cache(log)
-	if !cached {
-		if err := x.arena.flush(x.outWriter); err != nil {
+func (syncer *XLogBufferSyncer) Write(log []byte) (n int, err error) {
+	if !syncer.arena.cache(log) {
+		if err := syncer.arena.flush(syncer.outWriter); err != nil {
 			return 0, err
 		}
-		if !x.arena.cache(log) {
-			return 0, infra.NewErrorStack("[xlog] unable to cache log in buffer")
+		syncer.arena.reset()
+		if !syncer.arena.cache(log) {
+			if /* too long to cache */ _, err := syncer.outWriter.Write(log); err != nil {
+				return 0, infra.NewErrorStack("[xlog-buf-syncer] unable to cache log in buffer")
+			}
 		}
 	}
 	return len(log), nil
+}
+
+func (syncer *XLogBufferSyncer) Stop() (err error) {
+	close(syncer.closeC)
+	return nil
 }
 
 func (syncer *XLogBufferSyncer) flushLoop() {
 	for {
 		select {
 		case <-syncer.closeC:
+			_ = syncer.Sync()
 			syncer.ticker.Stop()
 			syncer.arena.release()
 			return
@@ -134,4 +152,37 @@ func (syncer *XLogBufferSyncer) flushLoop() {
 			_ = syncer.Sync()
 		}
 	}
+}
+
+func (syncer *XLogBufferSyncer) initialize() {
+	syncer.once.Do(func() {
+		if syncer.arena == nil || syncer.arena.size == 0 {
+			syncer.arena = &xLogArena{
+				size:  defaultBufferSize,
+				buf:   make([]byte, defaultBufferSize),
+				queue: list.NewLinkedList[logRecord](),
+			}
+		} else if syncer.arena.size > 0 {
+			syncer.arena.buf = make([]byte, syncer.arena.size)
+			syncer.arena.queue = list.NewLinkedList[logRecord]()
+		}
+
+		if syncer.flushInterval == 0 {
+			syncer.flushInterval = defaultFlushInterval
+		}
+
+		if syncer.clock == nil {
+			syncer.clock = zapcore.DefaultClock
+		}
+
+		if syncer.ticker == nil {
+			syncer.ticker = syncer.clock.NewTicker(syncer.flushInterval)
+		}
+
+		if syncer.closeC == nil {
+			syncer.closeC = make(chan struct{})
+		}
+
+		go syncer.flushLoop()
+	})
 }
