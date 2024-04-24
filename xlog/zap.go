@@ -78,6 +78,10 @@ func (l *xLogger) Banner(banner Banner) {
 	})
 }
 
+func (l *xLogger) Log(lvl zapcore.Level, msg string, fields ...zap.Field) {
+	l.logger.Load().Log(lvl, msg, fields...)
+}
+
 func (l *xLogger) Debug(msg string, fields ...zap.Field) {
 	l.logger.Load().Debug(msg, fields...)
 }

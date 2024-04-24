@@ -200,6 +200,7 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 			ctx = context.WithValue(ctx, "service", "xboot")
 
 			logger.Debug("debug message 1")
+			logger.Log(zapcore.DebugLevel, "debug message 1-1")
 			logger.DebugContext(ctx, "debug message 2")
 			logger.Info("info message 1")
 			logger.InfoContext(ctx, "info message 2")
