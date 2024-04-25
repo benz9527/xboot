@@ -69,6 +69,7 @@ func (arena *xLogArena) flush(writer io.WriteCloser) error {
 		return nil
 	}
 
+	// TODO Batch bytes write in one io write.
 	err := arena.queue.Foreach(func(idx int64, e *list.NodeElement[logRecord]) error {
 		data := arena.buf[e.Value.startOffset : e.Value.startOffset+e.Value.length]
 		if _, err := writer.Write(data); err != nil {

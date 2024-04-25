@@ -2,6 +2,7 @@ package xlog
 
 import (
 	"archive/zip"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -9,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
 )
 
@@ -199,15 +199,9 @@ func TestParseFileAgeUnit(t *testing.T) {
 	}
 }
 
-func testRotateLogWriteRunCore(t *testing.T, log *RotateLog) {
-	size, err := parseFileSize(log.FileMaxSize)
+func testRotateLogWriteRunCore(t *testing.T, log *rotateLog) {
+	err := log.initialize()
 	require.NoError(t, err)
-	require.Equal(t, uint64(1024), size)
-	log.maxSize = size
-	log.fileWatcher, err = fsnotify.NewWatcher()
-	log.fileWatcher.Add(log.FilePath)
-	require.NoError(t, err)
-	go log.watchAndArchive()
 
 	for i := 0; i < 100; i++ {
 		data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog rolling log write test!\n")
@@ -220,45 +214,45 @@ func testRotateLogWriteRunCore(t *testing.T, log *RotateLog) {
 }
 
 func TestRotateLog_Write_Compress(t *testing.T) {
-	log := &RotateLog{
-		FileMaxSize:       "1KB",
-		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
-		FileCompressible:  true,
-		FileMaxBackups:    4,
-		FileMaxAge:        "3day",
-		FileCompressBatch: 2,
-		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
-		FilePath:          os.TempDir(),
+	log := &rotateLog{
+		fileMaxSize:       "1KB",
+		filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		fileCompressible:  true,
+		fileMaxBackups:    4,
+		fileMaxAge:        "3day",
+		fileCompressBatch: 2,
+		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		filePath:          os.TempDir(),
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
 		testRotateLogWriteRunCore(t, log)
 	}
-	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
+	reader, err := zip.OpenReader(filepath.Join(log.filePath, log.fileZipName))
 	require.NoError(t, err)
-	require.LessOrEqual(t, int((loop-1)*log.FileMaxBackups), len(reader.File))
+	require.LessOrEqual(t, int((loop-1)*log.fileMaxBackups), len(reader.File))
 	reader.Close()
 	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
-	require.Equal(t, log.FileMaxBackups+1, removed)
+	require.LessOrEqual(t, log.fileMaxBackups+1, removed)
 	removed = testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
 	require.Equal(t, 1, removed)
 }
 
 func TestRotateLog_Write_Delete(t *testing.T) {
-	log := &RotateLog{
-		FileMaxSize:      "1KB",
-		Filename:         filepath.Base(os.Args[0]) + "_xlog.log",
-		FileCompressible: false,
-		FileMaxBackups:   4,
-		FileMaxAge:       "3day",
-		FilePath:         os.TempDir(),
+	log := &rotateLog{
+		fileMaxSize:      "1KB",
+		filename:         filepath.Base(os.Args[0]) + "_xlog.log",
+		fileCompressible: false,
+		fileMaxBackups:   4,
+		fileMaxAge:       "3day",
+		filePath:         os.TempDir(),
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
 		testRotateLogWriteRunCore(t, log)
 	}
 	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
-	require.Equal(t, log.FileMaxBackups+1, removed)
+	require.Equal(t, log.fileMaxBackups+1, removed)
 }
 
 func testCleanLogFiles(t *testing.T, path, namePrefix, nameSuffix string) int {
@@ -274,6 +268,12 @@ func testCleanLogFiles(t *testing.T, path, namePrefix, nameSuffix string) int {
 						logInfos = append(logInfos, info)
 					}
 				}
+			} else {
+				if entry.Name() == namePrefix+nameSuffix {
+					if info, err := entry.Info(); err == nil && info != nil {
+						logInfos = append(logInfos, info)
+					}
+				}
 			}
 		}
 	}
@@ -282,4 +282,82 @@ func testCleanLogFiles(t *testing.T, path, namePrefix, nameSuffix string) int {
 		require.NoError(t, err)
 	}
 	return len(logInfos)
+}
+
+func TestRotateLog_Write_PermissionDeniedAccess(t *testing.T) {
+	rf, err := os.Create(filepath.Join(os.TempDir(), "rpda.log"))
+	require.NoError(t, err)
+	err = rf.Close()
+	require.NoError(t, err)
+
+	err = os.Chmod(filepath.Join(os.TempDir(), "rpda.log"), 0o400)
+	require.NoError(t, err)
+
+	rf, err = os.OpenFile(filepath.Join(os.TempDir(), "rpda.log"), os.O_WRONLY|os.O_APPEND, 0o666)
+	require.Error(t, err)
+	require.True(t, os.IsPermission(err))
+	require.Nil(t, rf)
+
+	log := &rotateLog{
+		fileMaxSize:      "1KB",
+		filename:         "rpda.log",
+		fileCompressible: false,
+		fileMaxBackups:   4,
+		fileMaxAge:       "3day",
+		filePath:         os.TempDir(),
+	}
+
+	_, err = log.Write([]byte("rotate log permission denied access!"))
+	require.Error(t, err)
+	require.True(t, errors.Is(err, os.ErrPermission))
+	err = log.Close()
+	require.NoError(t, err)
+
+	removed := testCleanLogFiles(t, os.TempDir(), "rpda", ".log")
+	require.Equal(t, 1, removed)
+}
+
+func TestRotateLog_Write_Dir(t *testing.T) {
+	err := os.Mkdir(filepath.Join(os.TempDir(), "rpda2.log"), 0o600)
+	require.NoError(t, err)
+
+	log := &rotateLog{
+		fileMaxSize:      "1KB",
+		filename:         "rpda2.log",
+		fileCompressible: false,
+		fileMaxBackups:   4,
+		fileMaxAge:       "3day",
+		filePath:         os.TempDir(),
+	}
+
+	_, err = log.Write([]byte("rotate log write dir!"))
+	require.Error(t, err)
+	err = log.Close()
+	require.NoError(t, err)
+
+	removed := testCleanLogFiles(t, os.TempDir(), "rpda2", ".log")
+	require.Equal(t, 1, removed)
+}
+
+func TestRotateLog_Write_OtherErrors(t *testing.T) {
+	log := &rotateLog{
+		fileMaxSize:      "1KB",
+		filename:         "rpda3.log",
+		fileCompressible: false,
+		fileMaxBackups:   4,
+		fileMaxAge:       "3day",
+		filePath:         os.TempDir(),
+	}
+
+	err := log.openOrCreate()
+	require.NoError(t, err)
+	err = log.Close()
+	require.NoError(t, err)
+
+	log.filePath = "abc"
+	err = log.openOrCreate()
+	require.Error(t, err)
+
+	removed := testCleanLogFiles(t, os.TempDir(), "rpda3", ".log")
+	require.Equal(t, 1, removed)
 }

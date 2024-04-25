@@ -84,24 +84,24 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 	}
 writerInit:
 	if cfg.FileRotateEnable {
-		w := &RotateLog{
-			Filename:          cfg.Filename,
-			FilePath:          cfg.FilePath,
-			FileCompressible:  cfg.FileCompressible,
-			FileCompressBatch: cfg.FileCompressBatch,
-			FileMaxAge:        cfg.FileMaxAge,
-			FileZipName:       cfg.FileZipName,
-			FileMaxSize:       cfg.FileMaxSize,
-			FileMaxBackups:    cfg.FileMaxBackups,
+		w := &rotateLog{
+			filename:          cfg.Filename,
+			filePath:          cfg.FilePath,
+			fileCompressible:  cfg.FileCompressible,
+			fileCompressBatch: cfg.FileCompressBatch,
+			fileMaxAge:        cfg.FileMaxAge,
+			fileZipName:       cfg.FileZipName,
+			fileMaxSize:       cfg.FileMaxSize,
+			fileMaxBackups:    cfg.FileMaxBackups,
 		}
 		if err = w.initialize(); err != nil {
 			panic(err)
 		}
 		fileWriter = w
 	} else {
-		fileWriter = &SingleLog{
-			Filename: cfg.Filename,
-			FilePath: cfg.FilePath,
+		fileWriter = &singleLog{
+			filename: cfg.Filename,
+			filePath: cfg.FilePath,
 		}
 	}
 	if bufferEnabled {

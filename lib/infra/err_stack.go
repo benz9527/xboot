@@ -320,7 +320,7 @@ func (es *errorStack) Unwrap() []error {
 		case interface{ Unwrap() []error }:
 			_errors = append(_errors, x.Unwrap()...)
 		default:
-			_errors = append(_errors, err)
+			_errors = append(_errors, multierr.Errors(err)...)
 		}
 	}
 	return _errors

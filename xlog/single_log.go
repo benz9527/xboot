@@ -11,17 +11,18 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-var _ io.WriteCloser = (*SingleLog)(nil)
+var _ io.WriteCloser = (*singleLog)(nil)
 
-type SingleLog struct {
-	FilePath    string
-	Filename    string
+// singleLog is not thread-safe.
+type singleLog struct {
+	filePath    string
+	filename    string
 	wroteSize   uint64
 	mkdirOnce   sync.Once
 	currentFile *os.File
 }
 
-func (log *SingleLog) Write(p []byte) (n int, err error) {
+func (log *singleLog) Write(p []byte) (n int, err error) {
 	if log.currentFile == nil {
 		if err := log.openOrCreate(); err != nil {
 			return 0, err
@@ -32,16 +33,23 @@ func (log *SingleLog) Write(p []byte) (n int, err error) {
 	return
 }
 
-func (log *SingleLog) Close() error {
-	return log.currentFile.Close()
+func (log *singleLog) Close() error {
+	if log.currentFile == nil {
+		return nil
+	}
+	if err := log.currentFile.Close(); err != nil {
+		return err
+	}
+	log.currentFile = nil
+	return nil
 }
 
-func (log *SingleLog) openOrCreate() error {
+func (log *singleLog) openOrCreate() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
 
-	pathToLog := filepath.Join(log.FilePath, log.Filename)
+	pathToLog := filepath.Join(log.filePath, log.filename)
 	info, err := os.Stat(pathToLog)
 	if os.IsNotExist(err) {
 		var merr error
@@ -49,39 +57,44 @@ func (log *SingleLog) openOrCreate() error {
 		if err = log.create(); err != nil {
 			return multierr.Append(merr, err)
 		}
-	} else if err == nil && !info.IsDir() {
-		var f *os.File
-		if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
-			return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file")
-		}
-		log.currentFile, log.wroteSize = f, uint64(info.Size())
-	} else if err == nil && info.IsDir() {
-		log.currentFile = nil
-		return infra.NewErrorStack("log file <" + pathToLog + "> is a dir")
+		return nil
 	} else if err != nil {
 		log.currentFile = nil
 		return infra.WrapErrorStack(err)
 	}
+
+	if info.IsDir() {
+		log.currentFile = nil
+		return infra.NewErrorStack("log file <" + pathToLog + "> is a dir")
+	}
+
+	var f *os.File
+	if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
+		return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file")
+	}
+	log.currentFile, log.wroteSize = f, uint64(info.Size())
 	return nil
 }
 
-func (log *SingleLog) mkdir() error {
+func (log *singleLog) mkdir() error {
 	var err error = nil
 	log.mkdirOnce.Do(func() {
-		if log.FilePath == "" {
-			log.FilePath = os.TempDir()
+		if log.filePath == "" {
+			log.filePath = os.TempDir()
+		}
+		if log.filePath == os.TempDir() {
 			return
 		}
-		err = os.MkdirAll(log.FilePath, 0o644)
+		err = os.MkdirAll(log.filePath, 0o644)
 	})
 	return infra.WrapErrorStack(err)
 }
 
-func (log *SingleLog) create() error {
+func (log *singleLog) create() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
-	pathToLog := filepath.Join(log.FilePath, log.Filename)
+	pathToLog := filepath.Join(log.filePath, log.filename)
 	f, err := os.OpenFile(pathToLog, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+pathToLog)

@@ -83,25 +83,25 @@ func parseFileAge(age string) (time.Duration, error) {
 	return time.Duration(num) * time.Duration(unit), nil
 }
 
-var _ io.WriteCloser = (*RotateLog)(nil)
+var _ io.WriteCloser = (*rotateLog)(nil)
 
-type RotateLog struct {
-	FilePath          string
-	Filename          string
-	FileMaxSize       string
-	FileMaxAge        string
-	FileZipName       string
+type rotateLog struct {
+	filePath          string
+	filename          string
+	fileMaxSize       string
+	fileMaxAge        string
+	fileZipName       string
 	maxSize           uint64
 	wroteSize         uint64
 	mkdirOnce         sync.Once
 	currentFile       *os.File
 	fileWatcher       *fsnotify.Watcher
-	FileMaxBackups    int
-	FileCompressBatch int
-	FileCompressible  bool
+	fileMaxBackups    int
+	fileCompressBatch int
+	fileCompressible  bool
 }
 
-func (log *RotateLog) Write(p []byte) (n int, err error) {
+func (log *rotateLog) Write(p []byte) (n int, err error) {
 	if log.currentFile == nil {
 		if err := log.openOrCreate(); err != nil {
 			return 0, err
@@ -124,10 +124,17 @@ func (log *RotateLog) Write(p []byte) (n int, err error) {
 	return
 }
 
-func (log *RotateLog) Close() error {
+func (log *rotateLog) Close() error {
 	var merr error
-	if err := log.fileWatcher.Close(); err != nil {
-		merr = multierr.Append(merr, err)
+	if log.fileWatcher != nil {
+		if err := log.fileWatcher.Close(); err != nil {
+			merr = multierr.Append(merr, err)
+		} else {
+			log.fileWatcher = nil
+		}
+	}
+	if log.currentFile == nil {
+		return merr
 	}
 	if err := log.currentFile.Close(); err != nil {
 		merr = multierr.Append(merr, err)
@@ -137,21 +144,25 @@ func (log *RotateLog) Close() error {
 	return merr
 }
 
-func (log *RotateLog) initialize() error {
-	size, err := parseFileSize(log.FileMaxSize)
+func (log *rotateLog) initialize() error {
+	if log.fileWatcher != nil {
+		return nil
+	}
+
+	size, err := parseFileSize(log.fileMaxSize)
 	if err != nil {
 		return err
 	}
 	log.maxSize = size
 
-	if _, err = parseFileAge(log.FileMaxAge); err != nil {
+	if _, err = parseFileAge(log.fileMaxAge); err != nil {
 		return err
 	}
 
 	if log.fileWatcher, err = fsnotify.NewWatcher(); err != nil {
 		return err
 	}
-	if err = log.fileWatcher.Add(log.FilePath); err != nil {
+	if err = log.fileWatcher.Add(log.filePath); err != nil {
 		// TODO log file path is not exist
 		return err
 	}
@@ -160,36 +171,38 @@ func (log *RotateLog) initialize() error {
 	return nil
 }
 
-func (log *RotateLog) mkdir() error {
+func (log *rotateLog) mkdir() error {
 	var err error = nil
 	log.mkdirOnce.Do(func() {
-		if log.FilePath == "" {
-			log.FilePath = os.TempDir()
+		if log.filePath == "" {
+			log.filePath = os.TempDir()
+		}
+		if log.filePath == os.TempDir() {
 			return
 		}
-		err = os.MkdirAll(log.FilePath, 0o644)
+		err = os.MkdirAll(log.filePath, 0o644)
 	})
 	return infra.WrapErrorStack(err)
 }
 
-func (log *RotateLog) backup() error {
-	logName := log.Filename
+func (log *rotateLog) backup() error {
+	logName := log.filename
 	ext := filepath.Ext(logName)
 	logNamePrefix := strings.TrimSuffix(logName, ext)
 	now := time.Now().UTC()
 	ts := now.Format(backupDateTimeFormat)
-	pathToBackup := filepath.Join(log.FilePath, logNamePrefix+"_"+ts+ext)
+	pathToBackup := filepath.Join(log.filePath, logNamePrefix+"_"+ts+ext)
 	if err := log.currentFile.Close(); err != nil {
-		return infra.WrapErrorStackWithMessage(err, "failed to backup current log: "+filepath.Join(log.FilePath, logName))
+		return infra.WrapErrorStackWithMessage(err, "failed to backup current log: "+filepath.Join(log.filePath, logName))
 	}
-	return os.Rename(filepath.Join(log.FilePath, logName), pathToBackup)
+	return os.Rename(filepath.Join(log.filePath, logName), pathToBackup)
 }
 
-func (log *RotateLog) create() error {
+func (log *rotateLog) create() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
-	pathToLog := filepath.Join(log.FilePath, log.Filename)
+	pathToLog := filepath.Join(log.filePath, log.filename)
 	f, err := os.OpenFile(pathToLog, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+pathToLog)
@@ -198,19 +211,19 @@ func (log *RotateLog) create() error {
 	return nil
 }
 
-func (log *RotateLog) backupThenCreate() error {
+func (log *rotateLog) backupThenCreate() error {
 	if err := log.backup(); err != nil {
 		return err
 	}
 	return log.create()
 }
 
-func (log *RotateLog) openOrCreate() error {
+func (log *rotateLog) openOrCreate() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
 
-	pathToLog := filepath.Join(log.FilePath, log.Filename)
+	pathToLog := filepath.Join(log.filePath, log.filename)
 	info, err := os.Stat(pathToLog)
 	if os.IsNotExist(err) {
 		var merr error
@@ -218,29 +231,34 @@ func (log *RotateLog) openOrCreate() error {
 		if err = log.create(); err != nil {
 			return multierr.Append(merr, err)
 		}
-	} else if err == nil && !info.IsDir() {
-		var f *os.File
-		if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
-			// TODO Handle the file access permission denied error.
-			if err = log.backupThenCreate(); err != nil {
-				return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file")
-			}
-		}
-		log.currentFile, log.wroteSize = f, uint64(info.Size())
-	} else if err == nil && info.IsDir() {
-		log.currentFile = nil
-		return infra.NewErrorStack("log file <" + pathToLog + "> is a dir")
+		return log.initialize()
 	} else if err != nil {
 		log.currentFile = nil
 		return infra.WrapErrorStack(err)
 	}
-	return nil
+
+	if info.IsDir() {
+		log.currentFile = nil
+		return infra.NewErrorStack("log file <" + pathToLog + "> is a dir")
+	}
+
+	var f *os.File
+	if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
+		if os.IsPermission(err) {
+			return infra.WrapErrorStackWithMessage(err, "unable to access log file: "+pathToLog)
+		}
+		if err = log.backupThenCreate(); err != nil {
+			return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file: "+pathToLog)
+		}
+	}
+	log.currentFile, log.wroteSize = f, uint64(info.Size())
+	return log.initialize()
 }
 
-func (log *RotateLog) watchAndArchive() {
-	ext := filepath.Ext(log.Filename)
-	logName := log.Filename[:len(log.Filename)-len(ext)]
-	duration, _ := parseFileAge(log.FileMaxAge)
+func (log *rotateLog) watchAndArchive() {
+	ext := filepath.Ext(log.filename)
+	logName := log.filename[:len(log.filename)-len(ext)]
+	duration, _ := parseFileAge(log.fileMaxAge)
 	for {
 		select {
 		case event, ok := <-log.fileWatcher.Events:
@@ -256,19 +274,19 @@ func (log *RotateLog) watchAndArchive() {
 				}
 				now := time.Now().UTC()
 				expired, rest := filterExpiredLogs(now, logName, ext, duration, logInfos)
-				expired = filterMaxBackupLogs(expired, rest, log.FileMaxBackups)
-				if log.FileCompressible {
-					if len(expired) < log.FileCompressBatch {
+				expired = filterMaxBackupLogs(expired, rest, log.fileMaxBackups)
+				if log.fileCompressible {
+					if len(expired) < log.fileCompressBatch {
 						continue
 					}
-					if err := compressExpiredLogs(log.FilePath, log.FileZipName, expired); err != nil {
+					if err := compressExpiredLogs(log.filePath, log.fileZipName, expired); err != nil {
 						handleRollingError(err)
 						continue
 					}
 				} else {
 					for _, info := range expired {
 						filename := filepath.Base(info.Name())
-						_ = os.Remove(filepath.Join(log.FilePath, filename))
+						_ = os.Remove(filepath.Join(log.filePath, filename))
 					}
 				}
 			}
@@ -281,15 +299,15 @@ func (log *RotateLog) watchAndArchive() {
 	}
 }
 
-func (log *RotateLog) loadFileInfos(logName, ext string) ([]fs.FileInfo, error) {
+func (log *rotateLog) loadFileInfos(logName, ext string) ([]fs.FileInfo, error) {
 	// Walk through the log files and find the expired ones.
-	entries, err := os.ReadDir(log.FilePath)
+	entries, err := os.ReadDir(log.filePath)
 	if err == nil && len(entries) > 0 {
 		logInfos := make([]os.FileInfo, 0, 16)
 		for _, entry := range entries {
 			if !entry.IsDir() {
 				filename := entry.Name()
-				if strings.HasPrefix(filename, logName) && strings.HasSuffix(filename, ext) && filename != log.Filename {
+				if strings.HasPrefix(filename, logName) && strings.HasSuffix(filename, ext) && filename != log.filename {
 					if info, err := entry.Info(); err == nil && info != nil {
 						logInfos = append(logInfos, info)
 					}

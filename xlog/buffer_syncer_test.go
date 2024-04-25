@@ -114,13 +114,13 @@ func TestXLogBufferSyncer_Console_DataRace(t *testing.T) {
 	syncer.Stop()
 }
 
-func testBufferSyncerRotateLogWriteRunCore(t *testing.T, log *RotateLog, syncer zapcore.WriteSyncer) {
-	size, err := parseFileSize(log.FileMaxSize)
+func testBufferSyncerRotateLogWriteRunCore(t *testing.T, log *rotateLog, syncer zapcore.WriteSyncer) {
+	size, err := parseFileSize(log.fileMaxSize)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1024), size)
 	log.maxSize = size
 	log.fileWatcher, err = fsnotify.NewWatcher()
-	log.fileWatcher.Add(log.FilePath)
+	log.fileWatcher.Add(log.filePath)
 	require.NoError(t, err)
 	defer log.fileWatcher.Close()
 	go log.watchAndArchive()
@@ -135,7 +135,7 @@ func testBufferSyncerRotateLogWriteRunCore(t *testing.T, log *RotateLog, syncer 
 	require.NoError(t, err)
 }
 
-func testBufferSyncerRotateLogWriteDataRaceRunCore(t *testing.T, log *RotateLog, syncer zapcore.WriteSyncer) {
+func testBufferSyncerRotateLogWriteDataRaceRunCore(t *testing.T, log *rotateLog, syncer zapcore.WriteSyncer) {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
@@ -159,15 +159,15 @@ func testBufferSyncerRotateLogWriteDataRaceRunCore(t *testing.T, log *RotateLog,
 }
 
 func TestXLogBufferSyncer_RotateLog(t *testing.T) {
-	log := &RotateLog{
-		FileMaxSize:       "1KB",
-		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
-		FileCompressible:  true,
-		FileMaxBackups:    4,
-		FileMaxAge:        "3day",
-		FileCompressBatch: 2,
-		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
-		FilePath:          os.TempDir(),
+	log := &rotateLog{
+		fileMaxSize:       "1KB",
+		filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		fileCompressible:  true,
+		fileMaxBackups:    4,
+		fileMaxAge:        "3day",
+		fileCompressBatch: 2,
+		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		filePath:          os.TempDir(),
 	}
 
 	syncer := &XLogBufferSyncer{
@@ -183,31 +183,31 @@ func TestXLogBufferSyncer_RotateLog(t *testing.T) {
 	for i := 0; i < loop; i++ {
 		testBufferSyncerRotateLogWriteRunCore(t, log, syncer)
 	}
-	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
+	reader, err := zip.OpenReader(filepath.Join(log.filePath, log.fileZipName))
 	require.NoError(t, err)
-	require.LessOrEqual(t, int((loop-1)*log.FileMaxBackups), len(reader.File))
+	require.LessOrEqual(t, int((loop-1)*log.fileMaxBackups), len(reader.File))
 	reader.Close()
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
 }
 
 func TestXLogBufferSyncer_RotateLog_DataRace(t *testing.T) {
-	log := &RotateLog{
-		FileMaxSize:       "1KB",
-		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
-		FileCompressible:  true,
-		FileMaxBackups:    4,
-		FileMaxAge:        "3day",
-		FileCompressBatch: 2,
-		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
-		FilePath:          os.TempDir(),
+	log := &rotateLog{
+		fileMaxSize:       "1KB",
+		filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		fileCompressible:  true,
+		fileMaxBackups:    4,
+		fileMaxAge:        "3day",
+		fileCompressBatch: 2,
+		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		filePath:          os.TempDir(),
 	}
-	size, err := parseFileSize(log.FileMaxSize)
+	size, err := parseFileSize(log.fileMaxSize)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1024), size)
 	log.maxSize = size
 	log.fileWatcher, err = fsnotify.NewWatcher()
-	log.fileWatcher.Add(log.FilePath)
+	log.fileWatcher.Add(log.filePath)
 	require.NoError(t, err)
 	defer log.fileWatcher.Close()
 	go log.watchAndArchive()
@@ -227,9 +227,9 @@ func TestXLogBufferSyncer_RotateLog_DataRace(t *testing.T) {
 	}
 	err = log.Close()
 	require.NoError(t, err)
-	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
+	reader, err := zip.OpenReader(filepath.Join(log.filePath, log.fileZipName))
 	require.NoError(t, err)
-	require.LessOrEqual(t, int((loop-1)*log.FileMaxBackups), len(reader.File))
+	require.LessOrEqual(t, int((loop-1)*log.fileMaxBackups), len(reader.File))
 	reader.Close()
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
