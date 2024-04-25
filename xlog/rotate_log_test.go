@@ -199,7 +199,7 @@ func TestParseFileAgeUnit(t *testing.T) {
 	}
 }
 
-func testRollingLogWriteRunCore(t *testing.T, log *RollingLog) {
+func testRotateLogWriteRunCore(t *testing.T, log *RotateLog) {
 	size, err := parseFileSize(log.FileMaxSize)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1024), size)
@@ -219,8 +219,8 @@ func testRollingLogWriteRunCore(t *testing.T, log *RollingLog) {
 	require.NoError(t, err)
 }
 
-func TestRollingLog_Write_Compress(t *testing.T) {
-	log := &RollingLog{
+func TestRotateLog_Write_Compress(t *testing.T) {
+	log := &RotateLog{
 		FileMaxSize:       "1KB",
 		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
 		FileCompressible:  true,
@@ -232,7 +232,7 @@ func TestRollingLog_Write_Compress(t *testing.T) {
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
-		testRollingLogWriteRunCore(t, log)
+		testRotateLogWriteRunCore(t, log)
 	}
 	reader, err := zip.OpenReader(filepath.Join(log.FilePath, log.FileZipName))
 	require.NoError(t, err)
@@ -244,8 +244,8 @@ func TestRollingLog_Write_Compress(t *testing.T) {
 	require.Equal(t, 1, removed)
 }
 
-func TestRollingLog_Write_Delete(t *testing.T) {
-	log := &RollingLog{
+func TestRotateLog_Write_Delete(t *testing.T) {
+	log := &RotateLog{
 		FileMaxSize:      "1KB",
 		Filename:         filepath.Base(os.Args[0]) + "_xlog.log",
 		FileCompressible: false,
@@ -255,7 +255,7 @@ func TestRollingLog_Write_Delete(t *testing.T) {
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
-		testRollingLogWriteRunCore(t, log)
+		testRotateLogWriteRunCore(t, log)
 	}
 	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
 	require.Equal(t, log.FileMaxBackups+1, removed)

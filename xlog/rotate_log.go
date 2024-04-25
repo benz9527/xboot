@@ -20,7 +20,7 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-var _ io.WriteCloser = (*RollingLog)(nil)
+var _ io.WriteCloser = (*RotateLog)(nil)
 
 type fileSizeUnit uint64
 
@@ -85,7 +85,7 @@ func parseFileAge(age string) (time.Duration, error) {
 	return time.Duration(num) * time.Duration(unit), nil
 }
 
-type RollingLog struct {
+type RotateLog struct {
 	FilePath          string `json:"filePath" yaml:"filePath"`
 	Filename          string `json:"filename" yaml:"filename"`
 	FileMaxSize       string `json:"fileMaxSize" yaml:"fileMaxSize"`
@@ -101,7 +101,7 @@ type RollingLog struct {
 	FileCompressible  bool `json:"fileCompressible" yaml:"fileCompressible"`
 }
 
-func (log *RollingLog) Write(p []byte) (n int, err error) {
+func (log *RotateLog) Write(p []byte) (n int, err error) {
 	if log.currentFile == nil {
 		if err := log.openOrCreate(); err != nil {
 			return 0, err
@@ -124,7 +124,7 @@ func (log *RollingLog) Write(p []byte) (n int, err error) {
 	return
 }
 
-func (log *RollingLog) Close() error {
+func (log *RotateLog) Close() error {
 	var merr error
 	if err := log.fileWatcher.Close(); err != nil {
 		merr = multierr.Append(merr, err)
@@ -137,7 +137,7 @@ func (log *RollingLog) Close() error {
 	return merr
 }
 
-func (log *RollingLog) mkdir() error {
+func (log *RotateLog) mkdir() error {
 	var err error
 	log.mkdirOnce.Do(func() {
 		if log.FilePath == "" {
@@ -148,7 +148,7 @@ func (log *RollingLog) mkdir() error {
 	return infra.WrapErrorStack(err)
 }
 
-func (log *RollingLog) backup() error {
+func (log *RotateLog) backup() error {
 	logName := log.Filename
 	ext := filepath.Ext(logName)
 	logNamePrefix := strings.TrimSuffix(logName, ext)
@@ -161,7 +161,7 @@ func (log *RollingLog) backup() error {
 	return os.Rename(filepath.Join(log.FilePath, logName), pathToBackup)
 }
 
-func (log *RollingLog) create() error {
+func (log *RotateLog) create() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
@@ -174,14 +174,14 @@ func (log *RollingLog) create() error {
 	return nil
 }
 
-func (log *RollingLog) backupThenCreate() error {
+func (log *RotateLog) backupThenCreate() error {
 	if err := log.backup(); err != nil {
 		return err
 	}
 	return log.create()
 }
 
-func (log *RollingLog) openOrCreate() error {
+func (log *RotateLog) openOrCreate() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
@@ -189,20 +189,23 @@ func (log *RollingLog) openOrCreate() error {
 	pathToLog := filepath.Join(log.FilePath, log.Filename)
 	info, err := os.Stat(pathToLog)
 	if os.IsNotExist(err) {
-		if _err := log.create(); _err != nil {
-			return _err
+		var merr error
+		merr = multierr.Append(merr, err)
+		if err = log.create(); err != nil {
+			return multierr.Append(merr, err)
 		}
 	} else if err == nil && !info.IsDir() {
-		f, _err := os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644)
-		if _err != nil {
-			if _err = log.backupThenCreate(); _err != nil {
-				return infra.WrapErrorStackWithMessage(_err, "failed to open an exists log file")
+		var f *os.File
+		if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
+			// TODO Handle the file access permission denied error.
+			if err = log.backupThenCreate(); err != nil {
+				return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file")
 			}
 		}
 		log.currentFile, log.wroteSize = f, uint64(info.Size())
 	} else if err == nil && info.IsDir() {
 		log.currentFile = nil
-		return infra.NewErrorStack("log file: " + pathToLog + " is a dir")
+		return infra.NewErrorStack("log file <" + pathToLog + "> is a dir")
 	} else if err != nil {
 		log.currentFile = nil
 		return infra.WrapErrorStack(err)
@@ -210,7 +213,7 @@ func (log *RollingLog) openOrCreate() error {
 	return nil
 }
 
-func (log *RollingLog) watchAndArchive() {
+func (log *RotateLog) watchAndArchive() {
 	ext := filepath.Ext(log.Filename)
 	logName := log.Filename[:len(log.Filename)-len(ext)]
 	duration, _ := parseFileAge(log.FileMaxAge)
@@ -254,7 +257,7 @@ func (log *RollingLog) watchAndArchive() {
 	}
 }
 
-func (log *RollingLog) loadFileInfos(logName, ext string) ([]fs.FileInfo, error) {
+func (log *RotateLog) loadFileInfos(logName, ext string) ([]fs.FileInfo, error) {
 	// Walk through the log files and find the expired ones.
 	entries, err := os.ReadDir(log.FilePath)
 	if err == nil && len(entries) > 0 {
