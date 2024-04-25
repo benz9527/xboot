@@ -20,8 +20,6 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-var _ io.WriteCloser = (*RotateLog)(nil)
-
 type fileSizeUnit uint64
 
 const (
@@ -39,7 +37,7 @@ const (
 	Minute               fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Minute))
 	Hour                 fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Hour))
 	Day                  fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Hour * 24))
-	_maxAge                          = 2 * 7 * Day
+	_maxFileAge                      = 2 * 7 * Day
 )
 
 var (
@@ -85,20 +83,22 @@ func parseFileAge(age string) (time.Duration, error) {
 	return time.Duration(num) * time.Duration(unit), nil
 }
 
+var _ io.WriteCloser = (*RotateLog)(nil)
+
 type RotateLog struct {
-	FilePath          string `json:"filePath" yaml:"filePath"`
-	Filename          string `json:"filename" yaml:"filename"`
-	FileMaxSize       string `json:"fileMaxSize" yaml:"fileMaxSize"`
-	FileMaxAge        string `json:"fileMaxAge" yaml:"fileMaxAge"`
-	FileZipName       string `json:"fileZipName" yaml:"fileZipName"`
+	FilePath          string
+	Filename          string
+	FileMaxSize       string
+	FileMaxAge        string
+	FileZipName       string
 	maxSize           uint64
 	wroteSize         uint64
 	mkdirOnce         sync.Once
 	currentFile       *os.File
 	fileWatcher       *fsnotify.Watcher
-	FileMaxBackups    int  `json:"fileMaxBackups" yaml:"fileMaxBackups"`
-	FileCompressBatch int  `json:"fileCompressBatch" yaml:"fileCompressBatch"`
-	FileCompressible  bool `json:"fileCompressible" yaml:"fileCompressible"`
+	FileMaxBackups    int
+	FileCompressBatch int
+	FileCompressible  bool
 }
 
 func (log *RotateLog) Write(p []byte) (n int, err error) {
@@ -137,13 +137,37 @@ func (log *RotateLog) Close() error {
 	return merr
 }
 
+func (log *RotateLog) initialize() error {
+	size, err := parseFileSize(log.FileMaxSize)
+	if err != nil {
+		return err
+	}
+	log.maxSize = size
+
+	if _, err = parseFileAge(log.FileMaxAge); err != nil {
+		return err
+	}
+
+	if log.fileWatcher, err = fsnotify.NewWatcher(); err != nil {
+		return err
+	}
+	if err = log.fileWatcher.Add(log.FilePath); err != nil {
+		// TODO log file path is not exist
+		return err
+	}
+
+	go log.watchAndArchive()
+	return nil
+}
+
 func (log *RotateLog) mkdir() error {
-	var err error
+	var err error = nil
 	log.mkdirOnce.Do(func() {
 		if log.FilePath == "" {
 			log.FilePath = os.TempDir()
+			return
 		}
-		err = os.MkdirAll(log.FilePath, 0o755)
+		err = os.MkdirAll(log.FilePath, 0o644)
 	})
 	return infra.WrapErrorStack(err)
 }
