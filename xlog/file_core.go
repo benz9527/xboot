@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"go.uber.org/zap"
@@ -64,7 +65,7 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 		bufferEnabled = false
 		bufSize       uint64
 		bufInterval   int64
-		writer        io.WriteCloser
+		fileWriter    io.WriteCloser
 		ws            zapcore.WriteSyncer
 	)
 	if cfg.FileBufferSize != "" && cfg.FileBufferFlushInterval > 0 {
@@ -96,16 +97,16 @@ writerInit:
 		if err = w.initialize(); err != nil {
 			panic(err)
 		}
-		writer = w
+		fileWriter = w
 	} else {
-		writer = &SingleLog{
+		fileWriter = &SingleLog{
 			Filename: cfg.Filename,
 			FilePath: cfg.FilePath,
 		}
 	}
 	if bufferEnabled {
 		syncer := &XLogBufferSyncer{
-			outWriter: nil,
+			outWriter: fileWriter,
 			arena: &xLogArena{
 				size: bufSize,
 			},
@@ -114,7 +115,7 @@ writerInit:
 		syncer.initialize()
 		ws = syncer
 	} else {
-		ws = zapcore.Lock(zapcore.AddSync(writer))
+		ws = zapcore.Lock(zapcore.AddSync(fileWriter))
 	}
 
 	return func(
@@ -147,6 +148,9 @@ writerInit:
 			StacktraceKey: coreKeyIgnored,
 		}
 		cc.core.core = zapcore.NewCore(cc.core.enc(config), cc.core.ws, cc.core.lvlEnabler)
+		runtime.SetFinalizer(cc, func(cc *fileCore) {
+			_ = fileWriter.Close()
+		})
 		return cc
 	}
 }
