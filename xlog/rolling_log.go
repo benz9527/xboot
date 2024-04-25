@@ -2,6 +2,7 @@ package xlog
 
 import (
 	"archive/zip"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -24,8 +25,8 @@ var _ io.WriteCloser = (*RollingLog)(nil)
 type fileSizeUnit uint64
 
 const (
-	B  fileSizeUnit = 1
-	KB fileSizeUnit = 1 << (10 * iota)
+	B fileSizeUnit = 1 << (10 * iota)
+	KB
 	MB
 	_maxSize = 1024 * MB
 )
@@ -34,16 +35,16 @@ type fileAgeUnit int64
 
 const (
 	backupDateTimeFormat             = "2006_01_02T15_04_05.999999999_Z07_00"
-	S                    fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Second))
-	M                    fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Minute))
-	H                    fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Hour))
-	D                    fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Hour * 24))
-	_maxAge                          = 2 * 7 * D
+	Second               fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Second))
+	Minute               fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Minute))
+	Hour                 fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Hour))
+	Day                  fileAgeUnit = fileAgeUnit(time.Duration(1 * time.Hour * 24))
+	_maxAge                          = 2 * 7 * Day
 )
 
 var (
 	fileSizeRegexp = regexp.MustCompile(`^(\d+)(([kK]|[mM])?[bB])$`)
-	fileAgeRegexp  = regexp.MustCompile(`^(\d+)(s(ec)?|m(in)?|h(our)?|H|d(ay)|D)$`)
+	fileAgeRegexp  = regexp.MustCompile(`^(\d+)(s|[sS]ec|[mM]in|[hH](our[s]?)?|[dD](ay[s]?)?)$`)
 )
 
 func parseFileSize(size string) (uint64, error) {
@@ -60,10 +61,7 @@ func parseFileSize(size string) (uint64, error) {
 	case "MB":
 		unit = MB
 	}
-	_size, err := strconv.ParseUint(res[0][1], 10, 64)
-	if err != nil {
-		return 0, infra.WrapErrorStackWithMessage(err, "unknown file size")
-	}
+	_size, _ := strconv.ParseUint(res[0][1], 10, 64)
 	return _size * uint64(unit), nil
 }
 
@@ -75,19 +73,16 @@ func parseFileAge(age string) (time.Duration, error) {
 	var unit fileAgeUnit
 	switch strings.ToUpper(res[0][2]) {
 	case "S", "SEC":
-		unit = S
+		unit = Second
 	case "M", "MIN":
-		unit = M
-	case "H", "HOUR":
-		unit = H
-	case "D", "DAY":
-		unit = D
+		unit = Minute
+	case "H", "HOUR", "HOURS":
+		unit = Hour
+	case "D", "DAY", "DAYS":
+		unit = Day
 	}
-	num, err := strconv.ParseInt(res[0][1], 10, 64)
-	if err != nil {
-		return 0, infra.WrapErrorStackWithMessage(err, "unknown file age")
-	}
-	return time.Duration(unit) * time.Duration(num), nil
+	num, _ := strconv.ParseInt(res[0][1], 10, 64)
+	return time.Duration(num) * time.Duration(unit), nil
 }
 
 type RollingLog struct {
@@ -299,7 +294,9 @@ func filterExpiredLogs(now time.Time, logName, ext string, duration time.Duratio
 }
 
 func handleRollingError(err error) {
-	// TODO we have to handle the fsnotify error
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "[XLogger] rolling file occurs error: %s\n", err)
+	}
 }
 
 func filterMaxBackupLogs(expired, rest []fs.FileInfo, maxBackups int) []fs.FileInfo {
@@ -347,7 +344,7 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 					_ = file.Close()
 					file = nil
 					if err = os.Remove(filepath.Join(filePath, info.Name())); err != nil {
-						panic(err)
+						handleRollingError(err)
 					}
 				}
 			}
@@ -389,10 +386,10 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 	if prevZip != nil {
 		_ = prevZip.Close()
 		if err = os.Remove(filepath.Join(filePath, zipName)); err != nil {
-			panic(err)
+			handleRollingError(err)
 		}
 		if err := os.Rename(filepath.Join(filePath, "xlog-tmp.zip"), filepath.Join(filePath, zipName)); err != nil {
-			panic(err)
+			handleRollingError(err)
 		}
 	}
 	return nil
