@@ -18,6 +18,7 @@ import (
 
 var printBanner = sync.Once{}
 
+// XLogger is wrapper logger of Uber zap logger.
 type xLogger struct {
 	cancelFn            context.CancelFunc
 	logger              atomic.Pointer[zap.Logger]

@@ -55,7 +55,7 @@ func TestConsoleCore(t *testing.T) {
 	require.NoError(t, err)
 	_ = cc.Sync()
 
-	cc, err = WrapCore(cc, componentCoreEncoderCfg)
+	cc, err = WrapCore(cc, componentCoreEncoderCfg())
 	require.NoError(t, err)
 	require.NotNil(t, cc)
 	err = cc.Write(zapcore.Entry{Level: zapcore.DebugLevel, LoggerName: "commonCore"}, []zap.Field{zap.String("key", "value")})

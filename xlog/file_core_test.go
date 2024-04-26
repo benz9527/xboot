@@ -174,3 +174,52 @@ func TestXLogFileCore_RotateLog_DataRace(t *testing.T) {
 	removed = testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
 	require.Equal(t, removed, 1)
 }
+
+func TestXLogFileCore_SingleLog_DataRace(t *testing.T) {
+	lvlEnabler := zap.NewAtomicLevelAt(LogLevelDebug.zapLevel())
+	cfg := &FileCoreConfig{
+		FilePath: os.TempDir(),
+		Filename: filepath.Base(os.Args[0]) + "_xlog.log",
+	}
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	cc := newFileCore(cfg)(
+		nil,
+		&lvlEnabler,
+		JSON,
+		zapcore.CapitalLevelEncoder,
+		zapcore.ISO8601TimeEncoder,
+	)
+	require.Nil(t, cc)
+
+	cc = newFileCore(cfg)(
+		ctx,
+		&lvlEnabler,
+		JSON,
+		zapcore.CapitalLevelEncoder,
+		zapcore.ISO8601TimeEncoder,
+	)
+
+	go func() {
+		ent := cc.Check(zapcore.Entry{Level: zapcore.DebugLevel}, nil)
+		for i := 0; i < 100; i++ {
+			err := cc.Write(ent.Entry, []zap.Field{zap.String("key", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog single log write test!")})
+			require.NoError(t, err)
+		}
+	}()
+	go func() {
+		ent := cc.Check(zapcore.Entry{Level: zapcore.DebugLevel}, nil)
+		for i := 100; i < 200; i++ {
+			err := cc.Write(ent.Entry, []zap.Field{zap.String("key", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog single log write test!")})
+			require.NoError(t, err)
+		}
+	}()
+
+	time.Sleep(1 * time.Second)
+	err := cc.Sync()
+	require.NoError(t, err)
+	cancel()
+
+	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
+	require.GreaterOrEqual(t, removed, 1)
+}

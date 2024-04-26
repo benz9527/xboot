@@ -16,6 +16,8 @@ type logRecord struct {
 	length      uint64
 }
 
+// A buffer to store log records.
+// Avoid GC frequently.
 type xLogArena struct {
 	buf     []byte
 	size    uint64
@@ -64,21 +66,21 @@ func (arena *xLogArena) cache(log []byte) bool {
 	return false
 }
 
+// Flush the buffer to the writer.
 func (arena *xLogArena) flush(writer io.WriteCloser) error {
 	if arena.queue == nil {
 		return nil
 	}
 
 	// TODO Batch bytes write in one io write.
-	err := arena.queue.Foreach(func(idx int64, e *list.NodeElement[logRecord]) error {
+	if err := arena.queue.Foreach(func(idx int64, e *list.NodeElement[logRecord]) error {
 		data := arena.buf[e.Value.startOffset : e.Value.startOffset+e.Value.length]
 		if _, err := writer.Write(data); err != nil {
 			return err
 		}
 		arena.queue.Remove(e)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -102,7 +104,6 @@ type xLogBufferSyncer struct {
 	mu            sync.Mutex
 }
 
-// Sync implements zapcore.WriteSyncer.
 func (syncer *xLogBufferSyncer) Sync() error {
 	syncer.mu.Lock()
 	defer syncer.mu.Unlock()
@@ -115,11 +116,11 @@ func (syncer *xLogBufferSyncer) Sync() error {
 	return nil
 }
 
-// Write implements zapcore.WriteSyncer.
 func (syncer *xLogBufferSyncer) Write(log []byte) (n int, err error) {
 	syncer.mu.Lock()
 	defer syncer.mu.Unlock()
 
+	// TODO Implemented filters or hooks to pre-process logs.
 	if !syncer.arena.cache(log) {
 		if err := syncer.arena.flush(syncer.outWriter); err != nil {
 			return 0, err
