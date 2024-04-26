@@ -52,6 +52,7 @@ func TestXLogBufferSyncer_Console(t *testing.T) {
 			size: 1 << 10,
 		},
 		flushInterval: 500 * time.Millisecond,
+		closeC:        make(chan struct{}),
 	}
 	syncer.initialize()
 
@@ -78,6 +79,7 @@ func TestXLogBufferSyncer_Console_DataRace(t *testing.T) {
 			size: 1 << 10,
 		},
 		flushInterval: 500 * time.Millisecond,
+		closeC:        make(chan struct{}),
 	}
 	syncer.initialize()
 
