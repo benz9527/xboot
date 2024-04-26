@@ -32,7 +32,7 @@ func TestXLogFileCore_RotateLog(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	cc := newFileCore(cfg)(
-		ctx,
+		nil,
 		&lvlEnabler,
 		JSON,
 		zapcore.CapitalLevelEncoder,
@@ -78,7 +78,7 @@ func TestXLogFileCore_SingleLog(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	cc := newFileCore(cfg)(
-		ctx,
+		nil,
 		&lvlEnabler,
 		JSON,
 		zapcore.CapitalLevelEncoder,
@@ -128,7 +128,7 @@ func TestXLogFileCore_RotateLog_DataRace(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	cc := newFileCore(cfg)(
-		ctx,
+		nil,
 		&lvlEnabler,
 		JSON,
 		zapcore.CapitalLevelEncoder,

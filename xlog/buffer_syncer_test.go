@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 
@@ -116,28 +115,17 @@ func TestXLogBufferSyncer_Console_DataRace(t *testing.T) {
 	syncer.Stop()
 }
 
-func testBufferSyncerRotateLogWriteRunCore(t *testing.T, log *rotateLog, syncer zapcore.WriteSyncer) {
-	size, err := parseFileSize(log.fileMaxSize)
-	require.NoError(t, err)
-	require.Equal(t, uint64(1024), size)
-	log.maxSize = size
-	log.fileWatcher, err = fsnotify.NewWatcher()
-	log.fileWatcher.Add(log.filePath)
-	require.NoError(t, err)
-	defer log.fileWatcher.Close()
-	go log.watchAndArchive()
-
+func testBufferSyncerRotateLogWriteRunCore(t *testing.T, syncer zapcore.WriteSyncer) {
+	var err error
 	for i := 0; i < 100; i++ {
 		data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog rolling log write test!\n")
 		_, err = syncer.Write(data)
 		require.NoError(t, err)
 	}
 	time.Sleep(1 * time.Second)
-	err = log.Close()
-	require.NoError(t, err)
 }
 
-func testBufferSyncerRotateLogWriteDataRaceRunCore(t *testing.T, log *rotateLog, syncer zapcore.WriteSyncer) {
+func testBufferSyncerRotateLogWriteDataRaceRunCore(t *testing.T, syncer zapcore.WriteSyncer) {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
@@ -161,80 +149,69 @@ func testBufferSyncerRotateLogWriteDataRaceRunCore(t *testing.T, log *rotateLog,
 }
 
 func TestXLogBufferSyncer_RotateLog(t *testing.T) {
-	log := &rotateLog{
-		fileMaxSize:       "1KB",
-		filename:          filepath.Base(os.Args[0]) + "_xlog.log",
-		fileCompressible:  true,
-		fileMaxBackups:    4,
-		fileMaxAge:        "3day",
-		fileCompressBatch: 2,
-		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
-		filePath:          os.TempDir(),
-		closeC:            make(chan struct{}),
+	closeC := make(chan struct{})
+	cfg := &FileCoreConfig{
+		FileMaxSize:       "1KB",
+		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		FileCompressible:  true,
+		FileMaxBackups:    4,
+		FileMaxAge:        "3day",
+		FileCompressBatch: 2,
+		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		FilePath:          os.TempDir(),
 	}
+	log := RotateLog(cfg, closeC)
 
-	syncer := &xLogBufferSyncer{
-		outWriter: log,
-		arena: &xLogArena{
-			size: 1 << 10,
-		},
-		flushInterval: 500 * time.Millisecond,
-	}
-	syncer.initialize()
+	size, err := parseFileSize(log.(*rotateLog).fileMaxSize)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1024), size)
+
+	syncer := XLogBufferSyncer(log, 1<<10, 500, closeC)
 
 	loop := 2
 	for i := 0; i < loop; i++ {
-		testBufferSyncerRotateLogWriteRunCore(t, log, syncer)
+		testBufferSyncerRotateLogWriteRunCore(t, syncer)
+		require.NoError(t, log.Close())
 	}
-	reader, err := zip.OpenReader(filepath.Join(log.filePath, log.fileZipName))
+
+	reader, err := zip.OpenReader(filepath.Join(cfg.FilePath, cfg.FileZipName))
 	require.NoError(t, err)
-	require.LessOrEqual(t, int((loop-1)*log.fileMaxBackups), len(reader.File))
-	reader.Close()
+	require.LessOrEqual(t, int((loop-1)*cfg.FileMaxBackups), len(reader.File))
+	require.NoError(t, reader.Close())
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
 }
 
 func TestXLogBufferSyncer_RotateLog_DataRace(t *testing.T) {
-	log := &rotateLog{
-		fileMaxSize:       "1KB",
-		filename:          filepath.Base(os.Args[0]) + "_xlog.log",
-		fileCompressible:  true,
-		fileMaxBackups:    4,
-		fileMaxAge:        "3day",
-		fileCompressBatch: 2,
-		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
-		filePath:          os.TempDir(),
-		closeC:            make(chan struct{}),
+	closeC := make(chan struct{})
+	cfg := &FileCoreConfig{
+		FileMaxSize:       "1KB",
+		Filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		FileCompressible:  true,
+		FileMaxBackups:    4,
+		FileMaxAge:        "3day",
+		FileCompressBatch: 2,
+		FileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		FilePath:          os.TempDir(),
 	}
-	size, err := parseFileSize(log.fileMaxSize)
+	log := RotateLog(cfg, closeC)
+
+	size, err := parseFileSize(log.(*rotateLog).fileMaxSize)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1024), size)
-	log.maxSize = size
-	log.fileWatcher, err = fsnotify.NewWatcher()
-	log.fileWatcher.Add(log.filePath)
-	require.NoError(t, err)
-	defer log.fileWatcher.Close()
-	go log.watchAndArchive()
 
-	syncer := &xLogBufferSyncer{
-		outWriter: log,
-		arena: &xLogArena{
-			size: 1 << 10,
-		},
-		flushInterval: 500 * time.Millisecond,
-	}
-	syncer.initialize()
+	syncer := XLogBufferSyncer(log, 1<<10, 500, closeC)
 
 	loop := 2
 	for i := 0; i < loop; i++ {
-		testBufferSyncerRotateLogWriteDataRaceRunCore(t, log, syncer)
+		testBufferSyncerRotateLogWriteDataRaceRunCore(t, syncer)
 	}
 	err = log.Close()
 	require.NoError(t, err)
-	reader, err := zip.OpenReader(filepath.Join(log.filePath, log.fileZipName))
+	reader, err := zip.OpenReader(filepath.Join(cfg.FilePath, cfg.FileZipName))
 	require.NoError(t, err)
-	require.LessOrEqual(t, int((loop-1)*log.fileMaxBackups), len(reader.File))
-	reader.Close()
+	require.LessOrEqual(t, int((loop-1)*cfg.FileMaxBackups), len(reader.File))
+	require.NoError(t, reader.Close())
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
 	testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
 }

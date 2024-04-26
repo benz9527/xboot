@@ -184,7 +184,7 @@ func (syncer *xLogBufferSyncer) initialize() {
 func XLogBufferSyncer(
 	writer io.WriteCloser,
 	bufSize uint64,
-	flushInterval time.Duration,
+	flushInterval int64,
 	closeC chan struct{},
 ) zapcore.WriteSyncer {
 	if writer == nil || closeC == nil {

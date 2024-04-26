@@ -102,7 +102,7 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 			fileWriter = SingleLog(cfg, closeC)
 		}
 		if bufferEnabled {
-			ws = XLogBufferSyncer(fileWriter, bufSize, time.Duration(bufInterval), closeC)
+			ws = XLogBufferSyncer(fileWriter, bufSize, bufInterval, closeC)
 		} else {
 			ws = XLogLockSyncer(fileWriter, closeC)
 		}

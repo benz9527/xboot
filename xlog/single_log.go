@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"go.uber.org/multierr"
 
@@ -19,7 +20,7 @@ type singleLog struct {
 	filename    string
 	wroteSize   uint64
 	mkdirOnce   sync.Once
-	currentFile *os.File
+	currentFile atomic.Pointer[os.File]
 	closeC      <-chan struct{}
 }
 
@@ -30,24 +31,24 @@ func (log *singleLog) Write(p []byte) (n int, err error) {
 	default:
 	}
 
-	if log.currentFile == nil {
+	if log.currentFile.Load() == nil {
 		if err := log.openOrCreate(); err != nil {
 			return 0, err
 		}
 	}
-	n, err = log.currentFile.Write(p)
+	n, err = log.currentFile.Load().Write(p)
 	log.wroteSize += uint64(n)
 	return
 }
 
 func (log *singleLog) Close() error {
-	if log.currentFile == nil {
+	if log.currentFile.Load() == nil {
 		return nil
 	}
-	if err := log.currentFile.Close(); err != nil {
+	if err := log.currentFile.Load().Close(); err != nil {
 		return err
 	}
-	log.currentFile = nil
+	log.currentFile.Store(nil)
 	return nil
 }
 
@@ -66,12 +67,12 @@ func (log *singleLog) openOrCreate() error {
 		}
 		return nil
 	} else if err != nil {
-		log.currentFile = nil
+		log.currentFile.Store(nil)
 		return infra.WrapErrorStack(err)
 	}
 
 	if info.IsDir() {
-		log.currentFile = nil
+		log.currentFile.Store(nil)
 		return infra.NewErrorStack("log file <" + pathToLog + "> is a dir")
 	}
 
@@ -79,7 +80,8 @@ func (log *singleLog) openOrCreate() error {
 	if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
 		return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file")
 	}
-	log.currentFile, log.wroteSize = f, uint64(info.Size())
+	log.currentFile.Store(f)
+	log.wroteSize = uint64(info.Size())
 	return nil
 }
 
@@ -106,7 +108,8 @@ func (log *singleLog) create() error {
 	if err != nil {
 		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+pathToLog)
 	}
-	log.currentFile, log.wroteSize = f, 0
+	log.currentFile.Store(f)
+	log.wroteSize = 0
 	return nil
 }
 

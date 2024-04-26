@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -94,8 +95,8 @@ type rotateLog struct {
 	maxSize           uint64
 	wroteSize         uint64
 	mkdirOnce         sync.Once
-	currentFile       *os.File
-	fileWatcher       *fsnotify.Watcher
+	currentFile       atomic.Pointer[os.File]
+	fileWatcher       atomic.Pointer[fsnotify.Watcher]
 	closeC            <-chan struct{}
 	fileMaxBackups    int
 	fileCompressBatch int
@@ -109,14 +110,14 @@ func (log *rotateLog) Write(p []byte) (n int, err error) {
 	default:
 	}
 
-	if log.currentFile == nil {
+	if log.currentFile.Load() == nil {
 		if err := log.openOrCreate(); err != nil {
 			return 0, err
 		}
 	}
 	logLen := uint64(len(p))
 	if log.wroteSize+logLen > log.maxSize {
-		n, err = log.currentFile.Write(p)
+		n, err = log.currentFile.Load().Write(p)
 		if err != nil {
 			return
 		}
@@ -126,33 +127,33 @@ func (log *rotateLog) Write(p []byte) (n int, err error) {
 		return
 	}
 
-	n, err = log.currentFile.Write(p)
+	n, err = log.currentFile.Load().Write(p)
 	log.wroteSize += uint64(n)
 	return
 }
 
 func (log *rotateLog) Close() error {
 	var merr error
-	if log.fileWatcher != nil {
-		if err := log.fileWatcher.Close(); err != nil {
+	if log.fileWatcher.Load() != nil {
+		if err := log.fileWatcher.Load().Close(); err != nil {
 			merr = multierr.Append(merr, err)
 		} else {
-			log.fileWatcher = nil
+			log.fileWatcher.Store(nil)
 		}
 	}
-	if log.currentFile == nil {
+	if log.currentFile.Load() == nil {
 		return merr
 	}
-	if err := log.currentFile.Close(); err != nil {
+	if err := log.currentFile.Load().Close(); err != nil {
 		merr = multierr.Append(merr, err)
 	} else {
-		log.currentFile = nil
+		log.currentFile.Store(nil)
 	}
 	return merr
 }
 
 func (log *rotateLog) initialize() error {
-	if log.fileWatcher != nil {
+	if log.fileWatcher.Load() != nil {
 		return nil
 	}
 
@@ -166,10 +167,13 @@ func (log *rotateLog) initialize() error {
 		return err
 	}
 
-	if log.fileWatcher, err = fsnotify.NewWatcher(); err != nil {
+	var watcher *fsnotify.Watcher
+	if watcher, err = fsnotify.NewWatcher(); err != nil {
 		return err
 	}
-	if err = log.fileWatcher.Add(log.filePath); err != nil {
+	log.fileWatcher.Store(watcher)
+
+	if err = log.fileWatcher.Load().Add(log.filePath); err != nil {
 		// TODO log file path is not exist
 		return err
 	}
@@ -199,7 +203,7 @@ func (log *rotateLog) backup() error {
 	now := time.Now().UTC()
 	ts := now.Format(backupDateTimeFormat)
 	pathToBackup := filepath.Join(log.filePath, logNamePrefix+"_"+ts+ext)
-	if err := log.currentFile.Close(); err != nil {
+	if err := log.currentFile.Load().Close(); err != nil {
 		return infra.WrapErrorStackWithMessage(err, "failed to backup current log: "+filepath.Join(log.filePath, logName))
 	}
 	return os.Rename(filepath.Join(log.filePath, logName), pathToBackup)
@@ -214,7 +218,8 @@ func (log *rotateLog) create() error {
 	if err != nil {
 		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+pathToLog)
 	}
-	log.currentFile, log.wroteSize = f, 0
+	log.currentFile.Store(f)
+	log.wroteSize = 0
 	return nil
 }
 
@@ -240,12 +245,12 @@ func (log *rotateLog) openOrCreate() error {
 		}
 		return log.initialize()
 	} else if err != nil {
-		log.currentFile = nil
+		log.currentFile.Store(nil)
 		return infra.WrapErrorStack(err)
 	}
 
 	if info.IsDir() {
-		log.currentFile = nil
+		log.currentFile.Store(nil)
 		return infra.NewErrorStack("log file <" + pathToLog + "> is a dir")
 	}
 
@@ -258,7 +263,8 @@ func (log *rotateLog) openOrCreate() error {
 			return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file: "+pathToLog)
 		}
 	}
-	log.currentFile, log.wroteSize = f, uint64(info.Size())
+	log.currentFile.Store(f)
+	log.wroteSize = uint64(info.Size())
 	return log.initialize()
 }
 
@@ -271,7 +277,7 @@ func (log *rotateLog) watchAndArchive() {
 		case <-log.closeC:
 			_ = log.Close()
 			return
-		case event, ok := <-log.fileWatcher.Events:
+		case event, ok := <-log.fileWatcher.Load().Events:
 			if !ok {
 				return
 			}
@@ -300,7 +306,7 @@ func (log *rotateLog) watchAndArchive() {
 					}
 				}
 			}
-		case err, ok := <-log.fileWatcher.Errors:
+		case err, ok := <-log.fileWatcher.Load().Errors:
 			if !ok {
 				return
 			}
