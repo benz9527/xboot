@@ -33,20 +33,13 @@ func (syncer *xLogLockSyncer) Stop() (err error) {
 	return nil
 }
 
-func (syncer *xLogLockSyncer) stop() {
-	select {
-	case <-syncer.closeC:
-		if _, ok := syncer.outWriter.(*rotateLog); !ok {
-			_ = syncer.outWriter.Close() // Notice: data race !!!
-		}
+func XLogLockSyncer(writer io.WriteCloser, closeC chan struct{}) zapcore.WriteSyncer {
+	if writer == nil || closeC == nil {
+		return nil
 	}
-}
-
-func XLogLockSyncer(writer io.WriteCloser) zapcore.WriteSyncer {
 	syncer := &xLogLockSyncer{
 		outWriter: writer,
-		closeC:    make(chan struct{}),
+		closeC:    closeC,
 	}
-	go syncer.stop()
 	return syncer
 }

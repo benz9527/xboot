@@ -96,13 +96,19 @@ type rotateLog struct {
 	mkdirOnce         sync.Once
 	currentFile       *os.File
 	fileWatcher       *fsnotify.Watcher
-	closeC            chan struct{}
+	closeC            <-chan struct{}
 	fileMaxBackups    int
 	fileCompressBatch int
 	fileCompressible  bool
 }
 
 func (log *rotateLog) Write(p []byte) (n int, err error) {
+	select {
+	case <-log.closeC:
+		return 0, io.EOF
+	default:
+	}
+
 	if log.currentFile == nil {
 		if err := log.openOrCreate(); err != nil {
 			return 0, err
@@ -321,6 +327,24 @@ func (log *rotateLog) loadFileInfos(logName, ext string) ([]fs.FileInfo, error) 
 		return logInfos, nil
 	}
 	return nil, infra.WrapErrorStack(err)
+}
+
+func RotateLog(cfg *FileCoreConfig, closeC chan struct{}) io.WriteCloser {
+	w := &rotateLog{
+		filename:          cfg.Filename,
+		filePath:          cfg.FilePath,
+		fileCompressible:  cfg.FileCompressible,
+		fileCompressBatch: cfg.FileCompressBatch,
+		fileMaxAge:        cfg.FileMaxAge,
+		fileZipName:       cfg.FileZipName,
+		fileMaxSize:       cfg.FileMaxSize,
+		fileMaxBackups:    cfg.FileMaxBackups,
+		closeC:            closeC,
+	}
+	if err := w.initialize(); err != nil {
+		panic(err)
+	}
+	return w
 }
 
 func filterExpiredLogs(now time.Time, logName, ext string, duration time.Duration, logInfos []fs.FileInfo) ([]fs.FileInfo, []fs.FileInfo) {

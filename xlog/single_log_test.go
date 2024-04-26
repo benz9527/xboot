@@ -15,6 +15,7 @@ func TestSingleLog(t *testing.T) {
 	log := &singleLog{
 		filename: filepath.Base(os.Args[0]) + "_sxlog.log",
 		filePath: os.TempDir(),
+		closeC:   make(chan struct{}),
 	}
 
 	for i := 0; i < 1000; i++ {
@@ -59,6 +60,7 @@ func TestSingleLog_PermissionDeniedAccess(t *testing.T) {
 	log := &singleLog{
 		filename: "pda.log",
 		filePath: os.TempDir(),
+		closeC:   make(chan struct{}),
 	}
 	_, err = log.Write([]byte("permission denied access!"))
 	require.Error(t, err)
@@ -77,6 +79,7 @@ func TestSingleLog_Write_Dir(t *testing.T) {
 	log := &singleLog{
 		filename: "pda2.log",
 		filePath: os.TempDir(),
+		closeC:   make(chan struct{}),
 	}
 
 	_, err = log.Write([]byte("single log write dir!"))

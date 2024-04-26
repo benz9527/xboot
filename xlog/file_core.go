@@ -80,6 +80,7 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 			bufInterval   int64
 			fileWriter    io.WriteCloser
 			ws            zapcore.WriteSyncer
+			closeC        = make(chan struct{})
 		)
 		if cfg.FileBufferSize != "" && cfg.FileBufferFlushInterval > 0 {
 			bufSize, err = parseBufferSize(cfg.FileBufferSize)
@@ -97,27 +98,14 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 		}
 	writerInit:
 		if cfg.FileRotateEnable {
-			w := &rotateLog{
-				filename:          cfg.Filename,
-				filePath:          cfg.FilePath,
-				fileCompressible:  cfg.FileCompressible,
-				fileCompressBatch: cfg.FileCompressBatch,
-				fileMaxAge:        cfg.FileMaxAge,
-				fileZipName:       cfg.FileZipName,
-				fileMaxSize:       cfg.FileMaxSize,
-				fileMaxBackups:    cfg.FileMaxBackups,
-			}
-			fileWriter = w
+			fileWriter = RotateLog(cfg, closeC)
 		} else {
-			fileWriter = &singleLog{
-				filename: cfg.Filename,
-				filePath: cfg.FilePath,
-			}
+			fileWriter = SingleLog(cfg, closeC)
 		}
 		if bufferEnabled {
-			ws = XLogBufferSyncer(fileWriter, bufSize, time.Duration(bufInterval))
+			ws = XLogBufferSyncer(fileWriter, bufSize, time.Duration(bufInterval), closeC)
 		} else {
-			ws = XLogLockSyncer(fileWriter)
+			ws = XLogLockSyncer(fileWriter, closeC)
 		}
 
 		cc := &fileCore{

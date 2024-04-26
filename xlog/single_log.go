@@ -20,9 +20,16 @@ type singleLog struct {
 	wroteSize   uint64
 	mkdirOnce   sync.Once
 	currentFile *os.File
+	closeC      <-chan struct{}
 }
 
 func (log *singleLog) Write(p []byte) (n int, err error) {
+	select {
+	case <-log.closeC:
+		return 0, io.EOF
+	default:
+	}
+
 	if log.currentFile == nil {
 		if err := log.openOrCreate(); err != nil {
 			return 0, err
@@ -101,4 +108,28 @@ func (log *singleLog) create() error {
 	}
 	log.currentFile, log.wroteSize = f, 0
 	return nil
+}
+
+func (log *singleLog) initialize() error {
+	go func() {
+		select {
+		case <-log.closeC:
+			_ = log.Close()
+			return
+		}
+	}()
+	return nil
+}
+
+func SingleLog(cfg *FileCoreConfig, closeC chan struct{}) io.WriteCloser {
+	if cfg == nil || closeC == nil {
+		return nil
+	}
+	log := &singleLog{
+		closeC:   closeC,
+		filePath: cfg.FilePath,
+		filename: cfg.Filename,
+	}
+	_ = log.initialize()
+	return log
 }

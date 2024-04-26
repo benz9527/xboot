@@ -146,9 +146,6 @@ func (syncer *xLogBufferSyncer) flushLoop() {
 			_ = syncer.Sync()
 			syncer.ticker.Stop()
 			syncer.arena.release()
-			if _, ok := syncer.outWriter.(*rotateLog); !ok {
-				_ = syncer.outWriter.Close() // Notice: data race !!!
-			}
 			return
 		case <-syncer.ticker.C:
 			_ = syncer.Sync()
@@ -180,18 +177,6 @@ func (syncer *xLogBufferSyncer) initialize() {
 		if syncer.ticker == nil {
 			syncer.ticker = syncer.clock.NewTicker(syncer.flushInterval)
 		}
-
-		if syncer.closeC == nil {
-			syncer.closeC = make(chan struct{})
-		}
-
-		if rl, ok := syncer.outWriter.(*rotateLog); ok && rl != nil {
-			rl.closeC = syncer.closeC
-			if err := rl.initialize(); err != nil {
-				panic(err)
-			}
-		}
-
 		go syncer.flushLoop()
 	})
 }
@@ -200,13 +185,18 @@ func XLogBufferSyncer(
 	writer io.WriteCloser,
 	bufSize uint64,
 	flushInterval time.Duration,
+	closeC chan struct{},
 ) zapcore.WriteSyncer {
+	if writer == nil || closeC == nil {
+		return nil
+	}
 	syncer := &xLogBufferSyncer{
 		outWriter: writer,
 		arena: &xLogArena{
 			size: bufSize,
 		},
 		flushInterval: time.Duration(flushInterval) * time.Millisecond,
+		closeC:        closeC,
 	}
 	syncer.initialize()
 	return syncer
