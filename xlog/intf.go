@@ -120,7 +120,6 @@ type XLogCoreConstructor func(
 	context.Context,
 	zapcore.LevelEnabler,
 	logEncoderType,
-	logOutWriterType,
 	zapcore.LevelEncoder,
 	zapcore.TimeEncoder,
 ) XLogCore

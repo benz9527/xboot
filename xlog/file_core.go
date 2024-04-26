@@ -57,11 +57,10 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 		ctx context.Context,
 		lvlEnabler zapcore.LevelEnabler,
 		encoder logEncoderType,
-		writer logOutWriterType,
 		lvlEnc zapcore.LevelEncoder,
 		tsEnc zapcore.TimeEncoder,
 	) XLogCore {
-		if writer != File || ctx == nil {
+		if ctx == nil {
 			return nil
 		}
 

@@ -15,7 +15,6 @@ func TestConsoleCore(t *testing.T) {
 		context.TODO(),
 		&lvlEnabler,
 		JSON,
-		testMemAsOut,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
@@ -25,7 +24,6 @@ func TestConsoleCore(t *testing.T) {
 		context.TODO(),
 		&lvlEnabler,
 		JSON,
-		StdOut,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)

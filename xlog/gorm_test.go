@@ -48,8 +48,6 @@ func TestGormXLogger_Sqlite3(t *testing.T) {
 	opts := []XLoggerOption{
 		WithXLoggerLevel(LogLevelDebug),
 		WithXLoggerEncoder(JSON),
-		WithXLoggerWriter(StdOut),
-		WithXLoggerConsoleCore(),
 		WithXLoggerTimeEncoder(zapcore.ISO8601TimeEncoder),
 		WithXLoggerLevelEncoder(zapcore.CapitalLevelEncoder),
 	}
@@ -117,8 +115,6 @@ func TestGormXLogger_AllAPIs(t *testing.T) {
 	opts := []XLoggerOption{
 		WithXLoggerLevel(LogLevelDebug),
 		WithXLoggerEncoder(JSON),
-		WithXLoggerWriter(StdOut),
-		WithXLoggerConsoleCore(),
 		WithXLoggerTimeEncoder(zapcore.ISO8601TimeEncoder),
 		WithXLoggerLevelEncoder(zapcore.CapitalLevelEncoder),
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	
+
 	"github.com/benz9527/xboot/lib/infra"
 )
 
@@ -132,7 +132,6 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 		name          string
 		encoder       logEncoderType
 		writer        logOutWriterType
-		core          string
 		defaultLogger bool
 		ctxM          map[string]string
 	}{
@@ -149,7 +148,6 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 			name:    "console plaintext",
 			encoder: PlainText,
 			writer:  StdOut,
-			core:    "console",
 			ctxM: map[string]string{
 				"traceId": "traceID",
 				"service": "svc",
@@ -180,17 +178,17 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 				opts = append(opts,
 					WithXLoggerLevel(LogLevelDebug),
 					WithXLoggerEncoder(tc.encoder),
-					WithXLoggerWriter(tc.writer),
+					func() XLoggerOption {
+						if tc.writer == StdOut {
+							return WithXLoggerStdOutWriter()
+						}
+						return nil
+					}(),
 				)
 			}
 			if tc.ctxM != nil {
 				for k, v := range tc.ctxM {
 					opts = append(opts, WithXLoggerContextFieldExtract(k, v))
-				}
-			}
-			if tc.core != "" {
-				if tc.core == "console" {
-					opts = append(opts, WithXLoggerConsoleCore())
 				}
 			}
 			logger := NewXLogger(opts...)

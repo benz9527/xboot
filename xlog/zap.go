@@ -175,7 +175,6 @@ type loggerCfg struct {
 	ctx              context.Context
 	cancelFn         context.CancelFunc
 	ctxFields        kv.ThreadSafeStorer[string, string]
-	writerType       *logOutWriterType
 	encoderType      *logEncoderType
 	lvlEncoder       zapcore.LevelEncoder
 	tsEncoder        zapcore.TimeEncoder
@@ -185,12 +184,6 @@ type loggerCfg struct {
 }
 
 func (cfg *loggerCfg) apply(l *xLogger) {
-	if cfg.writerType != nil {
-		l.writer = *cfg.writerType
-	} else {
-		l.writer = StdOut
-	}
-
 	if cfg.encoderType != nil {
 		l.encoder = *cfg.encoderType
 	} else {
@@ -217,7 +210,6 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 		cfg.coreConstructors = []XLogCoreConstructor{
 			newConsoleCore,
 		}
-		l.writer = StdOut
 	}
 
 	if cfg.ctx == nil {
@@ -230,7 +222,6 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 			cfg.ctx,
 			l.dynamicLevelEnabler,
 			l.encoder,
-			l.writer,
 			cfg.lvlEncoder,
 			cfg.tsEncoder,
 		))
@@ -242,6 +233,9 @@ type XLoggerOption func(*loggerCfg) error
 func NewXLogger(opts ...XLoggerOption) XLogger {
 	cfg := &loggerCfg{}
 	for _, o := range opts {
+		if o == nil {
+			continue
+		}
 		if err := o(cfg); err != nil {
 			panic(err)
 		}
@@ -265,12 +259,22 @@ func WithXLoggerContext(ctx context.Context) XLoggerOption {
 	}
 }
 
-func WithXLoggerWriter(w logOutWriterType) XLoggerOption {
+func WithXLoggerStdOutWriter() XLoggerOption {
 	return func(cfg *loggerCfg) error {
-		if w == _writerMax {
-			return infra.NewErrorStack("unknown xlogger writer")
+		if cfg.coreConstructors == nil || len(cfg.coreConstructors) == 0 {
+			cfg.coreConstructors = make([]XLogCoreConstructor, 0, 8)
 		}
-		cfg.writerType = &w
+		cfg.coreConstructors = append(cfg.coreConstructors, newConsoleCore)
+		return nil
+	}
+}
+
+func WithXLoggerFileWriter(coreCfg *FileCoreConfig) XLoggerOption {
+	return func(cfg *loggerCfg) error {
+		if cfg.coreConstructors == nil || len(cfg.coreConstructors) == 0 {
+			cfg.coreConstructors = make([]XLogCoreConstructor, 0, 8)
+		}
+		cfg.coreConstructors = append(cfg.coreConstructors, newFileCore(coreCfg))
 		return nil
 	}
 }
@@ -325,16 +329,6 @@ func WithXLoggerContextFieldExtract(field string, mapTo ...string) XLoggerOption
 			mapTo = []string{field}
 		}
 		return cfg.ctxFields.AddOrUpdate(field, mapTo[0])
-	}
-}
-
-func WithXLoggerConsoleCore() XLoggerOption {
-	return func(cfg *loggerCfg) error {
-		if cfg.coreConstructors != nil || len(cfg.coreConstructors) <= 0 {
-			cfg.coreConstructors = make([]XLogCoreConstructor, 0, 16)
-		}
-		cfg.coreConstructors = append(cfg.coreConstructors, newConsoleCore)
-		return nil
 	}
 }
 

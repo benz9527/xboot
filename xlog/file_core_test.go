@@ -35,7 +35,6 @@ func TestXLogFileCore_RotateLog(t *testing.T) {
 		ctx,
 		&lvlEnabler,
 		JSON,
-		testMemAsOut,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
@@ -45,7 +44,6 @@ func TestXLogFileCore_RotateLog(t *testing.T) {
 		ctx,
 		&lvlEnabler,
 		JSON,
-		File,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
@@ -83,7 +81,6 @@ func TestXLogFileCore_SingleLog(t *testing.T) {
 		ctx,
 		&lvlEnabler,
 		JSON,
-		testMemAsOut,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
@@ -93,7 +90,6 @@ func TestXLogFileCore_SingleLog(t *testing.T) {
 		ctx,
 		&lvlEnabler,
 		JSON,
-		File,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
@@ -135,7 +131,6 @@ func TestXLogFileCore_RotateLog_DataRace(t *testing.T) {
 		ctx,
 		&lvlEnabler,
 		JSON,
-		testMemAsOut,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
@@ -145,7 +140,6 @@ func TestXLogFileCore_RotateLog_DataRace(t *testing.T) {
 		ctx,
 		&lvlEnabler,
 		JSON,
-		File,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
