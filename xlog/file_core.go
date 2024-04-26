@@ -52,72 +52,6 @@ type FileCoreConfig struct {
 // TODO Runtime modification and applying.
 
 func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
-	if cfg == nil {
-		cfg = &FileCoreConfig{
-			Filename:         filepath.Base(os.Args[0]) + "_xlog.log",
-			FilePath:         os.TempDir(),
-			FileRotateEnable: false,
-		}
-	}
-
-	var (
-		err           error
-		bufferEnabled = false
-		bufSize       uint64
-		bufInterval   int64
-		fileWriter    io.WriteCloser
-		ws            zapcore.WriteSyncer
-	)
-	if cfg.FileBufferSize != "" && cfg.FileBufferFlushInterval > 0 {
-		bufSize, err = parseBufferSize(cfg.FileBufferSize)
-		if err != nil {
-			goto writerInit
-		}
-		if time.Duration(cfg.FileBufferFlushInterval).Milliseconds() < 200 {
-			bufInterval = 200
-		} else {
-			if bufInterval = cfg.FileBufferFlushInterval; bufInterval > _maxBufferFlushMs {
-				bufInterval = _maxBufferFlushMs
-			}
-		}
-		bufferEnabled = true
-	}
-writerInit:
-	if cfg.FileRotateEnable {
-		w := &rotateLog{
-			filename:          cfg.Filename,
-			filePath:          cfg.FilePath,
-			fileCompressible:  cfg.FileCompressible,
-			fileCompressBatch: cfg.FileCompressBatch,
-			fileMaxAge:        cfg.FileMaxAge,
-			fileZipName:       cfg.FileZipName,
-			fileMaxSize:       cfg.FileMaxSize,
-			fileMaxBackups:    cfg.FileMaxBackups,
-		}
-		if err = w.initialize(); err != nil {
-			panic(err)
-		}
-		fileWriter = w
-	} else {
-		fileWriter = &singleLog{
-			filename: cfg.Filename,
-			filePath: cfg.FilePath,
-		}
-	}
-	if bufferEnabled {
-		syncer := &XLogBufferSyncer{
-			outWriter: fileWriter,
-			arena: &xLogArena{
-				size: bufSize,
-			},
-			flushInterval: time.Duration(bufInterval) * time.Millisecond,
-		}
-		syncer.initialize()
-		ws = syncer
-	} else {
-		ws = zapcore.Lock(zapcore.AddSync(fileWriter))
-	}
-
 	return func(
 		lvlEnabler zapcore.LevelEnabler,
 		encoder logEncoderType,
@@ -125,6 +59,76 @@ writerInit:
 		lvlEnc zapcore.LevelEncoder,
 		tsEnc zapcore.TimeEncoder,
 	) XLogCore {
+		if writer != File {
+			return nil
+		}
+
+		if cfg == nil {
+			cfg = &FileCoreConfig{
+				Filename:         filepath.Base(os.Args[0]) + "_xlog.log",
+				FilePath:         os.TempDir(),
+				FileRotateEnable: false,
+			}
+		}
+
+		var (
+			err           error
+			bufferEnabled = false
+			bufSize       uint64
+			bufInterval   int64
+			fileWriter    io.WriteCloser
+			ws            zapcore.WriteSyncer
+		)
+		if cfg.FileBufferSize != "" && cfg.FileBufferFlushInterval > 0 {
+			bufSize, err = parseBufferSize(cfg.FileBufferSize)
+			if err != nil {
+				goto writerInit
+			}
+			if time.Duration(cfg.FileBufferFlushInterval).Milliseconds() < 200 {
+				bufInterval = 200
+			} else {
+				if bufInterval = cfg.FileBufferFlushInterval; bufInterval > _maxBufferFlushMs {
+					bufInterval = _maxBufferFlushMs
+				}
+			}
+			bufferEnabled = true
+		}
+	writerInit:
+		if cfg.FileRotateEnable {
+			w := &rotateLog{
+				filename:          cfg.Filename,
+				filePath:          cfg.FilePath,
+				fileCompressible:  cfg.FileCompressible,
+				fileCompressBatch: cfg.FileCompressBatch,
+				fileMaxAge:        cfg.FileMaxAge,
+				fileZipName:       cfg.FileZipName,
+				fileMaxSize:       cfg.FileMaxSize,
+				fileMaxBackups:    cfg.FileMaxBackups,
+			}
+			if err = w.initialize(); err != nil {
+				panic(err)
+			}
+			fileWriter = w
+		} else {
+			fileWriter = &singleLog{
+				filename: cfg.Filename,
+				filePath: cfg.FilePath,
+			}
+		}
+		if bufferEnabled {
+			syncer := &XLogBufferSyncer{
+				outWriter: fileWriter,
+				arena: &xLogArena{
+					size: bufSize,
+				},
+				flushInterval: time.Duration(bufInterval) * time.Millisecond,
+			}
+			syncer.initialize()
+			ws = syncer
+		} else {
+			ws = zapcore.Lock(zapcore.AddSync(fileWriter))
+		}
+
 		cc := &fileCore{
 			core: &commonCore{
 				lvlEnabler: lvlEnabler,

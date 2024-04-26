@@ -52,6 +52,7 @@ type logOutWriterType uint8
 
 const (
 	StdOut logOutWriterType = iota
+	File
 	testMemAsOut
 	_writerMax
 )

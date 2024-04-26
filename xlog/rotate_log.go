@@ -325,6 +325,9 @@ func filterExpiredLogs(now time.Time, logName, ext string, duration time.Duratio
 	rest := make([]os.FileInfo, 0, 16)
 	for _, info := range logInfos {
 		filename := filepath.Base(info.Name())
+		if !strings.HasPrefix(filename, logName) || !strings.HasSuffix(filename, ext) {
+			continue
+		}
 		ts := strings.TrimPrefix(filename, logName+"_")
 		ts = strings.TrimSuffix(ts, ext)
 		if dateTime, err := time.Parse(backupDateTimeFormat, ts); err == nil {
@@ -388,7 +391,7 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 				if _, err = io.Copy(zipFile, file); err == nil {
 					_ = file.Close()
 					file = nil
-					if err = os.Remove(filepath.Join(filePath, info.Name())); err != nil {
+					if err = os.Remove(filepath.Join(filePath, filename)); err != nil {
 						handleRollingError(err)
 					}
 				}

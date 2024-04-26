@@ -35,6 +35,9 @@ func newConsoleCore(
 	lvlEnc zapcore.LevelEncoder,
 	tsEnc zapcore.TimeEncoder,
 ) XLogCore {
+	if writer != StdOut {
+		return nil
+	}
 	cc := &consoleCore{
 		core: &commonCore{
 			lvlEnabler: lvlEnabler,

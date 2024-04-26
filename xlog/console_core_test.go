@@ -13,7 +13,16 @@ func TestConsoleCore(t *testing.T) {
 	var cc XLogCore = newConsoleCore(
 		&lvlEnabler,
 		JSON,
-		logOutWriterType(JSON),
+		testMemAsOut,
+		zapcore.CapitalLevelEncoder,
+		zapcore.ISO8601TimeEncoder,
+	)
+	require.Nil(t, cc)
+
+	cc = newConsoleCore(
+		&lvlEnabler,
+		JSON,
+		StdOut,
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
