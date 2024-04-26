@@ -180,7 +180,7 @@ type loggerCfg struct {
 	tsEncoder        zapcore.TimeEncoder
 	level            *zapcore.Level
 	coreConstructors []XLogCoreConstructor
-	cores            []zapcore.Core
+	cores            []xLogCore
 }
 
 func (cfg *loggerCfg) apply(l *xLogger) {
@@ -216,7 +216,7 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 		cfg.ctx, l.cancelFn = context.WithCancel(context.Background())
 	}
 
-	cfg.cores = make([]zapcore.Core, 0, 16)
+	cfg.cores = make([]xLogCore, 0, 16)
 	for _, cc := range cfg.coreConstructors {
 		cfg.cores = append(cfg.cores, cc(
 			cfg.ctx,
@@ -245,7 +245,7 @@ func NewXLogger(opts ...XLoggerOption) XLogger {
 
 	// Disable zap logger error stack.
 	l := zap.New(
-		zapcore.NewTee(cfg.cores...),
+		XLogTeeCore(cfg.cores...),
 		zap.AddCallerSkip(1), // Use caller filename as service
 		zap.AddCaller(),
 	)

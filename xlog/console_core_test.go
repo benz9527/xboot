@@ -11,7 +11,7 @@ import (
 
 func TestConsoleCore(t *testing.T) {
 	lvlEnabler := zap.NewAtomicLevelAt(LogLevelDebug.zapLevel())
-	var cc XLogCore = newConsoleCore(
+	var cc xLogCore = newConsoleCore(
 		context.TODO(),
 		&lvlEnabler,
 		JSON,

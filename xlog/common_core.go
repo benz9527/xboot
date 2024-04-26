@@ -9,7 +9,7 @@ import (
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-var _ XLogCore = (*commonCore)(nil)
+var _ xLogCore = (*commonCore)(nil)
 
 type commonCore struct {
 	ctx        context.Context
@@ -46,7 +46,7 @@ func (cc *commonCore) Sync() error {
 	return cc.core.Sync()
 }
 
-func WrapCore(core XLogCore, cfg *zapcore.EncoderConfig) (XLogCore, error) {
+func WrapCore(core xLogCore, cfg *zapcore.EncoderConfig) (xLogCore, error) {
 	if cfg == nil {
 		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
 	}
@@ -67,7 +67,7 @@ func WrapCore(core XLogCore, cfg *zapcore.EncoderConfig) (XLogCore, error) {
 	return cc, nil
 }
 
-func WrapCoreNewLevelEnabler(core XLogCore, lvlEnabler zapcore.LevelEnabler, cfg *zapcore.EncoderConfig) (XLogCore, error) {
+func WrapCoreNewLevelEnabler(core xLogCore, lvlEnabler zapcore.LevelEnabler, cfg *zapcore.EncoderConfig) (xLogCore, error) {
 	if cfg == nil {
 		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
 	}

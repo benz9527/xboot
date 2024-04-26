@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var _ XLogCore = (*consoleCore)(nil)
+var _ xLogCore = (*consoleCore)(nil)
 
 type fileCore struct {
 	core *commonCore
@@ -59,7 +59,7 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 		encoder logEncoderType,
 		lvlEnc zapcore.LevelEncoder,
 		tsEnc zapcore.TimeEncoder,
-	) XLogCore {
+	) xLogCore {
 		if ctx == nil {
 			return nil
 		}

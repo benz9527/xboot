@@ -106,7 +106,7 @@ type Banner interface {
 	PlainText() string
 }
 
-type XLogCore interface {
+type xLogCore interface {
 	timeEncoder() zapcore.TimeEncoder
 	levelEncoder() zapcore.LevelEncoder
 	writeSyncer() zapcore.WriteSyncer
@@ -122,7 +122,7 @@ type XLogCoreConstructor func(
 	logEncoderType,
 	zapcore.LevelEncoder,
 	zapcore.TimeEncoder,
-) XLogCore
+) xLogCore
 
 // XLogger mainly implemented by Uber zap logger.
 //
