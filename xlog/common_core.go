@@ -1,15 +1,18 @@
 package xlog
 
 import (
+	"context"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-var _ XLogCore = (*commonCore)(nil)
+var _ xLogCore = (*commonCore)(nil)
 
 type commonCore struct {
+	ctx        context.Context
 	lvlEnabler zapcore.LevelEnabler
 	lvlEnc     zapcore.LevelEncoder
 	tsEnc      zapcore.TimeEncoder
@@ -22,7 +25,7 @@ func (cc *commonCore) timeEncoder() zapcore.TimeEncoder                         
 func (cc *commonCore) levelEncoder() zapcore.LevelEncoder                          { return cc.lvlEnc }
 func (cc *commonCore) writeSyncer() zapcore.WriteSyncer                            { return cc.ws }
 func (cc *commonCore) outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder { return cc.enc }
-
+func (cc *commonCore) context() context.Context                                    { return cc.ctx }
 func (cc *commonCore) Enabled(lvl zapcore.Level) bool {
 	return cc.lvlEnabler.Enabled(lvl)
 }
@@ -43,7 +46,7 @@ func (cc *commonCore) Sync() error {
 	return cc.core.Sync()
 }
 
-func WrapCore(core XLogCore, cfg *zapcore.EncoderConfig) (XLogCore, error) {
+func WrapCore(core xLogCore, cfg *zapcore.EncoderConfig) (xLogCore, error) {
 	if cfg == nil {
 		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
 	}
@@ -51,6 +54,7 @@ func WrapCore(core XLogCore, cfg *zapcore.EncoderConfig) (XLogCore, error) {
 	cfg.EncodeTime = core.timeEncoder()
 
 	cc := &commonCore{
+		ctx: core.context(),
 		ws:  core.writeSyncer(),
 		enc: core.outEncoder(),
 		lvlEnabler: zap.LevelEnablerFunc(func(l zapcore.Level) bool {
@@ -63,7 +67,7 @@ func WrapCore(core XLogCore, cfg *zapcore.EncoderConfig) (XLogCore, error) {
 	return cc, nil
 }
 
-func WrapCoreNewLevelEnabler(core XLogCore, lvlEnabler zapcore.LevelEnabler, cfg *zapcore.EncoderConfig) (XLogCore, error) {
+func WrapCoreNewLevelEnabler(core xLogCore, lvlEnabler zapcore.LevelEnabler, cfg *zapcore.EncoderConfig) (xLogCore, error) {
 	if cfg == nil {
 		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
 	}

@@ -1,11 +1,13 @@
 package xlog
 
 import (
+	"context"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var _ XLogCore = (*consoleCore)(nil)
+var _ xLogCore = (*consoleCore)(nil)
 
 type consoleCore struct {
 	core *commonCore
@@ -17,6 +19,7 @@ func (cc *consoleCore) writeSyncer() zapcore.WriteSyncer   { return cc.core.ws }
 func (cc *consoleCore) outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder {
 	return cc.core.enc
 }
+func (cc *consoleCore) context() context.Context             { return cc.core.ctx }
 func (cc *consoleCore) Enabled(lvl zapcore.Level) bool       { return cc.core.lvlEnabler.Enabled(lvl) }
 func (cc *consoleCore) With(fields []zap.Field) zapcore.Core { return cc.core.With(fields) }
 func (cc *consoleCore) Sync() error                          { return cc.core.Sync() }
@@ -29,14 +32,18 @@ func (cc *consoleCore) Write(ent zapcore.Entry, fields []zap.Field) error {
 }
 
 func newConsoleCore(
+	ctx context.Context,
 	lvlEnabler zapcore.LevelEnabler,
 	encoder logEncoderType,
-	writer logOutWriterType,
 	lvlEnc zapcore.LevelEncoder,
 	tsEnc zapcore.TimeEncoder,
-) XLogCore {
+) xLogCore {
+	if ctx == nil {
+		return nil
+	}
 	cc := &consoleCore{
 		core: &commonCore{
+			ctx:        ctx,
 			lvlEnabler: lvlEnabler,
 			lvlEnc:     lvlEnc,
 			tsEnc:      tsEnc,

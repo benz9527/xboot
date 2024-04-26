@@ -22,8 +22,6 @@ func TestGoRedisXLogger_ParentLogLevelChanged(t *testing.T) {
 	opts := []XLoggerOption{
 		WithXLoggerLevel(LogLevelDebug),
 		WithXLoggerEncoder(JSON),
-		WithXLoggerWriter(StdOut),
-		WithXLoggerConsoleCore(),
 		WithXLoggerTimeEncoder(zapcore.ISO8601TimeEncoder),
 		WithXLoggerLevelEncoder(zapcore.CapitalLevelEncoder),
 	}
@@ -35,7 +33,12 @@ func TestGoRedisXLogger_ParentLogLevelChanged(t *testing.T) {
 	parentLogger.IncreaseLogLevel(zapcore.DebugLevel)
 	parentLogger.Debug("abc")
 	logger.Printf(context.TODO(), "test %d", 123)
+	logger.Printf(context.TODO(), "test failed: %d", 123)
 	_ = parentLogger.Sync()
+	require.Panics(t, func() {
+		parentLogger = &xLogger{}
+		logger = NewGoRedisXLogger(parentLogger)
+	})
 }
 
 func TestGoRedisXLogger_MiniRedis(t *testing.T) {
@@ -46,8 +49,6 @@ func TestGoRedisXLogger_MiniRedis(t *testing.T) {
 	opts := []XLoggerOption{
 		WithXLoggerLevel(LogLevelDebug),
 		WithXLoggerEncoder(JSON),
-		WithXLoggerWriter(StdOut),
-		WithXLoggerConsoleCore(),
 		WithXLoggerTimeEncoder(zapcore.ISO8601TimeEncoder),
 		WithXLoggerLevelEncoder(zapcore.CapitalLevelEncoder),
 	}

@@ -229,8 +229,6 @@ func TestFxXLoggerAllCases(t *testing.T) {
 	opts := []XLoggerOption{
 		WithXLoggerLevel(LogLevelDebug),
 		WithXLoggerEncoder(JSON),
-		WithXLoggerWriter(StdOut),
-		WithXLoggerConsoleCore(),
 		WithXLoggerTimeEncoder(zapcore.ISO8601TimeEncoder),
 		WithXLoggerLevelEncoder(zapcore.CapitalLevelEncoder),
 	}
@@ -255,8 +253,6 @@ func TestFxXLogger_ParentLogLevelChanged(t *testing.T) {
 	opts := []XLoggerOption{
 		WithXLoggerLevel(LogLevelDebug),
 		WithXLoggerEncoder(JSON),
-		WithXLoggerWriter(StdOut),
-		WithXLoggerConsoleCore(),
 		WithXLoggerTimeEncoder(zapcore.ISO8601TimeEncoder),
 		WithXLoggerLevelEncoder(zapcore.CapitalLevelEncoder),
 	}

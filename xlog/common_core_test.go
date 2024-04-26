@@ -9,7 +9,7 @@ import (
 )
 
 func TestCommonCore(t *testing.T) {
-	var cc XLogCore = &commonCore{}
+	var cc xLogCore = &commonCore{}
 	require.Nil(t, cc.outEncoder())
 	require.Nil(t, cc.writeSyncer())
 	require.Nil(t, cc.levelEncoder())

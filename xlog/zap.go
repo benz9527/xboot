@@ -19,6 +19,7 @@ import (
 var printBanner = sync.Once{}
 
 type xLogger struct {
+	cancelFn            context.CancelFunc
 	logger              atomic.Pointer[zap.Logger]
 	ctxFields           kv.ThreadSafeStorer[string, string]
 	dynamicLevelEnabler zap.AtomicLevel
@@ -41,6 +42,12 @@ func (l *xLogger) Sync() error {
 
 func (l *xLogger) Level() string {
 	return l.dynamicLevelEnabler.Level().String()
+}
+
+func (l *xLogger) Close() {
+	if l.cancelFn != nil {
+		l.cancelFn()
+	}
 }
 
 func (l *xLogger) Banner(banner Banner) {
@@ -95,7 +102,7 @@ func (l *xLogger) Warn(msg string, fields ...zap.Field) {
 }
 
 func (l *xLogger) Error(err error, msg string, fields ...zap.Field) {
-	var newFields = make([]zap.Field, 0, len(fields)+1)
+	newFields := make([]zap.Field, 0, len(fields)+1)
 	if err != nil {
 		newFields = append(newFields, zap.String("error", err.Error()))
 	}
@@ -165,23 +172,18 @@ func (l *xLogger) ErrorStackf(err error, format string, args ...any) {
 }
 
 type loggerCfg struct {
+	ctx              context.Context
+	cancelFn         context.CancelFunc
 	ctxFields        kv.ThreadSafeStorer[string, string]
-	writerType       *logOutWriterType
 	encoderType      *logEncoderType
 	lvlEncoder       zapcore.LevelEncoder
 	tsEncoder        zapcore.TimeEncoder
 	level            *zapcore.Level
 	coreConstructors []XLogCoreConstructor
-	cores            []zapcore.Core
+	cores            []xLogCore
 }
 
 func (cfg *loggerCfg) apply(l *xLogger) {
-	if cfg.writerType != nil {
-		l.writer = *cfg.writerType
-	} else {
-		l.writer = StdOut
-	}
-
 	if cfg.encoderType != nil {
 		l.encoder = *cfg.encoderType
 	} else {
@@ -208,14 +210,18 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 		cfg.coreConstructors = []XLogCoreConstructor{
 			newConsoleCore,
 		}
-		l.writer = StdOut
 	}
-	cfg.cores = make([]zapcore.Core, 0, 16)
+
+	if cfg.ctx == nil {
+		cfg.ctx, l.cancelFn = context.WithCancel(context.Background())
+	}
+
+	cfg.cores = make([]xLogCore, 0, 16)
 	for _, cc := range cfg.coreConstructors {
 		cfg.cores = append(cfg.cores, cc(
+			cfg.ctx,
 			l.dynamicLevelEnabler,
 			l.encoder,
-			l.writer,
 			cfg.lvlEncoder,
 			cfg.tsEncoder,
 		))
@@ -227,6 +233,9 @@ type XLoggerOption func(*loggerCfg) error
 func NewXLogger(opts ...XLoggerOption) XLogger {
 	cfg := &loggerCfg{}
 	for _, o := range opts {
+		if o == nil {
+			continue
+		}
 		if err := o(cfg); err != nil {
 			panic(err)
 		}
@@ -236,7 +245,7 @@ func NewXLogger(opts ...XLoggerOption) XLogger {
 
 	// Disable zap logger error stack.
 	l := zap.New(
-		zapcore.NewTee(cfg.cores...),
+		XLogTeeCore(cfg.cores...),
 		zap.AddCallerSkip(1), // Use caller filename as service
 		zap.AddCaller(),
 	)
@@ -244,12 +253,28 @@ func NewXLogger(opts ...XLoggerOption) XLogger {
 	return xl
 }
 
-func WithXLoggerWriter(w logOutWriterType) XLoggerOption {
+func WithXLoggerContext(ctx context.Context) XLoggerOption {
 	return func(cfg *loggerCfg) error {
-		if w == _writerMax {
-			return infra.NewErrorStack("unknown xlogger writer")
+		return nil
+	}
+}
+
+func WithXLoggerStdOutWriter() XLoggerOption {
+	return func(cfg *loggerCfg) error {
+		if cfg.coreConstructors == nil || len(cfg.coreConstructors) == 0 {
+			cfg.coreConstructors = make([]XLogCoreConstructor, 0, 8)
 		}
-		cfg.writerType = &w
+		cfg.coreConstructors = append(cfg.coreConstructors, newConsoleCore)
+		return nil
+	}
+}
+
+func WithXLoggerFileWriter(coreCfg *FileCoreConfig) XLoggerOption {
+	return func(cfg *loggerCfg) error {
+		if cfg.coreConstructors == nil || len(cfg.coreConstructors) == 0 {
+			cfg.coreConstructors = make([]XLogCoreConstructor, 0, 8)
+		}
+		cfg.coreConstructors = append(cfg.coreConstructors, newFileCore(coreCfg))
 		return nil
 	}
 }
@@ -304,16 +329,6 @@ func WithXLoggerContextFieldExtract(field string, mapTo ...string) XLoggerOption
 			mapTo = []string{field}
 		}
 		return cfg.ctxFields.AddOrUpdate(field, mapTo[0])
-	}
-}
-
-func WithXLoggerConsoleCore() XLoggerOption {
-	return func(cfg *loggerCfg) error {
-		if cfg.coreConstructors != nil || len(cfg.coreConstructors) <= 0 {
-			cfg.coreConstructors = make([]XLogCoreConstructor, 0, 16)
-		}
-		cfg.coreConstructors = append(cfg.coreConstructors, newConsoleCore)
-		return nil
 	}
 }
 
