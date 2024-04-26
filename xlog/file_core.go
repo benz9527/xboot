@@ -117,20 +117,10 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 				enc:        getEncoderByType(encoder),
 			},
 		}
-		config := zapcore.EncoderConfig{
-			MessageKey:    "msg",
-			LevelKey:      "lvl",
-			EncodeLevel:   cc.core.lvlEnc,
-			TimeKey:       "ts",
-			EncodeTime:    cc.core.tsEnc,
-			CallerKey:     "callAt",
-			EncodeCaller:  zapcore.ShortCallerEncoder,
-			FunctionKey:   "fn",
-			NameKey:       coreKeyIgnored,
-			EncodeName:    zapcore.FullNameEncoder,
-			StacktraceKey: coreKeyIgnored,
-		}
-		cc.core.core = zapcore.NewCore(cc.core.enc(config), cc.core.ws, cc.core.lvlEnabler)
+		cfg := defaultCoreEncoderCfg()
+		cfg.EncodeLevel = cc.core.lvlEnc
+		cfg.EncodeTime = cc.core.tsEnc
+		cc.core.core = zapcore.NewCore(cc.core.enc(cfg), cc.core.ws, cc.core.lvlEnabler)
 		go func() {
 			// The root context is done and root writer will be close globally.
 			select {

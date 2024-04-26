@@ -139,14 +139,14 @@ func NewGormXLogger(logger XLogger, opts ...GormXLoggerOption) *GormXLogger {
 			if mc, ok := cc.(xLogMultiCore); ok && mc != nil {
 				if cc, err = WrapCoresNewLevelEnabler(mc,
 					gl.dynamicLevelEnabler,
-					componentCoreEncoderCfg,
+					componentCoreEncoderCfg(),
 				); err != nil {
 					panic(err)
 				}
 			} else {
 				if cc, err = WrapCoreNewLevelEnabler(cc,
 					gl.dynamicLevelEnabler,
-					componentCoreEncoderCfg,
+					componentCoreEncoderCfg(),
 				); err != nil {
 					panic(err)
 				}

@@ -5,8 +5,6 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-
-	"github.com/benz9527/xboot/lib/infra"
 )
 
 var _ xLogCore = (*commonCore)(nil)
@@ -46,10 +44,7 @@ func (cc *commonCore) Sync() error {
 	return cc.core.Sync()
 }
 
-func WrapCore(core xLogCore, cfg *zapcore.EncoderConfig) (xLogCore, error) {
-	if cfg == nil {
-		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
-	}
+func WrapCore(core xLogCore, cfg zapcore.EncoderConfig) (xLogCore, error) {
 	cfg.EncodeLevel = core.levelEncoder()
 	cfg.EncodeTime = core.timeEncoder()
 
@@ -63,14 +58,11 @@ func WrapCore(core xLogCore, cfg *zapcore.EncoderConfig) (xLogCore, error) {
 		lvlEnc: core.levelEncoder(),
 		tsEnc:  core.timeEncoder(),
 	}
-	cc.core = zapcore.NewCore(core.outEncoder()(*cfg), core.writeSyncer(), cc.lvlEnabler)
+	cc.core = zapcore.NewCore(core.outEncoder()(cfg), core.writeSyncer(), cc.lvlEnabler)
 	return cc, nil
 }
 
-func WrapCoreNewLevelEnabler(core xLogCore, lvlEnabler zapcore.LevelEnabler, cfg *zapcore.EncoderConfig) (xLogCore, error) {
-	if cfg == nil {
-		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
-	}
+func WrapCoreNewLevelEnabler(core xLogCore, lvlEnabler zapcore.LevelEnabler, cfg zapcore.EncoderConfig) (xLogCore, error) {
 	cfg.EncodeLevel = core.levelEncoder()
 	cfg.EncodeTime = core.timeEncoder()
 
@@ -83,18 +75,35 @@ func WrapCoreNewLevelEnabler(core xLogCore, lvlEnabler zapcore.LevelEnabler, cfg
 		lvlEnc: core.levelEncoder(),
 		tsEnc:  core.timeEncoder(),
 	}
-	cc.core = zapcore.NewCore(core.outEncoder()(*cfg), core.writeSyncer(), cc.lvlEnabler)
+	cc.core = zapcore.NewCore(core.outEncoder()(cfg), core.writeSyncer(), cc.lvlEnabler)
 	return cc, nil
 }
 
-var componentCoreEncoderCfg = &zapcore.EncoderConfig{
-	MessageKey:    "msg",
-	LevelKey:      "lvl",
-	TimeKey:       "ts",
-	CallerKey:     coreKeyIgnored,
-	EncodeCaller:  zapcore.ShortCallerEncoder,
-	FunctionKey:   coreKeyIgnored,
-	NameKey:       "component",
-	EncodeName:    zapcore.FullNameEncoder,
-	StacktraceKey: coreKeyIgnored,
-}
+var (
+	componentCoreEncoderCfg = func() zapcore.EncoderConfig {
+		return zapcore.EncoderConfig{
+			MessageKey:    "msg",
+			LevelKey:      "lvl",
+			TimeKey:       "ts",
+			CallerKey:     coreKeyIgnored,
+			EncodeCaller:  zapcore.ShortCallerEncoder,
+			FunctionKey:   coreKeyIgnored,
+			NameKey:       "component",
+			EncodeName:    zapcore.FullNameEncoder,
+			StacktraceKey: coreKeyIgnored,
+		}
+	}
+	defaultCoreEncoderCfg = func() zapcore.EncoderConfig {
+		return zapcore.EncoderConfig{
+			MessageKey:    "msg",
+			LevelKey:      "lvl",
+			TimeKey:       "ts",
+			CallerKey:     "callAt",
+			EncodeCaller:  zapcore.ShortCallerEncoder,
+			FunctionKey:   "fn",
+			NameKey:       coreKeyIgnored,
+			EncodeName:    zapcore.FullNameEncoder,
+			StacktraceKey: coreKeyIgnored,
+		}
+	}
+)

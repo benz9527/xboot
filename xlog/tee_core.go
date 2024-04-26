@@ -6,8 +6,6 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-
-	"github.com/benz9527/xboot/lib/infra"
 )
 
 var _ xLogCore = (xLogMultiCore)(nil)
@@ -89,10 +87,7 @@ func XLogTeeCore(cores ...xLogCore) xLogCore {
 	return xLogMultiCore(cores)
 }
 
-func WrapCores(cores []xLogCore, cfg *zapcore.EncoderConfig) (xLogCore, error) {
-	if cfg == nil {
-		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
-	}
+func WrapCores(cores []xLogCore, cfg zapcore.EncoderConfig) (xLogCore, error) {
 	newCores := make([]xLogCore, 0, len(cores))
 	for i := range cores {
 		newCore, err := WrapCore(cores[i], cfg)
@@ -104,10 +99,7 @@ func WrapCores(cores []xLogCore, cfg *zapcore.EncoderConfig) (xLogCore, error) {
 	return xLogMultiCore(newCores), nil
 }
 
-func WrapCoresNewLevelEnabler(cores []xLogCore, lvlEnabler zapcore.LevelEnabler, cfg *zapcore.EncoderConfig) (xLogCore, error) {
-	if cfg == nil {
-		return nil, infra.NewErrorStack("[XLogger] logger core config is empty")
-	}
+func WrapCoresNewLevelEnabler(cores []xLogCore, lvlEnabler zapcore.LevelEnabler, cfg zapcore.EncoderConfig) (xLogCore, error) {
 	newCores := make([]xLogCore, 0, len(cores))
 	for i := range cores {
 		newCore, err := WrapCoreNewLevelEnabler(cores[i], lvlEnabler, cfg)
