@@ -168,6 +168,7 @@ func TestXLogBufferSyncer_RotateLog(t *testing.T) {
 		fileCompressBatch: 2,
 		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
 		filePath:          os.TempDir(),
+		closeC:            make(chan struct{}),
 	}
 
 	syncer := &xLogBufferSyncer{
@@ -201,6 +202,7 @@ func TestXLogBufferSyncer_RotateLog_DataRace(t *testing.T) {
 		fileCompressBatch: 2,
 		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
 		filePath:          os.TempDir(),
+		closeC:            make(chan struct{}),
 	}
 	size, err := parseFileSize(log.fileMaxSize)
 	require.NoError(t, err)
