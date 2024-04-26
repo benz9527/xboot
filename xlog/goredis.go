@@ -39,8 +39,8 @@ func NewGoRedisXLogger(logger XLogger) *GoRedisXLogger {
 				panic("[XLogger] core is not XLogCore")
 			}
 			var err error
-			if mc, ok := cc.(*xLogMultiCore); ok && mc != nil {
-				if cc, err = WrapCores(mc.cores, componentCoreEncoderCfg); err != nil {
+			if mc, ok := cc.(xLogMultiCore); ok && mc != nil {
+				if cc, err = WrapCores(mc, componentCoreEncoderCfg); err != nil {
 					panic(err)
 				}
 			} else {
