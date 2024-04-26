@@ -19,6 +19,7 @@ import (
 var printBanner = sync.Once{}
 
 type xLogger struct {
+	cancelFn            context.CancelFunc
 	logger              atomic.Pointer[zap.Logger]
 	ctxFields           kv.ThreadSafeStorer[string, string]
 	dynamicLevelEnabler zap.AtomicLevel
@@ -41,6 +42,12 @@ func (l *xLogger) Sync() error {
 
 func (l *xLogger) Level() string {
 	return l.dynamicLevelEnabler.Level().String()
+}
+
+func (l *xLogger) Close() {
+	if l.cancelFn != nil {
+		l.cancelFn()
+	}
 }
 
 func (l *xLogger) Banner(banner Banner) {
@@ -95,7 +102,7 @@ func (l *xLogger) Warn(msg string, fields ...zap.Field) {
 }
 
 func (l *xLogger) Error(err error, msg string, fields ...zap.Field) {
-	var newFields = make([]zap.Field, 0, len(fields)+1)
+	newFields := make([]zap.Field, 0, len(fields)+1)
 	if err != nil {
 		newFields = append(newFields, zap.String("error", err.Error()))
 	}
@@ -165,6 +172,8 @@ func (l *xLogger) ErrorStackf(err error, format string, args ...any) {
 }
 
 type loggerCfg struct {
+	ctx              context.Context
+	cancelFn         context.CancelFunc
 	ctxFields        kv.ThreadSafeStorer[string, string]
 	writerType       *logOutWriterType
 	encoderType      *logEncoderType
@@ -210,9 +219,15 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 		}
 		l.writer = StdOut
 	}
+
+	if cfg.ctx == nil {
+		cfg.ctx, l.cancelFn = context.WithCancel(context.Background())
+	}
+
 	cfg.cores = make([]zapcore.Core, 0, 16)
 	for _, cc := range cfg.coreConstructors {
 		cfg.cores = append(cfg.cores, cc(
+			cfg.ctx,
 			l.dynamicLevelEnabler,
 			l.encoder,
 			l.writer,
@@ -242,6 +257,12 @@ func NewXLogger(opts ...XLoggerOption) XLogger {
 	)
 	xl.logger.Store(l)
 	return xl
+}
+
+func WithXLoggerContext(ctx context.Context) XLoggerOption {
+	return func(cfg *loggerCfg) error {
+		return nil
+	}
 }
 
 func WithXLoggerWriter(w logOutWriterType) XLoggerOption {

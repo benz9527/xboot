@@ -96,6 +96,7 @@ type rotateLog struct {
 	mkdirOnce         sync.Once
 	currentFile       *os.File
 	fileWatcher       *fsnotify.Watcher
+	closeC            chan struct{}
 	fileMaxBackups    int
 	fileCompressBatch int
 	fileCompressible  bool
@@ -261,6 +262,9 @@ func (log *rotateLog) watchAndArchive() {
 	duration, _ := parseFileAge(log.fileMaxAge)
 	for {
 		select {
+		case <-log.closeC:
+			_ = log.Close()
+			return
 		case event, ok := <-log.fileWatcher.Events:
 			if !ok {
 				return
@@ -382,12 +386,12 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 			return err
 		}
 	}
-	writer := zip.NewWriter(logZip)
+	zipWriter := zip.NewWriter(logZip)
 	for _, info := range expired {
 		filename := filepath.Base(info.Name())
 		file, err := os.Open(filepath.Join(filePath, filename))
 		if err == nil {
-			if zipFile, err := writer.Create(filename); err == nil {
+			if zipFile, err := zipWriter.Create(filename); err == nil {
 				if _, err = io.Copy(zipFile, file); err == nil {
 					_ = file.Close()
 					file = nil
@@ -416,7 +420,7 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 				Name:   f.Name,
 				Method: f.Method,
 			}
-			if zipFile, err := writer.CreateHeader(header); err == nil {
+			if zipFile, err := zipWriter.CreateHeader(header); err == nil {
 				if _, err = io.Copy(zipFile, oldReader); err == nil {
 					_ = oldReader.Close()
 				}
@@ -425,11 +429,12 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 				_ = oldReader.Close()
 			}
 		}
-		if err := writer.Flush(); err != nil {
+		if err := zipWriter.Flush(); err != nil {
 			return err
 		}
 	}
-	_ = writer.Close()
+	_ = zipWriter.Close()
+	zipWriter = nil
 	_ = logZip.Close()
 	if prevZip != nil {
 		_ = prevZip.Close()

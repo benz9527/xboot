@@ -111,11 +111,13 @@ type XLogCore interface {
 	levelEncoder() zapcore.LevelEncoder
 	writeSyncer() zapcore.WriteSyncer
 	outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder
+	context() context.Context
 
 	zapcore.Core
 }
 
 type XLogCoreConstructor func(
+	context.Context,
 	zapcore.LevelEnabler,
 	logEncoderType,
 	logOutWriterType,
@@ -147,6 +149,8 @@ type XLogger interface {
 	IncreaseLogLevel(level zapcore.Level)
 	Level() string
 	Sync() error
+	Close()
+
 	XBannerPrinter
 	XAnyLogger
 	XBasicContextLogger
@@ -181,4 +185,9 @@ type XBasicContextLogger interface {
 
 type XBannerPrinter interface {
 	Banner(banner Banner)
+}
+
+type XLogCloseableWriteSyncer interface {
+	zapcore.WriteSyncer
+	Stop() error
 }

@@ -1,6 +1,7 @@
 package xlog
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,7 @@ import (
 func TestConsoleCore(t *testing.T) {
 	lvlEnabler := zap.NewAtomicLevelAt(LogLevelDebug.zapLevel())
 	var cc XLogCore = newConsoleCore(
+		context.TODO(),
 		&lvlEnabler,
 		JSON,
 		testMemAsOut,
@@ -20,6 +22,7 @@ func TestConsoleCore(t *testing.T) {
 	require.Nil(t, cc)
 
 	cc = newConsoleCore(
+		context.TODO(),
 		&lvlEnabler,
 		JSON,
 		StdOut,

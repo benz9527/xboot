@@ -1,11 +1,11 @@
 package xlog
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"go.uber.org/zap"
@@ -24,6 +24,7 @@ func (cc *fileCore) writeSyncer() zapcore.WriteSyncer   { return cc.core.ws }
 func (cc *fileCore) outEncoder() func(cfg zapcore.EncoderConfig) zapcore.Encoder {
 	return cc.core.enc
 }
+func (cc *fileCore) context() context.Context             { return cc.core.ctx }
 func (cc *fileCore) Enabled(lvl zapcore.Level) bool       { return cc.core.lvlEnabler.Enabled(lvl) }
 func (cc *fileCore) With(fields []zap.Field) zapcore.Core { return cc.core.With(fields) }
 func (cc *fileCore) Sync() error                          { return cc.core.Sync() }
@@ -53,13 +54,14 @@ type FileCoreConfig struct {
 
 func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 	return func(
+		ctx context.Context,
 		lvlEnabler zapcore.LevelEnabler,
 		encoder logEncoderType,
 		writer logOutWriterType,
 		lvlEnc zapcore.LevelEncoder,
 		tsEnc zapcore.TimeEncoder,
 	) XLogCore {
-		if writer != File {
+		if writer != File || ctx == nil {
 			return nil
 		}
 
@@ -116,21 +118,14 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 			}
 		}
 		if bufferEnabled {
-			syncer := &XLogBufferSyncer{
-				outWriter: fileWriter,
-				arena: &xLogArena{
-					size: bufSize,
-				},
-				flushInterval: time.Duration(bufInterval) * time.Millisecond,
-			}
-			syncer.initialize()
-			ws = syncer
+			ws = XLogBufferSyncer(fileWriter, bufSize, time.Duration(bufInterval))
 		} else {
-			ws = zapcore.Lock(zapcore.AddSync(fileWriter))
+			ws = XLogLockSyncer(fileWriter)
 		}
 
 		cc := &fileCore{
 			core: &commonCore{
+				ctx:        ctx,
 				lvlEnabler: lvlEnabler,
 				lvlEnc:     lvlEnc,
 				tsEnc:      tsEnc,
@@ -152,9 +147,15 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 			StacktraceKey: coreKeyIgnored,
 		}
 		cc.core.core = zapcore.NewCore(cc.core.enc(config), cc.core.ws, cc.core.lvlEnabler)
-		runtime.SetFinalizer(cc, func(cc *fileCore) {
-			_ = fileWriter.Close()
-		})
+		go func() {
+			// The root context is done and root writer will be close globally.
+			select {
+			case <-cc.core.ctx.Done():
+				if ws, ok := cc.core.ws.(XLogCloseableWriteSyncer); ok && ws != nil {
+					_ = ws.Stop()
+				}
+			}
+		}()
 		return cc
 	}
 }

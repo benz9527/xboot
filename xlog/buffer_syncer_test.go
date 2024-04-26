@@ -46,7 +46,7 @@ func genLog(strLen, count int) (keys []string) {
 
 func TestXLogBufferSyncer_Console(t *testing.T) {
 	w := &syncerOutWriter{}
-	syncer := &XLogBufferSyncer{
+	syncer := &xLogBufferSyncer{
 		outWriter: w,
 		arena: &xLogArena{
 			size: 1 << 10,
@@ -72,7 +72,7 @@ func TestXLogBufferSyncer_Console(t *testing.T) {
 
 func TestXLogBufferSyncer_Console_DataRace(t *testing.T) {
 	w := &syncerOutWriter{}
-	syncer := &XLogBufferSyncer{
+	syncer := &xLogBufferSyncer{
 		outWriter: w,
 		arena: &xLogArena{
 			size: 1 << 10,
@@ -170,7 +170,7 @@ func TestXLogBufferSyncer_RotateLog(t *testing.T) {
 		filePath:          os.TempDir(),
 	}
 
-	syncer := &XLogBufferSyncer{
+	syncer := &xLogBufferSyncer{
 		outWriter: log,
 		arena: &xLogArena{
 			size: 1 << 10,
@@ -212,7 +212,7 @@ func TestXLogBufferSyncer_RotateLog_DataRace(t *testing.T) {
 	defer log.fileWatcher.Close()
 	go log.watchAndArchive()
 
-	syncer := &XLogBufferSyncer{
+	syncer := &xLogBufferSyncer{
 		outWriter: log,
 		arena: &xLogArena{
 			size: 1 << 10,

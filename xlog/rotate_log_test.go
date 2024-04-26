@@ -223,6 +223,7 @@ func TestRotateLog_Write_Compress(t *testing.T) {
 		fileCompressBatch: 2,
 		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
 		filePath:          os.TempDir(),
+		closeC:            make(chan struct{}),
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
@@ -246,6 +247,7 @@ func TestRotateLog_Write_Delete(t *testing.T) {
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
 		filePath:         os.TempDir(),
+		closeC:           make(chan struct{}),
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
@@ -305,6 +307,7 @@ func TestRotateLog_Write_PermissionDeniedAccess(t *testing.T) {
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
 		filePath:         os.TempDir(),
+		closeC:           make(chan struct{}),
 	}
 
 	_, err = log.Write([]byte("rotate log permission denied access!"))
@@ -328,6 +331,7 @@ func TestRotateLog_Write_Dir(t *testing.T) {
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
 		filePath:         os.TempDir(),
+		closeC:           make(chan struct{}),
 	}
 
 	_, err = log.Write([]byte("rotate log write dir!"))
@@ -347,6 +351,7 @@ func TestRotateLog_Write_OtherErrors(t *testing.T) {
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
 		filePath:         os.TempDir(),
+		closeC:           make(chan struct{}),
 	}
 
 	err := log.openOrCreate()

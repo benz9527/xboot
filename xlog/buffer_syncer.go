@@ -89,9 +89,9 @@ const (
 	defaultFlushInterval = 30 * time.Second
 )
 
-var _ zapcore.WriteSyncer = (*XLogBufferSyncer)(nil)
+var _ XLogCloseableWriteSyncer = (*xLogBufferSyncer)(nil)
 
-type XLogBufferSyncer struct {
+type xLogBufferSyncer struct {
 	outWriter     io.WriteCloser
 	flushInterval time.Duration
 	arena         *xLogArena
@@ -103,7 +103,7 @@ type XLogBufferSyncer struct {
 }
 
 // Sync implements zapcore.WriteSyncer.
-func (syncer *XLogBufferSyncer) Sync() error {
+func (syncer *xLogBufferSyncer) Sync() error {
 	syncer.mu.Lock()
 	defer syncer.mu.Unlock()
 
@@ -116,7 +116,7 @@ func (syncer *XLogBufferSyncer) Sync() error {
 }
 
 // Write implements zapcore.WriteSyncer.
-func (syncer *XLogBufferSyncer) Write(log []byte) (n int, err error) {
+func (syncer *xLogBufferSyncer) Write(log []byte) (n int, err error) {
 	syncer.mu.Lock()
 	defer syncer.mu.Unlock()
 
@@ -134,18 +134,21 @@ func (syncer *XLogBufferSyncer) Write(log []byte) (n int, err error) {
 	return len(log), nil
 }
 
-func (syncer *XLogBufferSyncer) Stop() (err error) {
+func (syncer *xLogBufferSyncer) Stop() (err error) {
 	close(syncer.closeC)
 	return nil
 }
 
-func (syncer *XLogBufferSyncer) flushLoop() {
+func (syncer *xLogBufferSyncer) flushLoop() {
 	for {
 		select {
 		case <-syncer.closeC:
 			_ = syncer.Sync()
 			syncer.ticker.Stop()
 			syncer.arena.release()
+			if _, ok := syncer.outWriter.(*rotateLog); !ok {
+				_ = syncer.outWriter.Close() // Notice: data race !!!
+			}
 			return
 		case <-syncer.ticker.C:
 			_ = syncer.Sync()
@@ -153,7 +156,7 @@ func (syncer *XLogBufferSyncer) flushLoop() {
 	}
 }
 
-func (syncer *XLogBufferSyncer) initialize() {
+func (syncer *xLogBufferSyncer) initialize() {
 	syncer.once.Do(func() {
 		if syncer.arena == nil || syncer.arena.size == 0 {
 			syncer.arena = &xLogArena{
@@ -182,6 +185,26 @@ func (syncer *XLogBufferSyncer) initialize() {
 			syncer.closeC = make(chan struct{})
 		}
 
+		if rl, ok := syncer.outWriter.(*rotateLog); ok && rl != nil {
+			rl.closeC = syncer.closeC
+		}
+
 		go syncer.flushLoop()
 	})
+}
+
+func XLogBufferSyncer(
+	writer io.WriteCloser,
+	bufSize uint64,
+	flushInterval time.Duration,
+) zapcore.WriteSyncer {
+	syncer := &xLogBufferSyncer{
+		outWriter: writer,
+		arena: &xLogArena{
+			size: bufSize,
+		},
+		flushInterval: time.Duration(flushInterval) * time.Millisecond,
+	}
+	syncer.initialize()
+	return syncer
 }
