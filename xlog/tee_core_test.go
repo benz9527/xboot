@@ -57,7 +57,7 @@ func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
 	go func() {
 		ent := tee1.Check(zapcore.Entry{Level: zapcore.DebugLevel}, nil)
 		for i := 0; i < 100; i++ {
-			time.Sleep(2 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			if tee.Enabled(ent.Entry.Level) {
 				err := tee1.Write(ent.Entry, []zap.Field{zap.String("tee1", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
 				require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
 	go func() {
 		ent := tee2.Check(zapcore.Entry{Level: zapcore.InfoLevel}, nil)
 		for i := 0; i < 100; i++ {
-			time.Sleep(2 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			if tee2.Enabled(ent.Entry.Level) {
 				err := tee2.Write(ent.Entry, []zap.Field{zap.String("tee2", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
 				require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
 	go func() {
 		ent := tee3.Check(zapcore.Entry{Level: zapcore.InfoLevel}, nil)
 		for i := 0; i < 100; i++ {
-			time.Sleep(2 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			if tee3.Enabled(ent.Entry.Level) {
 				err := tee3.Write(ent.Entry, []zap.Field{zap.String("tee3", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
 				require.NoError(t, err)
