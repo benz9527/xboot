@@ -25,6 +25,7 @@ func (syncer *xLogLockSyncer) Write(log []byte) (n int, err error) {
 	syncer.mu.Lock()
 	defer syncer.mu.Unlock()
 
+	// TODO Implemented filters or hooks to pre-process logs.
 	return syncer.outWriter.Write(log)
 }
 
