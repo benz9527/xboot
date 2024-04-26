@@ -31,7 +31,6 @@ func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
-	tee = append(tee, cc)
 
 	cfg := &FileCoreConfig{
 		FilePath: os.TempDir(),
@@ -44,57 +43,78 @@ func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
 		zapcore.CapitalLevelEncoder,
 		zapcore.ISO8601TimeEncoder,
 	)
-	tee = append(tee, fc)
+	tee1 := XLogTeeCore(cc, fc)
 
-	tee2, err := WrapCores(tee, defaultCoreEncoderCfg())
+	tee2, err := WrapCores(tee1.(xLogMultiCore), defaultCoreEncoderCfg())
+	require.NoError(t, err)
+
+	lvlEnabler2 := zap.NewAtomicLevelAt(LogLevelDebug.zapLevel())
+	tee3, err := WrapCoresNewLevelEnabler(tee2.(xLogMultiCore), &lvlEnabler2, defaultCoreEncoderCfg())
 	require.NoError(t, err)
 
 	var ws sync.WaitGroup
-	ws.Add(2)
+	ws.Add(3)
 	go func() {
-		ent := cc.Check(zapcore.Entry{Level: zapcore.DebugLevel}, nil)
+		ent := tee1.Check(zapcore.Entry{Level: zapcore.DebugLevel}, nil)
 		for i := 0; i < 100; i++ {
-			time.Sleep(time.Millisecond * 5)
-			err := tee.Write(ent.Entry, []zap.Field{zap.String("tee", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
-			require.NoError(t, err)
+			time.Sleep(2 * time.Millisecond)
+			if tee.Enabled(ent.Entry.Level) {
+				err := tee1.Write(ent.Entry, []zap.Field{zap.String("tee1", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
+				require.NoError(t, err)
+			}
 		}
 		ws.Done()
 	}()
 	go func() {
-		ent := cc.Check(zapcore.Entry{Level: zapcore.InfoLevel}, nil)
+		ent := tee2.Check(zapcore.Entry{Level: zapcore.InfoLevel}, nil)
 		for i := 0; i < 100; i++ {
-			time.Sleep(time.Millisecond * 5)
-			err := tee2.Write(ent.Entry, []zap.Field{zap.String("tee2", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
-			require.NoError(t, err)
+			time.Sleep(2 * time.Millisecond)
+			if tee2.Enabled(ent.Entry.Level) {
+				err := tee2.Write(ent.Entry, []zap.Field{zap.String("tee2", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
+				require.NoError(t, err)
+			}
 		}
 		ws.Done()
 	}()
 	go func() {
-		time.Sleep(100 * time.Millisecond)
-		t.Log("info level change")
-		err = tee.Sync()
-		require.NoError(t, err)
-		err = tee2.Sync()
-		require.NoError(t, err)
-		lvlEnabler.SetLevel(LogLevelInfo.zapLevel())
-		time.Sleep(100 * time.Millisecond)
-		t.Log("debug level change")
-		err = tee.Sync()
-		require.NoError(t, err)
-		err = tee2.Sync()
-		require.NoError(t, err)
-		lvlEnabler.SetLevel(LogLevelDebug.zapLevel())
+		ent := tee3.Check(zapcore.Entry{Level: zapcore.InfoLevel}, nil)
+		for i := 0; i < 100; i++ {
+			time.Sleep(2 * time.Millisecond)
+			if tee3.Enabled(ent.Entry.Level) {
+				err := tee3.Write(ent.Entry, []zap.Field{zap.String("tee3", strconv.Itoa(i)+" "+time.Now().UTC().Format(backupDateTimeFormat)+" xlog tee write test!")})
+				require.NoError(t, err)
+			}
+		}
+		ws.Done()
+	}()
+	go func() {
 		time.Sleep(200 * time.Millisecond)
-		t.Log("warn level no other logs")
-		err = tee.Sync()
+		err = tee1.Sync()
 		require.NoError(t, err)
 		err = tee2.Sync()
 		require.NoError(t, err)
+		t.Log("info level change")
+		lvlEnabler.SetLevel(LogLevelInfo.zapLevel())
+
+		time.Sleep(200 * time.Millisecond)
+		err = tee1.Sync()
+		require.NoError(t, err)
+		err = tee2.Sync()
+		require.NoError(t, err)
+		t.Log("debug level change")
+		lvlEnabler.SetLevel(LogLevelDebug.zapLevel())
+
+		time.Sleep(300 * time.Millisecond)
+		err = tee1.Sync()
+		require.NoError(t, err)
+		err = tee2.Sync()
+		require.NoError(t, err)
+		t.Log("warn level no other tee1 and tee2 logs")
 		lvlEnabler.SetLevel(LogLevelWarn.zapLevel())
 	}()
 	ws.Wait()
 
-	err = tee.Sync()
+	err = tee1.Sync()
 	require.NoError(t, err)
 	err = tee2.Sync()
 	require.NoError(t, err)

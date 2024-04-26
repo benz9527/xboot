@@ -42,7 +42,7 @@ func (mc xLogMultiCore) With(fields []zap.Field) zapcore.Core {
 }
 
 func (mc xLogMultiCore) Level() zapcore.Level {
-	var minLvl zapcore.Level = -1
+	var minLvl zapcore.Level = -1 // Debug level
 	for i := range mc {
 		if lvl := zapcore.LevelOf(mc[i]); lvl < minLvl {
 			minLvl = lvl
