@@ -107,9 +107,6 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 				fileMaxSize:       cfg.FileMaxSize,
 				fileMaxBackups:    cfg.FileMaxBackups,
 			}
-			if err = w.initialize(); err != nil {
-				panic(err)
-			}
 			fileWriter = w
 		} else {
 			fileWriter = &singleLog{

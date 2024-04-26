@@ -187,6 +187,9 @@ func (syncer *xLogBufferSyncer) initialize() {
 
 		if rl, ok := syncer.outWriter.(*rotateLog); ok && rl != nil {
 			rl.closeC = syncer.closeC
+			if err := rl.initialize(); err != nil {
+				panic(err)
+			}
 		}
 
 		go syncer.flushLoop()
