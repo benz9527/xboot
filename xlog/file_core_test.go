@@ -114,13 +114,13 @@ func TestXLogFileCore_RotateLog_DataRace(t *testing.T) {
 	lvlEnabler := zap.NewAtomicLevelAt(LogLevelDebug.zapLevel())
 	cfg := &FileCoreConfig{
 		FilePath:                os.TempDir(),
-		Filename:                filepath.Base(os.Args[0]) + "_xlog.log",
+		Filename:                filepath.Base(os.Args[0]) + "_dr_xlog.log",
 		FileCompressible:        true,
 		FileMaxBackups:          4,
 		FileMaxAge:              "3day",
 		FileMaxSize:             "1KB",
 		FileCompressBatch:       2,
-		FileZipName:             filepath.Base(os.Args[0]) + "_xlogs.zip",
+		FileZipName:             filepath.Base(os.Args[0]) + "_dr_xlogs.zip",
 		FileRotateEnable:        true,
 		FileBufferSize:          "1KB",
 		FileBufferFlushInterval: 500,
@@ -169,9 +169,9 @@ func TestXLogFileCore_RotateLog_DataRace(t *testing.T) {
 	require.GreaterOrEqual(t, len(reader.File), cfg.FileCompressBatch)
 	err = reader.Close()
 	require.NoError(t, err)
-	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
+	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_dr_xlog", ".log")
 	require.GreaterOrEqual(t, removed, cfg.FileMaxBackups+1)
-	removed = testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
+	removed = testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_dr_xlogs", ".zip")
 	require.Equal(t, removed, 1)
 }
 
