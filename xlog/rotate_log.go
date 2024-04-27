@@ -81,7 +81,11 @@ func parseFileAge(age string) (time.Duration, error) {
 		unit = Day
 	}
 	num, _ := strconv.ParseInt(res[0][1], 10, 64)
-	return time.Duration(num) * time.Duration(unit), nil
+	_age := time.Duration(num) * time.Duration(unit)
+	if _age >= time.Duration(_maxFileAge) {
+		_age = time.Duration(_maxFileAge)
+	}
+	return _age, nil
 }
 
 var _ io.WriteCloser = (*rotateLog)(nil)
@@ -133,23 +137,14 @@ func (log *rotateLog) Write(p []byte) (n int, err error) {
 }
 
 func (log *rotateLog) Close() error {
-	var merr error
-	if log.fileWatcher.Load() != nil {
-		if err := log.fileWatcher.Load().Close(); err != nil {
-			merr = multierr.Append(merr, err)
-		} else {
-			log.fileWatcher.Store(nil)
-		}
-	}
 	if log.currentFile.Load() == nil {
-		return merr
+		return nil
 	}
 	if err := log.currentFile.Load().Close(); err != nil {
-		merr = multierr.Append(merr, err)
-	} else {
-		log.currentFile.Store(nil)
+		return err
 	}
-	return merr
+	log.currentFile.Store(nil)
+	return nil
 }
 
 func (log *rotateLog) initialize() error {
@@ -276,6 +271,8 @@ func (log *rotateLog) watchAndArchive() {
 		select {
 		case <-log.closeC:
 			_ = log.Close()
+			handleRollingError(log.fileWatcher.Load().Close())
+			log.fileWatcher.Store(nil)
 			return
 		case event, ok := <-log.fileWatcher.Load().Events:
 			if !ok {
@@ -336,6 +333,9 @@ func (log *rotateLog) loadFileInfos(logName, ext string) ([]fs.FileInfo, error) 
 }
 
 func RotateLog(cfg *FileCoreConfig, closeC chan struct{}) io.WriteCloser {
+	if cfg == nil || closeC == nil {
+		return nil
+	}
 	w := &rotateLog{
 		filename:          cfg.Filename,
 		filePath:          cfg.FilePath,
@@ -348,7 +348,7 @@ func RotateLog(cfg *FileCoreConfig, closeC chan struct{}) io.WriteCloser {
 		closeC:            closeC,
 	}
 	if err := w.initialize(); err != nil {
-		panic(err)
+		return nil
 	}
 	return w
 }

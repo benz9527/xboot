@@ -3,6 +3,7 @@ package xlog
 import (
 	"context"
 
+	"github.com/benz9527/xboot/lib/infra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -45,6 +46,9 @@ func (cc *commonCore) Sync() error {
 }
 
 func WrapCore(core xLogCore, cfg zapcore.EncoderConfig) (xLogCore, error) {
+	if core == nil {
+		return nil, infra.NewErrorStack("[XLogger] empty core to wrap")
+	}
 	cfg.EncodeLevel = core.levelEncoder()
 	cfg.EncodeTime = core.timeEncoder()
 
@@ -63,6 +67,9 @@ func WrapCore(core xLogCore, cfg zapcore.EncoderConfig) (xLogCore, error) {
 }
 
 func WrapCoreNewLevelEnabler(core xLogCore, lvlEnabler zapcore.LevelEnabler, cfg zapcore.EncoderConfig) (xLogCore, error) {
+	if core == nil {
+		return nil, infra.NewErrorStack("[XLogger] empty core to wrap")
+	}
 	cfg.EncodeLevel = core.levelEncoder()
 	cfg.EncodeTime = core.timeEncoder()
 

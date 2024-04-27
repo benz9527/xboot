@@ -3,6 +3,7 @@ package xlog
 import (
 	"archive/zip"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/benz9527/xboot/lib/id"
 )
 
 func TestParseFileSizeUnit(t *testing.T) {
@@ -214,14 +217,18 @@ func testRotateLogWriteRunCore(t *testing.T, log *rotateLog) {
 }
 
 func TestRotateLog_Write_Compress(t *testing.T) {
+	nano, err := id.ClassicNanoID(6)
+	require.NoError(t, err)
+	rngLogSuffix := "_" + nano() + "_xlog"
+	rngLogZipSuffix := rngLogSuffix + "s"
 	log := &rotateLog{
 		fileMaxSize:       "1KB",
-		filename:          filepath.Base(os.Args[0]) + "_xlog.log",
+		filename:          filepath.Base(os.Args[0]) + rngLogSuffix + ".log",
 		fileCompressible:  true,
 		fileMaxBackups:    4,
 		fileMaxAge:        "3day",
 		fileCompressBatch: 2,
-		fileZipName:       filepath.Base(os.Args[0]) + "_xlogs.zip",
+		fileZipName:       filepath.Base(os.Args[0]) + rngLogZipSuffix + ".zip",
 		filePath:          os.TempDir(),
 		closeC:            make(chan struct{}),
 	}
@@ -233,16 +240,19 @@ func TestRotateLog_Write_Compress(t *testing.T) {
 	require.NoError(t, err)
 	require.LessOrEqual(t, int((loop-1)*log.fileMaxBackups), len(reader.File))
 	reader.Close()
-	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
+	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+rngLogSuffix, ".log")
 	require.LessOrEqual(t, log.fileMaxBackups+1, removed)
-	removed = testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlogs", ".zip")
+	removed = testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+rngLogZipSuffix, ".zip")
 	require.Equal(t, 1, removed)
 }
 
 func TestRotateLog_Write_Delete(t *testing.T) {
+	nano, err := id.ClassicNanoID(6)
+	require.NoError(t, err)
+	rngLogSuffix := "_" + nano() + "_xlog"
 	log := &rotateLog{
 		fileMaxSize:      "1KB",
-		filename:         filepath.Base(os.Args[0]) + "_xlog.log",
+		filename:         filepath.Base(os.Args[0]) + rngLogSuffix + ".log",
 		fileCompressible: false,
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
@@ -253,7 +263,7 @@ func TestRotateLog_Write_Delete(t *testing.T) {
 	for i := 0; i < loop; i++ {
 		testRotateLogWriteRunCore(t, log)
 	}
-	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+"_xlog", ".log")
+	removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+rngLogSuffix, ".log")
 	require.Equal(t, log.fileMaxBackups+1, removed)
 }
 
@@ -300,21 +310,30 @@ func TestRotateLog_Write_PermissionDeniedAccess(t *testing.T) {
 	require.True(t, os.IsPermission(err))
 	require.Nil(t, rf)
 
-	log := &rotateLog{
-		fileMaxSize:      "1KB",
-		filename:         "rpda.log",
-		fileCompressible: false,
-		fileMaxBackups:   4,
-		fileMaxAge:       "3day",
-		filePath:         os.TempDir(),
-		closeC:           make(chan struct{}),
-	}
+	closeC := make(chan struct{})
+	log := RotateLog(nil, closeC)
+	require.Nil(t, log)
+	log = RotateLog(&FileCoreConfig{}, nil)
+	require.Nil(t, log)
+
+	log = RotateLog(&FileCoreConfig{
+		FileMaxSize:      "1KB",
+		Filename:         "rpda.log",
+		FilePath:         os.TempDir(),
+		FileCompressible: false,
+		FileMaxAge:       "100days",
+		FileMaxBackups:   4,
+	}, closeC)
 
 	_, err = log.Write([]byte("rotate log permission denied access!"))
 	require.Error(t, err)
 	require.True(t, errors.Is(err, os.ErrPermission))
+	close(closeC)
 	err = log.Close()
 	require.NoError(t, err)
+	time.Sleep(20 * time.Millisecond)
+	_, err = log.Write([]byte("rotate log permission denied access!"))
+	require.True(t, errors.Is(err, io.EOF))
 
 	removed := testCleanLogFiles(t, os.TempDir(), "rpda", ".log")
 	require.Equal(t, 1, removed)

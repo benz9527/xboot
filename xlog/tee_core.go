@@ -6,6 +6,8 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	
+	"github.com/benz9527/xboot/lib/infra"
 )
 
 var _ xLogCore = (xLogMultiCore)(nil)
@@ -42,7 +44,7 @@ func (mc xLogMultiCore) With(fields []zap.Field) zapcore.Core {
 }
 
 func (mc xLogMultiCore) Level() zapcore.Level {
-	var minLvl zapcore.Level = -1 // Debug level
+	var minLvl = zapcore.InfoLevel
 	for i := range mc {
 		if lvl := zapcore.LevelOf(mc[i]); lvl < minLvl {
 			minLvl = lvl
@@ -88,6 +90,9 @@ func XLogTeeCore(cores ...xLogCore) xLogCore {
 }
 
 func WrapCores(cores []xLogCore, cfg zapcore.EncoderConfig) (xLogCore, error) {
+	if cores == nil || len(cores) == 0 {
+		return nil, infra.NewErrorStack("[XLogger] empty cores to wrap")
+	}
 	newCores := make([]xLogCore, 0, len(cores))
 	for i := range cores {
 		newCore, err := WrapCore(cores[i], cfg)
@@ -100,6 +105,9 @@ func WrapCores(cores []xLogCore, cfg zapcore.EncoderConfig) (xLogCore, error) {
 }
 
 func WrapCoresNewLevelEnabler(cores []xLogCore, lvlEnabler zapcore.LevelEnabler, cfg zapcore.EncoderConfig) (xLogCore, error) {
+	if cores == nil || len(cores) == 0 {
+		return nil, infra.NewErrorStack("[XLogger] empty cores to wrap")
+	}
 	newCores := make([]xLogCore, 0, len(cores))
 	for i := range cores {
 		newCore, err := WrapCoreNewLevelEnabler(cores[i], lvlEnabler, cfg)
