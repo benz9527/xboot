@@ -2,6 +2,7 @@ package xlog
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,11 +13,20 @@ import (
 )
 
 func TestSingleLog(t *testing.T) {
-	log := &singleLog{
-		filename: filepath.Base(os.Args[0]) + "_sxlog.log",
-		filePath: os.TempDir(),
-		closeC:   make(chan struct{}),
-	}
+	closeC := make(chan struct{})
+	log := SingleLog(nil, closeC)
+	require.Nil(t, log)
+
+	log = SingleLog(&FileCoreConfig{
+		FilePath: os.TempDir(),
+		Filename: filepath.Base(os.Args[0]) + "_sxlog.log",
+	}, nil)
+	require.Nil(t, log)
+
+	log = SingleLog(&FileCoreConfig{
+		FilePath: os.TempDir(),
+		Filename: filepath.Base(os.Args[0]) + "_sxlog.log",
+	}, closeC)
 
 	for i := 0; i < 1000; i++ {
 		data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog single log write test!\n")
@@ -26,9 +36,15 @@ func TestSingleLog(t *testing.T) {
 	err := log.Close()
 	require.NoError(t, err)
 
+	close(closeC)
+	err = log.Close()
+	require.NoError(t, err)
+	time.Sleep(20 * time.Millisecond)
+	_, err = log.Write([]byte("xlog single log write test!\n"))
+	require.True(t, errors.Is(err, io.EOF))
+
 	log = &singleLog{
 		filename: filepath.Base(os.Args[0]) + "_sxlog.log",
-		filePath: os.TempDir(),
 	}
 
 	for i := 2000; i < 3000; i++ {

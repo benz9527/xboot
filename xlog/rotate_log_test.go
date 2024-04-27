@@ -3,6 +3,7 @@ package xlog
 import (
 	"archive/zip"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -300,21 +301,30 @@ func TestRotateLog_Write_PermissionDeniedAccess(t *testing.T) {
 	require.True(t, os.IsPermission(err))
 	require.Nil(t, rf)
 
-	log := &rotateLog{
-		fileMaxSize:      "1KB",
-		filename:         "rpda.log",
-		fileCompressible: false,
-		fileMaxBackups:   4,
-		fileMaxAge:       "3day",
-		filePath:         os.TempDir(),
-		closeC:           make(chan struct{}),
-	}
+	closeC := make(chan struct{})
+	log := RotateLog(nil, closeC)
+	require.Nil(t, log)
+	log = RotateLog(&FileCoreConfig{}, nil)
+	require.Nil(t, log)
+
+	log = RotateLog(&FileCoreConfig{
+		FileMaxSize:      "1KB",
+		Filename:         "rpda.log",
+		FilePath:         os.TempDir(),
+		FileCompressible: false,
+		FileMaxAge:       "100days",
+		FileMaxBackups:   4,
+	}, closeC)
 
 	_, err = log.Write([]byte("rotate log permission denied access!"))
 	require.Error(t, err)
 	require.True(t, errors.Is(err, os.ErrPermission))
+	close(closeC)
 	err = log.Close()
 	require.NoError(t, err)
+	time.Sleep(20 * time.Millisecond)
+	_, err = log.Write([]byte("rotate log permission denied access!"))
+	require.True(t, errors.Is(err, io.EOF))
 
 	removed := testCleanLogFiles(t, os.TempDir(), "rpda", ".log")
 	require.Equal(t, 1, removed)

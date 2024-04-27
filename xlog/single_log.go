@@ -42,10 +42,11 @@ func (log *singleLog) Write(p []byte) (n int, err error) {
 }
 
 func (log *singleLog) Close() error {
-	if log.currentFile.Load() == nil {
+	cur := log.currentFile.Load()
+	if cur == nil {
 		return nil
 	}
-	if err := log.currentFile.Load().Close(); err != nil {
+	if err := cur.Close(); err != nil {
 		return err
 	}
 	log.currentFile.Store(nil)
@@ -78,7 +79,7 @@ func (log *singleLog) openOrCreate() error {
 
 	var f *os.File
 	if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
-		return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file")
+		return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file: "+pathToLog)
 	}
 	log.currentFile.Store(f)
 	log.wroteSize = uint64(info.Size())
