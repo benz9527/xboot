@@ -274,10 +274,6 @@ func (log *rotateLog) watchAndArchive() {
 			handleRollingError(log.fileWatcher.Load().Close())
 			log.fileWatcher.Store(nil)
 			return
-		default:
-
-		}
-		select {
 		case event, ok := <-log.fileWatcher.Load().Events:
 			if !ok {
 				return

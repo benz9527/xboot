@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/benz9527/xboot/lib/id"
 )
 
 func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
@@ -32,9 +34,13 @@ func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
 		zapcore.ISO8601TimeEncoder,
 	)
 
+	nano, err := id.ClassicNanoID(6)
+	require.NoError(t, err)
+	rngLogSuffix := "_" + nano() + "_xlog"
+
 	cfg := &FileCoreConfig{
 		FilePath: os.TempDir(),
-		Filename: filepath.Base(os.Args[0]) + "_xlog.log",
+		Filename: filepath.Base(os.Args[0]) + rngLogSuffix + ".log",
 	}
 	fc := newFileCore(cfg)(
 		ctx,
@@ -158,6 +164,6 @@ func TestConsoleAndFileMultiCores_DataRace(t *testing.T) {
 	_ = tee4.Sync()
 	cancel()
 
-	removed := testCleanLogFiles(t, cfg.FilePath, filepath.Base(os.Args[0])+"_xlog", ".log")
+	removed := testCleanLogFiles(t, cfg.FilePath, filepath.Base(os.Args[0])+rngLogSuffix, ".log")
 	require.Equal(t, 1, removed)
 }
