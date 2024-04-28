@@ -1,6 +1,7 @@
 package xlog
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -13,20 +14,20 @@ import (
 )
 
 func TestSingleLog(t *testing.T) {
-	closeC := make(chan struct{})
-	log := SingleLog(nil, closeC)
+	ctx, cancel := context.WithCancel(context.TODO())
+	log := SingleLog(ctx, nil)
 	require.Nil(t, log)
 
-	log = SingleLog(&FileCoreConfig{
+	log = SingleLog(nil, &FileCoreConfig{
 		FilePath: os.TempDir(),
 		Filename: filepath.Base(os.Args[0]) + "_sxlog.log",
-	}, nil)
+	})
 	require.Nil(t, log)
 
-	log = SingleLog(&FileCoreConfig{
+	log = SingleLog(ctx, &FileCoreConfig{
 		FilePath: os.TempDir(),
 		Filename: filepath.Base(os.Args[0]) + "_sxlog.log",
-	}, closeC)
+	})
 
 	for i := 0; i < 1000; i++ {
 		data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog single log write test!\n")
@@ -36,7 +37,7 @@ func TestSingleLog(t *testing.T) {
 	err := log.Close()
 	require.NoError(t, err)
 
-	close(closeC)
+	cancel()
 	err = log.Close()
 	require.NoError(t, err)
 	time.Sleep(20 * time.Millisecond)
@@ -76,7 +77,7 @@ func TestSingleLog_PermissionDeniedAccess(t *testing.T) {
 	log := &singleLog{
 		filename: "pda.log",
 		filePath: os.TempDir(),
-		closeC:   make(chan struct{}),
+		ctx:      context.TODO(),
 	}
 	_, err = log.Write([]byte("permission denied access!"))
 	require.Error(t, err)
@@ -95,7 +96,7 @@ func TestSingleLog_Write_Dir(t *testing.T) {
 	log := &singleLog{
 		filename: "pda2.log",
 		filePath: os.TempDir(),
-		closeC:   make(chan struct{}),
+		ctx:      context.TODO(),
 	}
 
 	_, err = log.Write([]byte("single log write dir!"))

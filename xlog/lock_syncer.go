@@ -1,17 +1,18 @@
 package xlog
 
 import (
+	"context"
 	"io"
 	"sync"
 
 	"go.uber.org/zap/zapcore"
 )
 
-var _ XLogCloseableWriteSyncer = (*xLogLockSyncer)(nil)
+var _ zapcore.WriteSyncer = (*xLogLockSyncer)(nil)
 
 type xLogLockSyncer struct {
+	ctx       context.Context
 	outWriter io.WriteCloser
-	closeC    chan struct{}
 	mu        sync.Mutex
 }
 
@@ -25,22 +26,23 @@ func (syncer *xLogLockSyncer) Write(log []byte) (n int, err error) {
 	syncer.mu.Lock()
 	defer syncer.mu.Unlock()
 
+	select {
+	case <-syncer.ctx.Done():
+		return 0, io.EOF
+	default:
+	}
+
 	// TODO Implemented filters or hooks to pre-process logs.
 	return syncer.outWriter.Write(log)
 }
 
-func (syncer *xLogLockSyncer) Stop() (err error) {
-	close(syncer.closeC)
-	return nil
-}
-
-func XLogLockSyncer(writer io.WriteCloser, closeC chan struct{}) zapcore.WriteSyncer {
-	if writer == nil || closeC == nil {
+func XLogLockSyncer(ctx context.Context, writer io.WriteCloser) zapcore.WriteSyncer {
+	if writer == nil || ctx == nil {
 		return nil
 	}
 	syncer := &xLogLockSyncer{
+		ctx:       ctx,
 		outWriter: writer,
-		closeC:    closeC,
 	}
 	return syncer
 }

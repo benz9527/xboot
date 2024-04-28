@@ -1,6 +1,7 @@
 package xlog
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,17 +17,17 @@ var _ io.WriteCloser = (*singleLog)(nil)
 
 // singleLog is not thread-safe.
 type singleLog struct {
+	ctx         context.Context
 	filePath    string
 	filename    string
 	wroteSize   uint64
 	mkdirOnce   sync.Once
 	currentFile atomic.Pointer[os.File]
-	closeC      <-chan struct{}
 }
 
 func (log *singleLog) Write(p []byte) (n int, err error) {
 	select {
-	case <-log.closeC:
+	case <-log.ctx.Done():
 		return 0, io.EOF
 	default:
 	}
@@ -117,7 +118,7 @@ func (log *singleLog) create() error {
 func (log *singleLog) initialize() error {
 	go func() {
 		select {
-		case <-log.closeC:
+		case <-log.ctx.Done():
 			_ = log.Close()
 			return
 		}
@@ -125,12 +126,12 @@ func (log *singleLog) initialize() error {
 	return nil
 }
 
-func SingleLog(cfg *FileCoreConfig, closeC chan struct{}) io.WriteCloser {
-	if cfg == nil || closeC == nil {
+func SingleLog(ctx context.Context, cfg *FileCoreConfig) io.WriteCloser {
+	if cfg == nil || ctx == nil {
 		return nil
 	}
 	log := &singleLog{
-		closeC:   closeC,
+		ctx:      ctx,
 		filePath: cfg.FilePath,
 		filename: cfg.Filename,
 	}

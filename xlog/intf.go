@@ -185,8 +185,3 @@ type XBasicContextLogger interface {
 type XBannerPrinter interface {
 	Banner(banner Banner)
 }
-
-type XLogCloseableWriteSyncer interface {
-	zapcore.WriteSyncer
-	Stop() error
-}

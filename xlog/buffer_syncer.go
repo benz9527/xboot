@@ -1,6 +1,7 @@
 package xlog
 
 import (
+	"context"
 	"io"
 	"sync"
 	"time"
@@ -42,14 +43,16 @@ func (arena *xLogArena) release() {
 	arena.queue = nil
 }
 
+// Allocate a buffer to store a log.
 func (arena *xLogArena) allocate(size uint64) (uint64, bool) {
 	if arena.availableBytes() < size {
-		return 0, false // Flush first
+		return /* flush first */ 0, false
 	}
 	arena.wOffset += size
 	return /* startup */ arena.wOffset - size, true
 }
 
+// Cache the log to the buffer.
 func (arena *xLogArena) cache(log []byte) bool {
 	if arena.buf == nil || arena.queue == nil {
 		return false
@@ -73,6 +76,7 @@ func (arena *xLogArena) flush(writer io.WriteCloser) error {
 	}
 
 	// TODO Batch bytes write in one io write.
+	// Batch bytes write is hard to verify each log in unit tests.
 	if err := arena.queue.Foreach(func(idx int64, e *list.NodeElement[logRecord]) error {
 		data := arena.buf[e.Value.startOffset : e.Value.startOffset+e.Value.length]
 		if _, err := writer.Write(data); err != nil {
@@ -91,15 +95,15 @@ const (
 	defaultFlushInterval = 30 * time.Second
 )
 
-var _ XLogCloseableWriteSyncer = (*xLogBufferSyncer)(nil)
+var _ zapcore.WriteSyncer = (*xLogBufferSyncer)(nil)
 
 type xLogBufferSyncer struct {
+	ctx           context.Context
 	outWriter     io.WriteCloser
 	flushInterval time.Duration
 	arena         *xLogArena
 	clock         zapcore.Clock
 	ticker        *time.Ticker
-	closeC        chan struct{}
 	once          sync.Once
 	mu            sync.Mutex
 }
@@ -135,15 +139,10 @@ func (syncer *xLogBufferSyncer) Write(log []byte) (n int, err error) {
 	return len(log), nil
 }
 
-func (syncer *xLogBufferSyncer) Stop() (err error) {
-	close(syncer.closeC)
-	return nil
-}
-
 func (syncer *xLogBufferSyncer) flushLoop() {
 	for {
 		select {
-		case <-syncer.closeC:
+		case <-syncer.ctx.Done():
 			_ = syncer.Sync()
 			syncer.ticker.Stop()
 			syncer.arena.release()
@@ -183,12 +182,12 @@ func (syncer *xLogBufferSyncer) initialize() {
 }
 
 func XLogBufferSyncer(
+	ctx context.Context,
 	writer io.WriteCloser,
 	bufSize uint64,
 	flushInterval int64,
-	closeC chan struct{},
 ) zapcore.WriteSyncer {
-	if writer == nil || closeC == nil {
+	if writer == nil || ctx == nil {
 		return nil
 	}
 	syncer := &xLogBufferSyncer{
@@ -197,7 +196,7 @@ func XLogBufferSyncer(
 			size: bufSize,
 		},
 		flushInterval: time.Duration(flushInterval) * time.Millisecond,
-		closeC:        closeC,
+		ctx:           ctx,
 	}
 	syncer.initialize()
 	return syncer

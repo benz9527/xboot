@@ -60,6 +60,7 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 		lvlEnc zapcore.LevelEncoder,
 		tsEnc zapcore.TimeEncoder,
 	) xLogCore {
+		// The root context is done and root writer will be close globally.
 		if ctx == nil {
 			return nil
 		}
@@ -79,7 +80,6 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 			bufInterval   int64
 			fileWriter    io.WriteCloser
 			ws            zapcore.WriteSyncer
-			closeC        = make(chan struct{})
 		)
 		if cfg.FileBufferSize != "" && cfg.FileBufferFlushInterval > 0 {
 			bufSize, err = parseBufferSize(cfg.FileBufferSize)
@@ -97,14 +97,14 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 		}
 	writerInit:
 		if cfg.FileRotateEnable {
-			fileWriter = RotateLog(cfg, closeC)
+			fileWriter = RotateLog(ctx, cfg)
 		} else {
-			fileWriter = SingleLog(cfg, closeC)
+			fileWriter = SingleLog(ctx, cfg)
 		}
 		if bufferEnabled {
-			ws = XLogBufferSyncer(fileWriter, bufSize, bufInterval, closeC)
+			ws = XLogBufferSyncer(ctx, fileWriter, bufSize, bufInterval)
 		} else {
-			ws = XLogLockSyncer(fileWriter, closeC)
+			ws = XLogLockSyncer(ctx, fileWriter)
 		}
 
 		cc := &fileCore{
@@ -121,15 +121,6 @@ func newFileCore(cfg *FileCoreConfig) XLogCoreConstructor {
 		cfg.EncodeLevel = cc.core.lvlEnc
 		cfg.EncodeTime = cc.core.tsEnc
 		cc.core.core = zapcore.NewCore(cc.core.enc(cfg), cc.core.ws, cc.core.lvlEnabler)
-		go func() {
-			// The root context is done and root writer will be close globally.
-			select {
-			case <-cc.core.ctx.Done():
-				if ws, ok := cc.core.ws.(XLogCloseableWriteSyncer); ok && ws != nil {
-					_ = ws.Stop()
-				}
-			}
-		}()
 		return cc
 	}
 }
