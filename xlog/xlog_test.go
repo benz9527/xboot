@@ -5,6 +5,7 @@ import (
 	"errors"
 	randv2 "math/rand/v2"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/benz9527/xboot/lib/id"
 	"github.com/benz9527/xboot/lib/infra"
 )
 
@@ -134,11 +136,21 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 		writer        logOutWriterType
 		defaultLogger bool
 		ctxM          map[string]string
+		clean         func()
 	}{
 		{
 			name:    "console json",
 			encoder: JSON,
 			writer:  StdOut,
+			ctxM: map[string]string{
+				"traceId": "TraceID",
+				"service": "Svc",
+			},
+		},
+		{
+			name:    "file json",
+			encoder: JSON,
+			writer:  File,
 			ctxM: map[string]string{
 				"traceId": "TraceID",
 				"service": "Svc",
@@ -176,11 +188,36 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 				opts = []XLoggerOption{}
 			} else {
 				opts = append(opts,
+					WithXLoggerContext(context.TODO()),
 					WithXLoggerLevel(LogLevelDebug),
 					WithXLoggerEncoder(tc.encoder),
+					WithXLoggerTimeEncoder(zapcore.ISO8601TimeEncoder),
+					WithXLoggerLevelEncoder(zapcore.CapitalLevelEncoder),
 					func() XLoggerOption {
-						if tc.writer == StdOut {
+						switch tc.writer {
+						case StdOut:
 							return WithXLoggerStdOutWriter()
+						case File:
+							nano, err := id.ClassicNanoID(6)
+							require.NoError(t, err)
+							rngLogSuffix := "_" + nano() + "_xlog"
+							cfg := &FileCoreConfig{
+								FilePath:                os.TempDir(),
+								Filename:                filepath.Base(os.Args[0]) + rngLogSuffix + ".log",
+								FileCompressible:        false,
+								FileMaxBackups:          4,
+								FileMaxAge:              "3day",
+								FileMaxSize:             "1KB",
+								FileRotateEnable:        true,
+								FileBufferSize:          "1KB",
+								FileBufferFlushInterval: 500,
+							}
+							tc.clean = func() {
+								removed := testCleanLogFiles(t, os.TempDir(), filepath.Base(os.Args[0])+rngLogSuffix, ".log")
+								require.GreaterOrEqual(t, removed, cfg.FileMaxBackups+1)
+							}
+							return WithXLoggerFileWriter(cfg)
+						default:
 						}
 						return nil
 					}(),
@@ -277,6 +314,10 @@ func TestXLogger_Zap_AllAPIs(t *testing.T) {
 			err := logger.Sync()
 			if err != nil {
 				t.Log(err)
+			}
+			logger.Close()
+			if tc.clean != nil {
+				tc.clean()
 			}
 		})
 	}

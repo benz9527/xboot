@@ -215,6 +215,8 @@ func (cfg *loggerCfg) apply(l *xLogger) {
 
 	if cfg.ctx == nil {
 		cfg.ctx, l.cancelFn = context.WithCancel(context.Background())
+	} else {
+		cfg.ctx, l.cancelFn = context.WithCancel(cfg.ctx)
 	}
 
 	cfg.cores = make([]xLogCore, 0, 16)
@@ -256,6 +258,7 @@ func NewXLogger(opts ...XLoggerOption) XLogger {
 
 func WithXLoggerContext(ctx context.Context) XLoggerOption {
 	return func(cfg *loggerCfg) error {
+		cfg.ctx = ctx
 		return nil
 	}
 }
