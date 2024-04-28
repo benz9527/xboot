@@ -45,6 +45,7 @@ func TestSingleLog(t *testing.T) {
 	require.True(t, errors.Is(err, io.EOF))
 
 	log = &singleLog{
+		ctx:      context.TODO(),
 		filename: filepath.Base(os.Args[0]) + "_sxlog.log",
 	}
 
@@ -75,9 +76,9 @@ func TestSingleLog_PermissionDeniedAccess(t *testing.T) {
 	require.Nil(t, rf)
 
 	log := &singleLog{
+		ctx:      context.TODO(),
 		filename: "pda.log",
 		filePath: os.TempDir(),
-		ctx:      context.TODO(),
 	}
 	_, err = log.Write([]byte("permission denied access!"))
 	require.Error(t, err)
@@ -94,9 +95,9 @@ func TestSingleLog_Write_Dir(t *testing.T) {
 	require.NoError(t, err)
 
 	log := &singleLog{
+		ctx:      context.TODO(),
 		filename: "pda2.log",
 		filePath: os.TempDir(),
-		ctx:      context.TODO(),
 	}
 
 	_, err = log.Write([]byte("single log write dir!"))
