@@ -2,6 +2,7 @@ package xlog
 
 import (
 	"archive/zip"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -230,7 +231,7 @@ func TestRotateLog_Write_Compress(t *testing.T) {
 		fileCompressBatch: 2,
 		fileZipName:       filepath.Base(os.Args[0]) + rngLogZipSuffix + ".zip",
 		filePath:          os.TempDir(),
-		closeC:            make(chan struct{}),
+		ctx:               context.TODO(),
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
@@ -257,7 +258,7 @@ func TestRotateLog_Write_Delete(t *testing.T) {
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
 		filePath:         os.TempDir(),
-		closeC:           make(chan struct{}),
+		ctx:              context.TODO(),
 	}
 	loop := 2
 	for i := 0; i < loop; i++ {
@@ -310,25 +311,25 @@ func TestRotateLog_Write_PermissionDeniedAccess(t *testing.T) {
 	require.True(t, os.IsPermission(err))
 	require.Nil(t, rf)
 
-	closeC := make(chan struct{})
-	log := RotateLog(nil, closeC)
+	ctx, cancel := context.WithCancel(context.TODO())
+	log := RotateLog(nil, &FileCoreConfig{})
 	require.Nil(t, log)
-	log = RotateLog(&FileCoreConfig{}, nil)
+	log = RotateLog(ctx, nil)
 	require.Nil(t, log)
 
-	log = RotateLog(&FileCoreConfig{
+	log = RotateLog(ctx, &FileCoreConfig{
 		FileMaxSize:      "1KB",
 		Filename:         "rpda.log",
 		FilePath:         os.TempDir(),
 		FileCompressible: false,
 		FileMaxAge:       "100days",
 		FileMaxBackups:   4,
-	}, closeC)
+	})
 
 	_, err = log.Write([]byte("rotate log permission denied access!"))
 	require.Error(t, err)
 	require.True(t, errors.Is(err, os.ErrPermission))
-	close(closeC)
+	cancel()
 	err = log.Close()
 	require.NoError(t, err)
 	time.Sleep(20 * time.Millisecond)
@@ -350,7 +351,7 @@ func TestRotateLog_Write_Dir(t *testing.T) {
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
 		filePath:         os.TempDir(),
-		closeC:           make(chan struct{}),
+		ctx:              context.TODO(),
 	}
 
 	_, err = log.Write([]byte("rotate log write dir!"))
@@ -370,7 +371,7 @@ func TestRotateLog_Write_OtherErrors(t *testing.T) {
 		fileMaxBackups:   4,
 		fileMaxAge:       "3day",
 		filePath:         os.TempDir(),
-		closeC:           make(chan struct{}),
+		ctx:              context.TODO(),
 	}
 
 	err := log.openOrCreate()

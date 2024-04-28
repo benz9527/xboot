@@ -334,10 +334,6 @@ func WithXLoggerContextFieldExtract(field string, mapTo ...string) XLoggerOption
 }
 
 func getLogLevelOrDefault(level string) zapcore.Level {
-	if len(strings.TrimSpace(level)) == 0 {
-		return zapcore.DebugLevel
-	}
-
 	switch strings.ToUpper(level) {
 	case LogLevelInfo.String():
 		return zapcore.InfoLevel

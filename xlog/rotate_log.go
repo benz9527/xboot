@@ -2,6 +2,7 @@ package xlog
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -91,6 +92,7 @@ func parseFileAge(age string) (time.Duration, error) {
 var _ io.WriteCloser = (*rotateLog)(nil)
 
 type rotateLog struct {
+	ctx               context.Context
 	filePath          string
 	filename          string
 	fileMaxSize       string
@@ -101,7 +103,6 @@ type rotateLog struct {
 	mkdirOnce         sync.Once
 	currentFile       atomic.Pointer[os.File]
 	fileWatcher       atomic.Pointer[fsnotify.Watcher]
-	closeC            <-chan struct{}
 	fileMaxBackups    int
 	fileCompressBatch int
 	fileCompressible  bool
@@ -109,7 +110,7 @@ type rotateLog struct {
 
 func (log *rotateLog) Write(p []byte) (n int, err error) {
 	select {
-	case <-log.closeC:
+	case <-log.ctx.Done():
 		return 0, io.EOF
 	default:
 	}
@@ -154,22 +155,25 @@ func (log *rotateLog) initialize() error {
 
 	size, err := parseFileSize(log.fileMaxSize)
 	if err != nil {
+		handleRollingError(err)
 		return err
 	}
 	log.maxSize = size
 
 	if _, err = parseFileAge(log.fileMaxAge); err != nil {
+		handleRollingError(err)
 		return err
 	}
 
 	var watcher *fsnotify.Watcher
 	if watcher, err = fsnotify.NewWatcher(); err != nil {
+		handleRollingError(infra.WrapErrorStackWithMessage(err, "failed to create file watcher"))
 		return err
 	}
 	log.fileWatcher.Store(watcher)
 
 	if err = log.fileWatcher.Load().Add(log.filePath); err != nil {
-		// TODO log file path is not exist
+		handleRollingError(infra.WrapErrorStackWithMessage(err, "failed to add log directory to watcher"))
 		return err
 	}
 
@@ -263,13 +267,15 @@ func (log *rotateLog) openOrCreate() error {
 	return log.initialize()
 }
 
+// Watch the log directory and filter the match log files then archive
+// or delete the expired. Endless until the rotate log is closed.
 func (log *rotateLog) watchAndArchive() {
 	ext := filepath.Ext(log.filename)
 	logName := log.filename[:len(log.filename)-len(ext)]
 	duration, _ := parseFileAge(log.fileMaxAge)
 	for {
 		select {
-		case <-log.closeC:
+		case <-log.ctx.Done():
 			_ = log.Close()
 			handleRollingError(log.fileWatcher.Load().Close())
 			log.fileWatcher.Store(nil)
@@ -332,8 +338,8 @@ func (log *rotateLog) loadFileInfos(logName, ext string) ([]fs.FileInfo, error) 
 	return nil, infra.WrapErrorStack(err)
 }
 
-func RotateLog(cfg *FileCoreConfig, closeC chan struct{}) io.WriteCloser {
-	if cfg == nil || closeC == nil {
+func RotateLog(ctx context.Context, cfg *FileCoreConfig) io.WriteCloser {
+	if cfg == nil || ctx == nil {
 		return nil
 	}
 	w := &rotateLog{
@@ -345,7 +351,7 @@ func RotateLog(cfg *FileCoreConfig, closeC chan struct{}) io.WriteCloser {
 		fileZipName:       cfg.FileZipName,
 		fileMaxSize:       cfg.FileMaxSize,
 		fileMaxBackups:    cfg.FileMaxBackups,
-		closeC:            closeC,
+		ctx:               ctx,
 	}
 	if err := w.initialize(); err != nil {
 		return nil

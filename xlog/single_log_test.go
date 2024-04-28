@@ -1,6 +1,7 @@
 package xlog
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -13,20 +14,20 @@ import (
 )
 
 func TestSingleLog(t *testing.T) {
-	closeC := make(chan struct{})
-	log := SingleLog(nil, closeC)
+	ctx, cancel := context.WithCancel(context.TODO())
+	log := SingleLog(ctx, nil)
 	require.Nil(t, log)
 
-	log = SingleLog(&FileCoreConfig{
+	log = SingleLog(nil, &FileCoreConfig{
 		FilePath: os.TempDir(),
 		Filename: filepath.Base(os.Args[0]) + "_sxlog.log",
-	}, nil)
+	})
 	require.Nil(t, log)
 
-	log = SingleLog(&FileCoreConfig{
+	log = SingleLog(ctx, &FileCoreConfig{
 		FilePath: os.TempDir(),
 		Filename: filepath.Base(os.Args[0]) + "_sxlog.log",
-	}, closeC)
+	})
 
 	for i := 0; i < 1000; i++ {
 		data := []byte(strconv.Itoa(i) + " " + time.Now().UTC().Format(backupDateTimeFormat) + " xlog single log write test!\n")
@@ -36,7 +37,7 @@ func TestSingleLog(t *testing.T) {
 	err := log.Close()
 	require.NoError(t, err)
 
-	close(closeC)
+	cancel()
 	err = log.Close()
 	require.NoError(t, err)
 	time.Sleep(20 * time.Millisecond)
@@ -44,6 +45,7 @@ func TestSingleLog(t *testing.T) {
 	require.True(t, errors.Is(err, io.EOF))
 
 	log = &singleLog{
+		ctx:      context.TODO(),
 		filename: filepath.Base(os.Args[0]) + "_sxlog.log",
 	}
 
@@ -74,9 +76,9 @@ func TestSingleLog_PermissionDeniedAccess(t *testing.T) {
 	require.Nil(t, rf)
 
 	log := &singleLog{
+		ctx:      context.TODO(),
 		filename: "pda.log",
 		filePath: os.TempDir(),
-		closeC:   make(chan struct{}),
 	}
 	_, err = log.Write([]byte("permission denied access!"))
 	require.Error(t, err)
@@ -93,9 +95,9 @@ func TestSingleLog_Write_Dir(t *testing.T) {
 	require.NoError(t, err)
 
 	log := &singleLog{
+		ctx:      context.TODO(),
 		filename: "pda2.log",
 		filePath: os.TempDir(),
-		closeC:   make(chan struct{}),
 	}
 
 	_, err = log.Write([]byte("single log write dir!"))
