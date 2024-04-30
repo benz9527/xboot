@@ -11,4 +11,4 @@ end
 -- DEL key1 key2 ...
 -- Really delete keys (i.e. unlock).
 redis.call("DEL", table.unpack(KEYS))
-return rdis.status_reply("OK")
+return redis.status_reply("OK")
