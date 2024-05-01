@@ -20,7 +20,7 @@ func TestRedisDLock_MiniRedis(t *testing.T) {
 	require.NotEmpty(t, luaDLockRenewalTTLScript)
 	require.NotEmpty(t, luaDLockLoadTTLScript)
 
-	const addr = "127.0.0.1:6379"
+	const addr = "127.0.0.1:6480"
 	mredis := mredisv2.NewMiniRedis()
 	defer func() { mredis.Close() }()
 	go func() {
@@ -50,7 +50,7 @@ func TestRedisDLock_MiniRedis(t *testing.T) {
 		},
 	).Retry(DefaultExponentialBackoffRetry()).
 		TTL(200*time.Millisecond).
-		Keys("testKey1", "testKey2").
+		Keys("testKey1_1", "testKey2_1").
 		Token("test1").
 		Build()
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestRedisDLock_MiniRedis_DataRace(t *testing.T) {
 	require.NotEmpty(t, luaDLockRenewalTTLScript)
 	require.NotEmpty(t, luaDLockLoadTTLScript)
 
-	const addr = "127.0.0.1:6379"
+	const addr = "127.0.0.1:6481"
 	mredis := mredisv2.NewMiniRedis()
 	defer func() { mredis.Close() }()
 	go func() {
@@ -98,7 +98,7 @@ func TestRedisDLock_MiniRedis_DataRace(t *testing.T) {
 		},
 	).Retry(DefaultExponentialBackoffRetry()).
 		TTL(200*time.Millisecond).
-		Keys("testKey1", "testKey2").
+		Keys("testKey1_2", "testKey2_2").
 		Token("test1").
 		Build()
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestRedisDLock_MiniRedis_DataRace(t *testing.T) {
 		},
 	).Retry(DefaultExponentialBackoffRetry()).
 		TTL(200*time.Millisecond).
-		Keys("testKey1", "testKey2").
+		Keys("testKey1_2", "testKey2_2").
 		Token("test2").
 		Build()
 	require.NoError(t, err)
@@ -178,7 +178,7 @@ func TestRedisDLock_SingleRedis(t *testing.T) {
 		},
 	).Retry(DefaultExponentialBackoffRetry()).
 		TTL(200*time.Millisecond).
-		Keys("testKey1", "testKey2").
+		Keys("testKey1_3", "testKey2_4").
 		Token("test1").
 		Build()
 	require.NoError(t, err)
@@ -224,7 +224,7 @@ func TestRedisDLock_SingleRedis_DataRace(t *testing.T) {
 		},
 	).Retry(DefaultExponentialBackoffRetry()).
 		TTL(200*time.Millisecond).
-		Keys("testKey1", "testKey2").
+		Keys("testKey1_4", "testKey2_4").
 		Token("test1").
 		Build()
 	require.NoError(t, err)
@@ -235,7 +235,7 @@ func TestRedisDLock_SingleRedis_DataRace(t *testing.T) {
 		},
 	).Retry(DefaultExponentialBackoffRetry()).
 		TTL(200*time.Millisecond).
-		Keys("testKey1", "testKey2").
+		Keys("testKey1_4", "testKey2_4").
 		Token("test2").
 		Build()
 	require.NoError(t, err)
