@@ -7,7 +7,6 @@ type DLocker interface {
 	Unlock() error
 	Renewal(newTTL time.Duration) error
 	TTL() (time.Duration, error)
-	Close() error
 }
 
 type RetryStrategy interface {
@@ -17,7 +16,8 @@ type RetryStrategy interface {
 type DLockErr string
 
 const (
-	ErrDLockAcquireFailed DLockErr = "failed to acquire lock"
+	ErrDLockAcquireFailed DLockErr = "failed to acquire dlock"
+	ErrDLockNoInit        DLockErr = "no init the dlock"
 )
 
 func (err DLockErr) Error() string {

@@ -41,26 +41,21 @@ var _ DLocker = (*redisDLock)(nil)
 // TODO: Enable watchdog to renewal lock automatically
 type redisDLock struct {
 	*redisDLockOptions
-}
-
-func (dl *redisDLock) Close() error {
-	if cancel := *dl.ctxCancel.Load(); cancel != nil {
-		cancel()
-	}
-	return nil
+	locked atomic.Bool
 }
 
 func (dl *redisDLock) Lock() error {
 	retry := dl.strategy
 	var ticker *time.Ticker
 	for {
-		if _, err := luaDLockAcquire.EvalSha(
+		if _, err := luaDLockAcquire.Eval(
 			*dl.ctx.Load(),
 			dl.scripterLoader(),
 			dl.keys,
 			dl.token, dl.ttl.Milliseconds(),
 		).Result(); err != nil {
 			if errors.Is(err, redis.Nil) {
+				dl.locked.Store(true)
 				return nil
 			}
 			return infra.WrapErrorStackWithMessage(err, "acquire redis lock failed")
@@ -89,7 +84,10 @@ func (dl *redisDLock) Lock() error {
 
 func (dl *redisDLock) Renewal(newTTL time.Duration) error {
 	if newTTL.Milliseconds() <= 0 {
-		return infra.NewErrorStack("[redis-dlock] renewal lock with zero ms TTL")
+		return infra.NewErrorStack("renewal dlock with zero ms TTL")
+	}
+	if !dl.locked.Load() {
+		return infra.WrapErrorStackWithMessage(ErrDLockNoInit, "renewal dlock with no lock")
 	}
 	var (
 		ctx    context.Context
@@ -97,29 +95,35 @@ func (dl *redisDLock) Renewal(newTTL time.Duration) error {
 	)
 	ctx, cancel = context.WithTimeout(*dl.ctx.Load(), newTTL)
 	if ctx != nil && cancel != nil {
-		if _, err := luaDLockRenewalTTL.EvalSha(
+		if _, err := luaDLockRenewalTTL.Eval(
 			ctx,
 			dl.scripterLoader(),
 			dl.keys,
 			dl.token, newTTL.Milliseconds(),
-		).Result(); err != nil {
+		).Result(); err != nil && !errors.Is(err, redis.Nil) {
 			return err
 		}
 		dl.ctx.Store(&ctx)
 		dl.ctxCancel.Store(&cancel)
 	}
-	return infra.NewErrorStack("[redis-dlock] renewal with nil context or nil context cancel function")
+	return infra.NewErrorStack("renewal dlock with nil context or nil context cancel function")
 }
 
 func (dl *redisDLock) TTL() (time.Duration, error) {
-	res, err := luaDLockLoadTTL.EvalSha(
+	if !dl.locked.Load() {
+		return 0, infra.WrapErrorStackWithMessage(ErrDLockNoInit, "fetch dlock ttl failed")
+	}
+	res, err := luaDLockLoadTTL.Eval(
 		*dl.ctx.Load(),
 		dl.scripterLoader(),
 		dl.keys,
 		dl.token,
 	).Result()
-	if err != nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, err
+	}
+	if res == nil {
+		return 0, infra.NewErrorStack("no error but nil dlock ttl value")
 	}
 	if num := res.(int64); num > 0 {
 		return time.Duration(num) * time.Millisecond, nil
@@ -128,15 +132,21 @@ func (dl *redisDLock) TTL() (time.Duration, error) {
 }
 
 func (dl *redisDLock) Unlock() error {
-	if _, err := luaDLockRelease.EvalSha(
+	if !dl.locked.Load() {
+		return infra.WrapErrorStackWithMessage(ErrDLockNoInit, "attempt to unlock a no init dlock")
+	}
+	if _, err := luaDLockRelease.Eval(
 		*dl.ctx.Load(),
 		dl.scripterLoader(),
 		dl.keys,
 		dl.token,
-	).Result(); err != nil {
+	).Result(); err != nil && !errors.Is(err, redis.Nil) {
 		return err
 	}
-	return dl.Close()
+	if cancel := *dl.ctxCancel.Load(); cancel != nil {
+		cancel()
+	}
+	return nil
 }
 
 type redisDLockOptions struct {
@@ -149,7 +159,7 @@ type redisDLockOptions struct {
 	ttl            time.Duration
 }
 
-func RedisLockBuilder(ctx context.Context, scripter func() redis.Scripter) *redisDLockOptions {
+func RedisDLockBuilder(ctx context.Context, scripter func() redis.Scripter) *redisDLockOptions {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -188,7 +198,14 @@ func (opt *redisDLockOptions) Build() (DLocker, error) {
 	if len(opt.keys) <= 0 {
 		return nil, infra.NewErrorStack("[redis-dlock] lock with zero keys")
 	}
-	if _, ok := (*opt.ctx.Load()).Deadline(); !ok || opt.ctxCancel.Load() == nil {
+	ctxNotInit := opt.ctxCancel.Load() == nil
+	if !ctxNotInit {
+		_, ok := (*opt.ctx.Load()).Deadline()
+		if !ok {
+			ctxNotInit = true
+		}
+	}
+	if ctxNotInit {
 		var (
 			ctx    context.Context
 			cancel context.CancelFunc
