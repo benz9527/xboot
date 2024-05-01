@@ -54,6 +54,16 @@ func TestRedisDLock_MiniRedis(t *testing.T) {
 		Token("test1").
 		Build()
 	require.NoError(t, err)
+
+	err = lock.Unlock()
+	require.Error(t, err)
+	_, err = lock.TTL()
+	require.Error(t, err)
+	err = lock.Renewal(300 * time.Millisecond)
+	require.Error(t, err)
+	err = lock.Renewal(-300 * time.Millisecond)
+	require.Error(t, err)
+
 	err = lock.Lock()
 	require.NoError(t, err)
 	ttl, err := lock.TTL()
@@ -66,6 +76,36 @@ func TestRedisDLock_MiniRedis(t *testing.T) {
 	t.Log("ttl2", ttl)
 	err = lock.Unlock()
 	require.NoError(t, err)
+
+	lock, err = RedisDLockBuilder(nil, nil).
+		Retry(DefaultExponentialBackoffRetry()).
+		TTL(200*time.Millisecond).
+		Keys("testKey1_1", "testKey2_1").
+		Token("test1").
+		Build()
+	require.Error(t, err)
+
+	lock, err = RedisDLockBuilder(nil,
+		func() redis.Scripter {
+			return rclient.Conn()
+		}).
+		Retry(DefaultExponentialBackoffRetry()).
+		TTL(200*time.Nanosecond).
+		Keys("testKey1_1", "testKey2_1").
+		Token("test1").
+		Build()
+	require.Error(t, err)
+
+	lock, err = RedisDLockBuilder(nil,
+		func() redis.Scripter {
+			return rclient.Conn()
+		}).
+		Retry(DefaultExponentialBackoffRetry()).
+		TTL(200 * time.Millisecond).
+		Keys().
+		Token("test1").
+		Build()
+	require.Error(t, err)
 }
 
 func TestRedisDLock_MiniRedis_DataRace(t *testing.T) {
