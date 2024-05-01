@@ -8,21 +8,22 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/multierr"
 
 	"github.com/benz9527/xboot/lib/id"
 	"github.com/benz9527/xboot/lib/infra"
 )
 
-//go:embedded lock.lua
+//go:embed lock.lua
 var luaDLockAcquireScript string
 
-//go:embedded unlock.lua
+//go:embed unlock.lua
 var luaDLockReleaseScript string
 
-//go:embedded lockrenewal.lua
+//go:embed lockrenewal.lua
 var luaDLockRenewalTTLScript string
 
-//go:embedded lockttl.lua
+//go:embed lockttl.lua
 var luaDLockLoadTTLScript string
 
 var (
@@ -52,18 +53,21 @@ func (dl *redisDLock) Lock() error {
 			*dl.ctx.Load(),
 			dl.scripterLoader(),
 			dl.keys,
-			dl.token, dl.ttl.Milliseconds(),
-		).Result(); err != nil {
-			if errors.Is(err, redis.Nil) {
-				dl.locked.Store(true)
-				return nil
-			}
-			return infra.WrapErrorStackWithMessage(err, "acquire redis lock failed")
+			dl.token, len(dl.token), dl.ttl.Milliseconds(),
+		).Result(); err != nil && !errors.Is(err, redis.Nil) {
+			return infra.WrapErrorStackWithMessage(multierr.Combine(err, ErrDLockAcquireFailed), "acquire redis lock failed")
+		} else if err == nil || errors.Is(err, redis.Nil) {
+			dl.locked.Store(true)
+			return noErr
 		}
 
 		backoff := retry.Next()
-		if backoff.Milliseconds() < 1 { // No retry strategy.
-			return infra.WrapErrorStack(ErrDLockAcquireFailed)
+		if backoff.Milliseconds() < 1 {
+			if ticker != nil {
+				return infra.WrapErrorStackWithMessage(ErrDLockAcquireFailed, "retry reach to max")
+			}
+			// No retry strategy.
+			return noErr
 		}
 
 		if ticker == nil {
@@ -105,6 +109,7 @@ func (dl *redisDLock) Renewal(newTTL time.Duration) error {
 		}
 		dl.ctx.Store(&ctx)
 		dl.ctxCancel.Store(&cancel)
+		return noErr
 	}
 	return infra.NewErrorStack("renewal dlock with nil context or nil context cancel function")
 }
@@ -126,9 +131,9 @@ func (dl *redisDLock) TTL() (time.Duration, error) {
 		return 0, infra.NewErrorStack("no error but nil dlock ttl value")
 	}
 	if num := res.(int64); num > 0 {
-		return time.Duration(num) * time.Millisecond, nil
+		return time.Duration(num) * time.Millisecond, noErr
 	}
-	return 0, nil
+	return 0, noErr
 }
 
 func (dl *redisDLock) Unlock() error {
@@ -146,7 +151,7 @@ func (dl *redisDLock) Unlock() error {
 	if cancel := *dl.ctxCancel.Load(); cancel != nil {
 		cancel()
 	}
-	return nil
+	return noErr
 }
 
 type redisDLockOptions struct {
@@ -179,7 +184,10 @@ func (opt *redisDLockOptions) Token(token string) *redisDLockOptions {
 }
 
 func (opt *redisDLockOptions) Keys(keys ...string) *redisDLockOptions {
-	opt.keys = keys
+	opt.keys = make([]string, len(keys))
+	for i, key := range keys {
+		opt.keys[i] = key
+	}
 	return opt
 }
 

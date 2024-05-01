@@ -20,6 +20,10 @@ const (
 	ErrDLockNoInit        DLockErr = "no init the dlock"
 )
 
+var (
+	noErr error = nil
+)
+
 func (err DLockErr) Error() string {
 	return string(err)
 }

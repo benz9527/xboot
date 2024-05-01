@@ -9,7 +9,7 @@
 -- 0: Not exist or set failed.
 local function updateLockTTL(ttl)
     for _, k in ipairs(KEYS) do
-        redis.call("PEXIRE", k, ttl)
+        redis.call("PEXPIRE", k, ttl)
     end
 end
 
@@ -42,14 +42,17 @@ end
 --
 -- Check the lock if it has been occupied.
 -- Lua scripts is atomic and can't be interrupted.
--- So the set key and set expire operation divded 
+-- So the set key and set expire operation divded
 -- into two steps is fine.
-if redis.call("MSETNX", table.unpack(argvSet)) then
-    if isReentrant() == false then
-        return false
-    end
-    -- Really acquires a lock.
-    redis.call("MSET", table.unpack(argvSet))
+-- Redis Lua5.1 only support unpack() function,
+-- so we can't use table.unpack() here.
+if redis.call("MSETNX", unpack(argvSet)) == 0 then
+    return redis.error_reply("dlock occupied")
 end
+if not isReentrant() then
+    return redis.error_reply("dlock reentrant failed")
+end
+-- Really acquires a lock.
+redis.call("MSET", unpack(argvSet))
 updateLockTTL(ARGV[3])
 return redis.status_reply("OK")

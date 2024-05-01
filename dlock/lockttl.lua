@@ -1,10 +1,12 @@
 -- MGET key1 key2 ...
 -- Fetch locked keys' values then get min TTL if all matched
 -- to target value.
-local lockerValues = redis.call("MGET", table.unpack(KEYS))
+-- Redis Lua5.1 only support unpack() function,
+-- so we can't use table.unpack() here.
+local lockerValues = redis.call("MGET", unpack(KEYS))
 for i, _ in ipairs(lockerValues) do
     if lockerValues[i] ~= ARGV[1] then
-        return false
+        return redis.error_reply("dlock token mismatch, unable to fetch ttl")
     end
 end
 
