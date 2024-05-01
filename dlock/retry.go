@@ -12,7 +12,7 @@ func (backoff linearBackoff) Next() time.Duration {
 	return time.Duration(backoff)
 }
 
-func LinearRetry(backoff time.Duration) RetryStrategy {
+func EndlessRetry(backoff time.Duration) RetryStrategy {
 	return linearBackoff(backoff)
 }
 
@@ -39,7 +39,13 @@ func LimitedRetry(backoff time.Duration, maxCount int64) RetryStrategy {
 		return NoRetry()
 	}
 	return &limitedRetry{
-		strategy: linearBackoff(backoff),
+		strategy: ExponentialBackoffRetry(
+			maxCount,
+			backoff,
+			0,
+			1.0,
+			0.1,
+		),
 		maxCount: maxCount,
 	}
 }
@@ -66,15 +72,27 @@ func (backoff *exponentialBackoff) Next() time.Duration {
 		}
 	}
 	if backoff.jitter > 0 {
-		duration = jitter(duration, backoff.jitter)
+		duration = duration + time.Duration(randv2.Float64()*backoff.jitter*float64(duration))
 	}
 	return duration
 }
 
-func jitter(duration time.Duration, maxFactor float64) time.Duration {
-	if maxFactor <= 0.0 {
-		maxFactor = 1.0
+func ExponentialBackoffRetry(maxSteps int64, initBackoff, maxBackoff time.Duration, backoffFactor, jitter float64) RetryStrategy {
+	return &exponentialBackoff{
+		cap:      maxBackoff,
+		duration: initBackoff,
+		factor:   backoffFactor,
+		jitter:   jitter,
+		steps:    maxSteps,
 	}
-	wait := duration + time.Duration(randv2.Float64()*maxFactor*float64(duration))
-	return wait
+}
+
+func DefaultExponentialBackoffRetry() RetryStrategy {
+	return ExponentialBackoffRetry(
+		5,
+		10*time.Millisecond,
+		0,
+		1.0,
+		0.1,
+	)
 }
