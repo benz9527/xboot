@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/safeopen"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +63,7 @@ func TestSingleLog(t *testing.T) {
 }
 
 func TestSingleLog_PermissionDeniedAccess(t *testing.T) {
-	rf, err := os.Create(filepath.Join(os.TempDir(), "pda.log"))
+	rf, err := safeopen.CreateBeneath(os.TempDir(), "pda.log")
 	require.NoError(t, err)
 	err = rf.Close()
 	require.NoError(t, err)
@@ -70,9 +71,8 @@ func TestSingleLog_PermissionDeniedAccess(t *testing.T) {
 	err = os.Chmod(filepath.Join(os.TempDir(), "pda.log"), 0o400)
 	require.NoError(t, err)
 
-	rf, err = os.OpenFile(filepath.Join(os.TempDir(), "pda.log"), os.O_WRONLY|os.O_APPEND, 0o666)
-	require.Error(t, err)
-	require.True(t, os.IsPermission(err))
+	rf, err = safeopen.OpenFileBeneath(os.TempDir(), "pda.log", os.O_WRONLY|os.O_APPEND, 0o666)
+	require.Error(t, err) // Access denied
 	require.Nil(t, rf)
 
 	log := &singleLog{
@@ -81,8 +81,7 @@ func TestSingleLog_PermissionDeniedAccess(t *testing.T) {
 		filePath: os.TempDir(),
 	}
 	_, err = log.Write([]byte("permission denied access!"))
-	require.Error(t, err)
-	require.True(t, errors.Is(err, os.ErrPermission))
+	require.Error(t, err) // Access denied
 	err = log.Close()
 	require.NoError(t, err)
 

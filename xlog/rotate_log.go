@@ -1,7 +1,7 @@
 package xlog
 
 import (
-	"archive/zip"
+	// "archive/zip"
 	"context"
 	"fmt"
 	"io"
@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/google/safearchive/zip"
+	"github.com/google/safeopen"
 	"go.uber.org/multierr"
 
 	"github.com/benz9527/xboot/lib/infra"
@@ -212,10 +214,10 @@ func (log *rotateLog) create() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
-	pathToLog := filepath.Join(log.filePath, log.filename)
-	f, err := os.OpenFile(pathToLog, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
+
+	f, err := safeopen.OpenFileBeneath(log.filePath, log.filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
-		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+pathToLog)
+		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+filepath.Join(log.filePath, log.filename))
 	}
 	log.currentFile.Store(f)
 	log.wroteSize = 0
@@ -254,12 +256,10 @@ func (log *rotateLog) openOrCreate() error {
 	}
 
 	var f *os.File
-	if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
-		if os.IsPermission(err) {
-			return infra.WrapErrorStackWithMessage(err, "unable to access log file: "+pathToLog)
-		}
+	if f, err = safeopen.OpenFileBeneath(log.filePath, log.filename, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
+		var merr error = infra.WrapErrorStackWithMessage(err, "unable to access log file: "+pathToLog)
 		if err = log.backupThenCreate(); err != nil {
-			return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file: "+pathToLog)
+			return infra.WrapErrorStackWithMessage(multierr.Combine(merr, err), "failed to backup then open new log file: "+pathToLog)
 		}
 	}
 	log.currentFile.Store(f)
@@ -411,7 +411,7 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 	info, err := os.Stat(filepath.Join(filePath, zipName))
 	if err == nil && !info.IsDir() {
 		// Exists
-		if logZip, err = os.OpenFile(filepath.Join(filePath, "xlog-tmp.zip"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644); err != nil {
+		if logZip, err = safeopen.OpenFileBeneath(filePath, "xlog-tmp.zip", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644); err != nil {
 			return err
 		}
 		if prevZip, err = zip.OpenReader(filepath.Join(filePath, zipName)); err != nil {
@@ -425,7 +425,7 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 	zipWriter := zip.NewWriter(logZip)
 	for _, info := range expired {
 		filename := filepath.Base(info.Name())
-		file, err := os.Open(filepath.Join(filePath, filename))
+		file, err := safeopen.OpenBeneath(filePath, filename)
 		if err == nil {
 			if zipFile, err := zipWriter.Create(filename); err == nil {
 				if _, err = io.Copy(zipFile, file); err == nil {
@@ -443,6 +443,7 @@ func compressExpiredLogs(filePath, zipName string, expired []fs.FileInfo) error 
 	}
 	// Copy previous zip content to new zip file.
 	if prevZip != nil {
+		prevZip.SetSecurityMode(prevZip.GetSecurityMode() | zip.MaximumSecurityMode)
 		for _, f := range prevZip.File {
 			oldReader, err := f.Open()
 			if err != nil || f.Mode().IsDir() {

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/google/safeopen"
 	"go.uber.org/multierr"
 
 	"github.com/benz9527/xboot/lib/infra"
@@ -79,7 +80,7 @@ func (log *singleLog) openOrCreate() error {
 	}
 
 	var f *os.File
-	if f, err = os.OpenFile(pathToLog, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
+	if f, err = safeopen.OpenFileBeneath(log.filePath, log.filename, os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
 		return infra.WrapErrorStackWithMessage(err, "failed to open an exists log file: "+pathToLog)
 	}
 	log.currentFile.Store(f)
@@ -105,10 +106,10 @@ func (log *singleLog) create() error {
 	if err := log.mkdir(); err != nil {
 		return err
 	}
-	pathToLog := filepath.Join(log.filePath, log.filename)
-	f, err := os.OpenFile(pathToLog, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
+
+	f, err := safeopen.OpenFileBeneath(log.filePath, log.filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
-		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+pathToLog)
+		return infra.WrapErrorStackWithMessage(err, "unable to create new log file: "+filepath.Join(log.filePath, log.filename))
 	}
 	log.currentFile.Store(f)
 	log.wroteSize = 0
