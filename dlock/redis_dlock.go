@@ -225,3 +225,37 @@ func (opt *redisDLockOptions) Build() (DLocker, error) {
 	opt.ctxCancel.Store(&cancel)
 	return &redisDLock{redisDLockOptions: opt}, nil
 }
+
+type RedisDLockOption func(opt *redisDLockOptions)
+
+func WithRedisDLockTTL(ttl time.Duration) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.TTL(ttl)
+	}
+}
+
+func WithRedisDLockKeys(keys ...string) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.Keys(keys...)
+	}
+}
+
+func WithRedisDLockToken(token string) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.Token(token)
+	}
+}
+
+func WithRedisDLockRetry(strategy RetryStrategy) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.Retry(strategy)
+	}
+}
+
+func RedisDLock(ctx context.Context, scripter func() redis.Scripter, opts ...RedisDLockOption) (DLocker, error) {
+	builderOpts := RedisDLockBuilder(ctx, scripter)
+	for _, o := range opts {
+		o(builderOpts)
+	}
+	return builderOpts.Build()
+}
