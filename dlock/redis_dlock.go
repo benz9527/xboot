@@ -47,7 +47,10 @@ type redisDLock struct {
 
 func (dl *redisDLock) Lock() error {
 	retry := dl.strategy
-	var ticker *time.Ticker
+	var (
+		ticker *time.Ticker
+		merr   error
+	)
 	for {
 		if _, err := luaDLockAcquire.Eval(
 			*dl.ctx.Load(),
@@ -55,7 +58,7 @@ func (dl *redisDLock) Lock() error {
 			dl.keys,
 			dl.token, len(dl.token), dl.ttl.Milliseconds(),
 		).Result(); err != nil && !errors.Is(err, redis.Nil) {
-			return infra.WrapErrorStackWithMessage(multierr.Combine(err, ErrDLockAcquireFailed), "acquire redis lock failed")
+			merr = multierr.Append(merr, err)
 		} else if err == nil || errors.Is(err, redis.Nil) {
 			dl.locked.Store(true)
 			return noErr
@@ -64,7 +67,7 @@ func (dl *redisDLock) Lock() error {
 		backoff := retry.Next()
 		if backoff.Milliseconds() < 1 {
 			if ticker != nil {
-				return infra.WrapErrorStackWithMessage(ErrDLockAcquireFailed, "retry reach to max")
+				return infra.WrapErrorStackWithMessage(multierr.Combine(merr, ErrDLockAcquireFailed), "retry reach to max")
 			}
 			// No retry strategy.
 			return noErr

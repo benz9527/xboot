@@ -124,6 +124,7 @@ func TestRedisDLock_MiniRedis_DataRace(t *testing.T) {
 			wg.Done()
 			return
 		}
+		time.Sleep(100 * time.Millisecond)
 		_err = lock1.Unlock()
 		require.NoError(t, _err)
 		wg.Done()
@@ -137,6 +138,7 @@ func TestRedisDLock_MiniRedis_DataRace(t *testing.T) {
 			wg.Done()
 			return
 		}
+		time.Sleep(100 * time.Millisecond)
 		_err = lock2.Unlock()
 		require.NoError(t, _err)
 		wg.Done()
@@ -250,6 +252,7 @@ func TestRedisDLock_SingleRedis_DataRace(t *testing.T) {
 			wg.Done()
 			return
 		}
+		time.Sleep(100 * time.Millisecond)
 		_err = lock1.Unlock()
 		require.NoError(t, _err)
 		wg.Done()
@@ -263,6 +266,7 @@ func TestRedisDLock_SingleRedis_DataRace(t *testing.T) {
 			wg.Done()
 			return
 		}
+		time.Sleep(100 * time.Millisecond)
 		_err = lock2.Unlock()
 		require.NoError(t, _err)
 		wg.Done()
