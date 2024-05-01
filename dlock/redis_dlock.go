@@ -53,7 +53,7 @@ func (dl *redisDLock) Lock() error {
 	)
 	for {
 		if _, err := luaDLockAcquire.Eval(
-			*dl.ctx.Load(),
+			*dl.ctx.Load(), // TODO pay attention to the context has been cancelled.
 			dl.scripterLoader(),
 			dl.keys,
 			dl.token, len(dl.token), dl.ttl.Milliseconds(),
@@ -100,6 +100,7 @@ func (dl *redisDLock) Renewal(newTTL time.Duration) error {
 		ctx    context.Context
 		cancel context.CancelFunc
 	)
+	// TODO pay attention to the context has been cancelled.
 	ctx, cancel = context.WithTimeout(*dl.ctx.Load(), newTTL)
 	if ctx != nil && cancel != nil {
 		if _, err := luaDLockRenewalTTL.Eval(
@@ -122,7 +123,7 @@ func (dl *redisDLock) TTL() (time.Duration, error) {
 		return 0, infra.WrapErrorStackWithMessage(ErrDLockNoInit, "fetch dlock ttl failed")
 	}
 	res, err := luaDLockLoadTTL.Eval(
-		*dl.ctx.Load(),
+		*dl.ctx.Load(), // TODO pay attention to the context has been cancelled.
 		dl.scripterLoader(),
 		dl.keys,
 		dl.token,
@@ -144,7 +145,7 @@ func (dl *redisDLock) Unlock() error {
 		return infra.WrapErrorStackWithMessage(ErrDLockNoInit, "attempt to unlock a no init dlock")
 	}
 	if _, err := luaDLockRelease.Eval(
-		*dl.ctx.Load(),
+		*dl.ctx.Load(), // TODO pay attention to the context has been cancelled.
 		dl.scripterLoader(),
 		dl.keys,
 		dl.token,
@@ -201,35 +202,60 @@ func (opt *redisDLockOptions) Retry(strategy RetryStrategy) *redisDLockOptions {
 
 func (opt *redisDLockOptions) Build() (DLocker, error) {
 	if opt.scripterLoader == nil {
-		return nil, infra.NewErrorStack("[redis-dlock] scripter loader is nil")
+		return nil, infra.NewErrorStack("dlock scripter loader is nil")
 	}
 	if opt.ttl.Milliseconds() <= 0 {
-		return nil, infra.NewErrorStack("[redis-dlock] lock with zero ms TTL")
+		return nil, infra.NewErrorStack("dlock with zero ms TTL")
 	}
 	if len(opt.keys) <= 0 {
-		return nil, infra.NewErrorStack("[redis-dlock] lock with zero keys")
-	}
-	ctxNotInit := opt.ctxCancel.Load() == nil
-	if !ctxNotInit {
-		_, ok := (*opt.ctx.Load()).Deadline()
-		if !ok {
-			ctxNotInit = true
-		}
-	}
-	if ctxNotInit {
-		var (
-			ctx    context.Context
-			cancel context.CancelFunc
-		)
-		ctx, cancel = context.WithTimeout(*opt.ctx.Load(), opt.ttl)
-		if ctx == nil || cancel == nil {
-			return nil, infra.NewErrorStack("[redis-dlock] build with nil context or nil context cancel function")
-		}
-		opt.ctx.Store(&ctx)
-		opt.ctxCancel.Store(&cancel)
+		return nil, infra.NewErrorStack("dlock with zero keys")
 	}
 	if opt.strategy == nil {
 		opt.strategy = NoRetry()
 	}
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+	)
+	ctx, cancel = context.WithTimeout(*opt.ctx.Load(), opt.ttl)
+	if ctx == nil || cancel == nil {
+		return nil, infra.NewErrorStack("dlock build with nil context or nil context cancel function")
+	}
+	opt.ctx.Store(&ctx)
+	opt.ctxCancel.Store(&cancel)
 	return &redisDLock{redisDLockOptions: opt}, nil
+}
+
+type RedisDLockOption func(opt *redisDLockOptions)
+
+func WithRedisDLockTTL(ttl time.Duration) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.TTL(ttl)
+	}
+}
+
+func WithRedisDLockKeys(keys ...string) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.Keys(keys...)
+	}
+}
+
+func WithRedisDLockToken(token string) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.Token(token)
+	}
+}
+
+func WithRedisDLockRetry(strategy RetryStrategy) RedisDLockOption {
+	return func(opt *redisDLockOptions) {
+		opt.Retry(strategy)
+	}
+}
+
+func RedisDLock(ctx context.Context, scripter func() redis.Scripter, opts ...RedisDLockOption) (DLocker, error) {
+	builderOpts := RedisDLockBuilder(ctx, scripter)
+	for _, o := range opts {
+		o(builderOpts)
+	}
+	return builderOpts.Build()
 }
