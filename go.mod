@@ -6,6 +6,8 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/glebarez/sqlite v1.11.0
+	github.com/google/safearchive v0.0.0-20240116084542-70159a5fe202
+	github.com/google/safeopen v0.0.0-20240125081138-66b54d5181c6
 	github.com/mmcloughlin/avo v0.6.0
 	github.com/panjf2000/ants/v2 v2.9.1
 	github.com/redis/go-redis/v9 v9.5.1
