@@ -83,7 +83,7 @@ func (dl *etcdDLock) Renewal(newTTL time.Duration) error {
 
 func (dl *etcdDLock) TTL() (time.Duration, error) {
 	if dl.startTime.IsZero() {
-		return 0, infra.NewErrorStack("etcd dlock is not initialized")
+		return 0, infra.NewErrorStack("etcd dlock is not initialized or has been  closed")
 	}
 	diff := time.Now().Sub(dl.startTime)
 	return dl.ttl - diff, nil
@@ -105,6 +105,7 @@ func (dl *etcdDLock) Unlock() error {
 		if cancelPtr := dl.ctxCancel.Load(); cancelPtr != nil {
 			(*cancelPtr)()
 		}
+		dl.startTime = time.Time{} // Zero time
 	}
 	return merr
 }
@@ -115,8 +116,8 @@ type etcdDLockOptions struct {
 	ctxCancel atomic.Pointer[context.CancelFunc]
 	strategy  RetryStrategy
 	keys      []string
-	token     string
 	ttl       time.Duration
+	leaseID   *clientv3.LeaseID // Used as token (must be unique)
 }
 
 func EtcdDLockBuilder(ctx context.Context, client *clientv3.Client) *etcdDLockOptions {
@@ -133,16 +134,17 @@ func (opt *etcdDLockOptions) TTL(ttl time.Duration) *etcdDLockOptions {
 	return opt
 }
 
-func (opt *etcdDLockOptions) Token(token string) *etcdDLockOptions {
-	opt.token = token + "&" + nano()
-	return opt
-}
-
 func (opt *etcdDLockOptions) Keys(keys ...string) *etcdDLockOptions {
 	opt.keys = make([]string, len(keys))
 	for i, key := range keys {
 		opt.keys[i] = key
 	}
+	return opt
+}
+
+func (opt *etcdDLockOptions) LeaseID(id int64) *etcdDLockOptions {
+	leaseID := clientv3.LeaseID(id)
+	opt.leaseID = &leaseID
 	return opt
 }
 
@@ -155,8 +157,8 @@ func (opt *etcdDLockOptions) Build() (DLocker, error) {
 	if opt.client == nil {
 		return nil, infra.NewErrorStack("etcd dlock client is nil")
 	}
-	if opt.ttl.Milliseconds() <= 0 {
-		return nil, infra.NewErrorStack("etcd dlock with zero ms TTL")
+	if opt.ttl.Seconds() < 1 {
+		return nil, infra.NewErrorStack("etcd dlock with zero second TTL")
 	}
 	if len(opt.keys) <= 0 {
 		return nil, infra.NewErrorStack("etcd dlock with zero keys")
@@ -164,6 +166,11 @@ func (opt *etcdDLockOptions) Build() (DLocker, error) {
 	if opt.strategy == nil {
 		opt.strategy = NoRetry()
 	}
+	if opt.leaseID == nil {
+		noLease := clientv3.NoLease
+		opt.leaseID = &noLease // Grant new lease ID by new session.
+	}
+
 	var (
 		ctx    context.Context
 		cancel context.CancelFunc
@@ -172,33 +179,51 @@ func (opt *etcdDLockOptions) Build() (DLocker, error) {
 	if ctx == nil || cancel == nil {
 		return nil, infra.NewErrorStack("etcd dlock build with nil context or nil context cancel function")
 	}
+	startTime := time.Now()
 	opt.ctx.Store(&ctx)
 	opt.ctxCancel.Store(&cancel)
-	return &etcdDLock{etcdDLockOptions: opt}, nil
+
+	session, err := concv3.NewSession(opt.client,
+		concv3.WithTTL(int(opt.ttl.Seconds())),
+		concv3.WithLease(*opt.leaseID),
+	)
+	if err != nil {
+		return nil, infra.WrapErrorStack(err)
+	}
+	var mutexes = make([]*concv3.Mutex, 0, len(opt.keys))
+	for _, prefix := range opt.keys {
+		mutexes = append(mutexes, concv3.NewMutex(session, prefix))
+	}
+	return &etcdDLock{
+		etcdDLockOptions: opt,
+		session:          session,
+		startTime:        startTime,
+		mutexes:          mutexes,
+	}, nil
 }
 
 type EtcdDLockOption func(opt *etcdDLockOptions)
 
-func WithEtcdDLockTTL(ttl time.Duration) RedisDLockOption {
-	return func(opt *redisDLockOptions) {
+func WithEtcdDLockTTL(ttl time.Duration) EtcdDLockOption {
+	return func(opt *etcdDLockOptions) {
 		opt.TTL(ttl)
 	}
 }
 
-func WithEtcdDLockKeys(keys ...string) RedisDLockOption {
-	return func(opt *redisDLockOptions) {
+func WithEtcdDLockKeys(keys ...string) EtcdDLockOption {
+	return func(opt *etcdDLockOptions) {
 		opt.Keys(keys...)
 	}
 }
 
-func WithEtcdDLockToken(token string) RedisDLockOption {
-	return func(opt *redisDLockOptions) {
-		opt.Token(token)
+func WithEtcdDLockLeaseID(id int64) EtcdDLockOption {
+	return func(opt *etcdDLockOptions) {
+		opt.LeaseID(id)
 	}
 }
 
-func WithEtcdDLockRetry(strategy RetryStrategy) RedisDLockOption {
-	return func(opt *redisDLockOptions) {
+func WithEtcdDLockRetry(strategy RetryStrategy) EtcdDLockOption {
+	return func(opt *etcdDLockOptions) {
 		opt.Retry(strategy)
 	}
 }
