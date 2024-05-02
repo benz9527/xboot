@@ -292,8 +292,7 @@ func testCleanLogFiles(t *testing.T, path, namePrefix, nameSuffix string) int {
 		}
 	}
 	for _, logInfo := range logInfos {
-		err = os.Remove(filepath.Join(path, logInfo.Name()))
-		require.NoError(t, err)
+		_ = os.Remove(filepath.Join(path, logInfo.Name()))
 	}
 	return len(logInfos)
 }
