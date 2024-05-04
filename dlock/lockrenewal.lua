@@ -10,7 +10,7 @@ for i, _ in ipairs(KEYS) do
     end
 end
 
--- PEXIRE key milliseconds
+-- PEXPIRE key milliseconds
 -- 1: OK
 -- 0: Not exist or set failed.
 local function updateLockTTL(ttl)

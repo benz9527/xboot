@@ -313,3 +313,4 @@ func TestRedisDLock_SingleRedis_DataRace(t *testing.T) {
 	}()
 	wg.Wait()
 }
+ 

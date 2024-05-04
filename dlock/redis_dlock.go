@@ -1,5 +1,10 @@
 package dlock
 
+// References:
+// https://github.com/bsm/redislock
+// https://github.com/go-redsync/redsync
+// https://redis.io/docs/latest/develop/use/patterns/distributed-locks/
+
 import (
 	"context"
 	_ "embed"
@@ -67,7 +72,7 @@ func (dl *redisDLock) Lock() error {
 		backoff := retry.Next()
 		if backoff.Milliseconds() < 1 {
 			if ticker != nil {
-				return infra.WrapErrorStackWithMessage(multierr.Combine(merr, ErrDLockAcquireFailed), "retry reach to max")
+				return infra.WrapErrorStackWithMessage(multierr.Combine(merr, ErrDLockAcquireFailed), "redis dlock lock retry reach to max")
 			}
 			// No retry strategy.
 			return noErr
@@ -115,7 +120,7 @@ func (dl *redisDLock) Renewal(newTTL time.Duration) error {
 		dl.ctxCancel.Store(&cancel)
 		return noErr
 	}
-	return infra.NewErrorStack("renewal dlock with nil context or nil context cancel function")
+	return infra.NewErrorStack("refresh dlock ttl with nil context or nil context cancel function")
 }
 
 func (dl *redisDLock) TTL() (time.Duration, error) {
@@ -202,13 +207,13 @@ func (opt *redisDLockOptions) Retry(strategy RetryStrategy) *redisDLockOptions {
 
 func (opt *redisDLockOptions) Build() (DLocker, error) {
 	if opt.scripterLoader == nil {
-		return nil, infra.NewErrorStack("dlock scripter loader is nil")
+		return nil, infra.NewErrorStack("redis dlock scripter loader is nil")
 	}
 	if opt.ttl.Milliseconds() <= 0 {
-		return nil, infra.NewErrorStack("dlock with zero ms TTL")
+		return nil, infra.NewErrorStack("redis dlock with zero ms TTL")
 	}
 	if len(opt.keys) <= 0 {
-		return nil, infra.NewErrorStack("dlock with zero keys")
+		return nil, infra.NewErrorStack("redis dlock with zero keys")
 	}
 	if opt.strategy == nil {
 		opt.strategy = NoRetry()
@@ -219,7 +224,7 @@ func (opt *redisDLockOptions) Build() (DLocker, error) {
 	)
 	ctx, cancel = context.WithTimeout(*opt.ctx.Load(), opt.ttl)
 	if ctx == nil || cancel == nil {
-		return nil, infra.NewErrorStack("dlock build with nil context or nil context cancel function")
+		return nil, infra.NewErrorStack("redis dlock build with nil context or nil context cancel function")
 	}
 	opt.ctx.Store(&ctx)
 	opt.ctxCancel.Store(&cancel)
