@@ -121,7 +121,6 @@ type etcdDLockOptions struct {
 	strategy  RetryStrategy
 	keys      []string
 	ttl       time.Duration
-	leaseID   *clientv3.LeaseID // Used as token (must be unique)
 }
 
 func EtcdDLockBuilder(ctx context.Context, client *clientv3.Client) *etcdDLockOptions {
@@ -146,12 +145,6 @@ func (opt *etcdDLockOptions) Keys(keys ...string) *etcdDLockOptions {
 	return opt
 }
 
-func (opt *etcdDLockOptions) LeaseID(id int64) *etcdDLockOptions {
-	leaseID := clientv3.LeaseID(id)
-	opt.leaseID = &leaseID
-	return opt
-}
-
 func (opt *etcdDLockOptions) Retry(strategy RetryStrategy) *etcdDLockOptions {
 	opt.strategy = strategy
 	return opt
@@ -170,10 +163,6 @@ func (opt *etcdDLockOptions) Build() (DLocker, error) {
 	if opt.strategy == nil {
 		opt.strategy = NoRetry()
 	}
-	if opt.leaseID == nil {
-		noLease := clientv3.NoLease
-		opt.leaseID = &noLease // Grant new lease ID by new session.
-	}
 
 	var (
 		ctx    context.Context
@@ -189,7 +178,7 @@ func (opt *etcdDLockOptions) Build() (DLocker, error) {
 
 	session, err := concv3.NewSession(opt.client,
 		concv3.WithTTL(int(opt.ttl.Seconds())),
-		concv3.WithLease(*opt.leaseID),
+		concv3.WithLease(clientv3.NoLease), // Grant new lease ID by new session.
 	)
 	if err != nil {
 		return nil, infra.WrapErrorStack(err)
@@ -217,12 +206,6 @@ func WithEtcdDLockTTL(ttl time.Duration) EtcdDLockOption {
 func WithEtcdDLockKeys(keys ...string) EtcdDLockOption {
 	return func(opt *etcdDLockOptions) {
 		opt.Keys(keys...)
-	}
-}
-
-func WithEtcdDLockLeaseID(id int64) EtcdDLockOption {
-	return func(opt *etcdDLockOptions) {
-		opt.LeaseID(id)
 	}
 }
 
