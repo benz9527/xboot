@@ -39,19 +39,23 @@ func (dl *etcdDLock) Lock() error {
 	// TODO pay attention to the context has been cancelled.
 	for {
 		for i, mu := range dl.mutexes {
-			if err := mu.TryLock(*dl.ctx.Load()); err != nil {
+			if err := /* reentrant */ mu.TryLock(*dl.ctx.Load()); err != nil {
 				merr = multierr.Append(merr, err)
 				fallbackUnlockIndex = i
 				break
 			}
 		}
-		if merr != nil {
-			for i := fallbackUnlockIndex - 1; i >= 0; i-- {
-				merr = multierr.Append(merr, dl.mutexes[i].Unlock(*dl.ctx.Load()))
-			}
-			return merr
-		}
 
+		if merr == nil {
+			return noErr
+		} else {
+			for i := fallbackUnlockIndex - 1; i >= 0; i-- {
+				if err := dl.mutexes[i].Unlock(*dl.ctx.Load()); err != nil {
+					return err
+				}
+			}
+		}
+		// Retry.
 		backoff := retry.Next()
 		if backoff.Milliseconds() < 1 {
 			if ticker != nil {
